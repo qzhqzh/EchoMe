@@ -3,8 +3,9 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class MemoryType(str, Enum):
@@ -41,7 +42,7 @@ class MemorySource(str, Enum):
 class ScopeSchema(BaseModel):
     """Memory scope definition."""
 
-    global_: bool = Field(True, alias="global")
+    global_: bool = Field(True, alias="global", serialization_alias="global")
     projects: list[str] = Field(default_factory=list)
     exclude_projects: list[str] = Field(default_factory=list)
 
@@ -102,13 +103,44 @@ class MemorySearchRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     project_id: str | None = None
     top_k: int = Field(5, ge=1, le=20)
-    min_score: float = Field(0.5, ge=0.0, le=1.0)
+    min_score: float = Field(0.3, ge=0.0, le=1.0)
 
 
 # --- Response Schemas ---
 
 
-class MemoryResponse(BaseModel):
+class _OrmScopeMixin:
+    """Mixin to convert flat ORM scope fields into nested ScopeSchema."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def build_scope_from_orm(cls, data: Any) -> Any:
+        """Convert scope_global/scope_projects/scope_exclude → scope dict."""
+        if hasattr(data, "scope_global"):
+            # It's an ORM object — convert to dict with nested scope
+            return {
+                "id": data.id,
+                "title": data.title,
+                "content": getattr(data, "content", None),
+                "type": data.type,
+                "layer": data.layer,
+                "priority": data.priority,
+                "tags": data.tags,
+                "status": data.status,
+                "source": data.source,
+                "token_count": data.token_count,
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
+                "scope": {
+                    "global": data.scope_global,
+                    "projects": data.scope_projects,
+                    "exclude_projects": data.scope_exclude,
+                },
+            }
+        return data
+
+
+class MemoryResponse(_OrmScopeMixin, BaseModel):
     """Full memory response."""
 
     id: uuid.UUID
@@ -128,7 +160,7 @@ class MemoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class MemoryListItem(BaseModel):
+class MemoryListItem(_OrmScopeMixin, BaseModel):
     """Memory item in list responses (without full content)."""
 
     id: uuid.UUID
@@ -163,6 +195,8 @@ class MemoryCreateResponse(BaseModel):
     title: str
     token_count: int
     created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class SearchResultItem(BaseModel):
