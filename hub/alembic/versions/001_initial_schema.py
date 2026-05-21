@@ -36,7 +36,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(16), nullable=False, server_default="active"),
         sa.Column("source", sa.String(32), nullable=False, server_default="manual"),
         sa.Column("token_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("embedding", Vector(1536), nullable=True),
+        sa.Column("embedding", Vector(1024), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.CheckConstraint(

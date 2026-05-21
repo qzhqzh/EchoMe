@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,9 +20,26 @@ from app.schemas.memory import (
     SearchResponse,
     SearchResultItem,
 )
+from app.services.embedding import get_embedding
 from app.services.token_counter import count_tokens
 
 router = APIRouter(prefix="/memories", tags=["memories"])
+
+
+async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
+    """Background task: compute embedding and store it."""
+    from app.core.database import async_session_factory
+
+    embedding = await get_embedding(text)
+    if embedding is None:
+        return
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(Memory).where(Memory.id == memory_id))
+        memory = result.scalar_one_or_none()
+        if memory:
+            memory.embedding = embedding
+            await session.commit()
 
 
 @router.get("", response_model=MemoryListResponse)
@@ -92,6 +109,7 @@ async def get_memory(
 @router.post("", response_model=MemoryCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_memory(
     body: MemoryCreate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> Memory:
@@ -115,6 +133,11 @@ async def create_memory(
     )
     session.add(memory)
     await session.flush()
+
+    # Compute embedding in background (non-blocking)
+    embed_text = f"{body.title}\n{body.content}"
+    background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
+
     return memory
 
 
@@ -122,6 +145,7 @@ async def create_memory(
 async def update_memory(
     memory_id: uuid.UUID,
     body: MemoryUpdate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> Memory:
@@ -146,6 +170,10 @@ async def update_memory(
     memory.source = body.source.value
     memory.token_count = count_tokens(body.content)
 
+    # Recompute embedding on content change
+    embed_text = f"{body.title}\n{body.content}"
+    background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
+
     return memory
 
 
@@ -153,6 +181,7 @@ async def update_memory(
 async def patch_memory(
     memory_id: uuid.UUID,
     body: MemoryPatch,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> Memory:
@@ -180,6 +209,11 @@ async def patch_memory(
 
     if "content" in update_data and update_data["content"]:
         memory.token_count = count_tokens(memory.content)
+
+    # Recompute embedding if title or content changed
+    if "title" in update_data or "content" in update_data:
+        embed_text = f"{memory.title}\n{memory.content}"
+        background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
     return memory
 
@@ -211,42 +245,79 @@ async def search_memories(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> SearchResponse:
-    """Search memories using keyword matching (vector search added in Phase 4)."""
-    # Base query: active memories for this user
-    query = select(Memory).where(Memory.user_id == user_id, Memory.status == "active")
+    """Search memories using hybrid: vector similarity + keyword matching."""
+    from pgvector.sqlalchemy import Vector
 
+    # Base filters
+    base_filter = [Memory.user_id == user_id, Memory.status == "active"]
     if body.type:
-        query = query.where(Memory.type == body.type.value)
+        base_filter.append(Memory.type == body.type.value)
     if body.layer:
-        query = query.where(Memory.layer == body.layer.value)
+        base_filter.append(Memory.layer == body.layer.value)
     if body.tags:
         for tag in body.tags:
-            query = query.where(Memory.tags.contains([tag]))
+            base_filter.append(Memory.tags.contains([tag]))
     if body.project_id:
-        # Include global memories + project-specific ones
-        query = query.where(
+        base_filter.append(
             (Memory.scope_global.is_(True)) | (Memory.scope_projects.contains([body.project_id]))
         )
 
-    result = await session.execute(query)
+    # Try vector search first
+    query_embedding = await get_embedding(body.query)
+    vector_results: list[tuple[Memory, float]] = []
+
+    if query_embedding is not None:
+        # Vector similarity search using pgvector cosine distance
+        vector_query = (
+            select(
+                Memory,
+                Memory.embedding.cosine_distance(query_embedding).label("distance"),
+            )
+            .where(*base_filter)
+            .where(Memory.embedding.isnot(None))
+            .order_by("distance")
+            .limit(body.top_k * 2)  # Get more candidates for re-ranking
+        )
+        result = await session.execute(vector_query)
+        for row in result:
+            mem = row[0]
+            distance = row[1]
+            similarity = 1.0 - distance  # cosine_distance → similarity
+            if similarity >= 0.3:  # Minimum threshold
+                vector_results.append((mem, similarity))
+
+    # Also do keyword search (fallback + complement)
+    keyword_query = select(Memory).where(*base_filter)
+    result = await session.execute(keyword_query)
     all_memories = result.scalars().all()
 
-    # Simple keyword scoring (will be replaced by vector search in Phase 4)
-    scored: list[tuple[Memory, float]] = []
+    keyword_results: list[tuple[Memory, float]] = []
     query_lower = body.query.lower()
     query_words = query_lower.split()
 
     for mem in all_memories:
         searchable = f"{mem.title} {mem.content} {' '.join(mem.tags)}".lower()
-        # Score: fraction of query words found
         matches = sum(1 for w in query_words if w in searchable)
         score = matches / len(query_words) if query_words else 0.0
-        if score >= body.min_score:
-            scored.append((mem, score))
+        if score >= 0.3:
+            keyword_results.append((mem, score))
 
-    # Sort by score, then priority
-    scored.sort(key=lambda x: (x[1], x[0].priority), reverse=True)
-    top_results = scored[: body.top_k]
+    # Merge: vector (weight 0.7) + keyword (weight 0.3)
+    scored_map: dict[uuid.UUID, tuple[Memory, float]] = {}
+
+    for mem, sim in vector_results:
+        scored_map[mem.id] = (mem, sim * 0.7)
+
+    for mem, kw_score in keyword_results:
+        if mem.id in scored_map:
+            existing_mem, existing_score = scored_map[mem.id]
+            scored_map[mem.id] = (existing_mem, existing_score + kw_score * 0.3)
+        else:
+            scored_map[mem.id] = (mem, kw_score * 0.3)
+
+    # Sort by combined score
+    final_results = sorted(scored_map.values(), key=lambda x: x[1], reverse=True)
+    top_results = final_results[: body.top_k]
 
     return SearchResponse(
         results=[
