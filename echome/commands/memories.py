@@ -157,6 +157,34 @@ def add_memory(
         raise typer.Exit(1)
 
 
+VALID_TYPES = {
+    "persona", "workflow", "tech", "constraint",
+    "snippet", "decision", "knowledge", "interaction", "project",
+}
+
+TYPE_ALIASES = {
+    "feedback": "interaction", "preference": "interaction", "style": "interaction",
+    "rule": "workflow", "rules": "workflow", "process": "workflow", "convention": "workflow",
+    "technology": "tech", "technical": "tech", "stack": "tech", "tool": "tech",
+    "framework": "tech", "tools": "tech",
+    "limit": "constraint", "boundary": "constraint", "forbidden": "constraint",
+    "code": "snippet", "template": "snippet",
+    "context": "project", "background": "project",
+    "info": "knowledge", "fact": "knowledge", "domain": "knowledge",
+    "architecture": "decision", "choice": "decision",
+}
+
+
+def _normalize_type(raw_type: str) -> str:
+    """Normalize memory type, mapping aliases to valid types."""
+    t = raw_type.lower().strip()
+    if t in VALID_TYPES:
+        return t
+    if t in TYPE_ALIASES:
+        return TYPE_ALIASES[t]
+    return "knowledge"
+
+
 def _build_memory_data(
     title: str,
     content: str,
@@ -168,10 +196,11 @@ def _build_memory_data(
 ) -> dict:
     """Build the memory data dict for API submission."""
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    normalized_type = _normalize_type(mem_type)
     return {
         "title": title,
         "content": content,
-        "type": mem_type,
+        "type": normalized_type,
         "layer": layer,
         "priority": priority,
         "tags": tag_list,
