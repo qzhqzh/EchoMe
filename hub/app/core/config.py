@@ -21,10 +21,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://redis:6379/0"
 
-    # Embedding
-    openai_api_key: str = ""
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    # Embedding service
+    embedding_url: str = "http://embedding:20002"
+    embedding_dimensions: int = 1024  # BGE-M3 default dimension
 
     # Limits
     l0_max_tokens: int = 1500

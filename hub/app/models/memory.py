@@ -43,8 +43,8 @@ class Memory(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     token_count: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
 
-    # Embedding vector
-    embedding = mapped_column(Vector(1536), nullable=True)
+    # Embedding vector (BGE-M3: 1024 dimensions)
+    embedding = mapped_column(Vector(1024), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

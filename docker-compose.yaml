@@ -12,8 +12,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      embedding:
+        condition: service_healthy
     volumes:
       - ./hub:/app
+    environment:
+      - ECHOME_EMBEDDING_URL=http://embedding:20002
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 20000 --reload"
 
@@ -23,6 +27,26 @@ services:
       - "20001:80"
     depends_on:
       - hub
+
+  embedding:
+    build: ./embedding
+    ports:
+      - "20002:20002"
+    volumes:
+      - embedding-cache:/root/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:20002/health')"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+      start_period: 120s
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -51,3 +75,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  embedding-cache:
