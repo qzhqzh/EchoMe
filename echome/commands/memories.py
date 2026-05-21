@@ -17,6 +17,7 @@ def list_memories(
     type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by type"),
     layer: Optional[str] = typer.Option(None, "--layer", "-l", help="Filter by layer (L0/L1/L2)"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Filter by tags (comma-separated)"),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
     """List memories from Hub."""
@@ -30,6 +31,8 @@ def list_memories(
         params["layer"] = layer
     if tags:
         params["tags"] = tags
+    if status:
+        params["status"] = status
 
     try:
         result = client.list_memories(**params)
@@ -65,40 +68,113 @@ def list_memories(
     console.print(table)
 
 
-def add_memory() -> None:
-    """Interactively add a new memory."""
+def add_memory(
+    title: Optional[str] = typer.Argument(None, help="Memory title (quick mode)"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="Memory content"),
+    type: Optional[str] = typer.Option(None, "--type", "-t", help="Memory type"),
+    layer: Optional[str] = typer.Option(None, "--layer", "-l", help="Layer (L0/L1/L2)"),
+    priority: Optional[int] = typer.Option(None, "--priority", "-p", help="Priority (1-10)"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Tags (comma-separated)"),
+) -> None:
+    """Add a new memory. Supports quick mode (with args) or interactive mode."""
     config = Config.load()
     client = HubClient(config)
 
-    console.print("\n[bold]Add New Memory[/bold]\n")
+    # Quick mode: if title provided as argument
+    if title and content:
+        # Fully specified via flags
+        data = _build_memory_data(
+            title=title,
+            content=content,
+            mem_type=type or "workflow",
+            layer=layer or "L2",
+            priority=priority or 5,
+            tags=tags or "",
+            is_global=True,
+        )
+    elif title:
+        # Title given, prompt for the rest
+        console.print(f"\n[bold]Adding memory:[/bold] {title}\n")
+        if not content:
+            content = Prompt.ask("Content (description/rules)")
 
-    title = Prompt.ask("Title")
-    content = Prompt.ask("Content (rules/description)")
+        type_choices = [
+            "persona", "workflow", "tech", "constraint",
+            "snippet", "decision", "knowledge", "interaction", "project",
+        ]
+        if not type:
+            type = Prompt.ask("Type", choices=type_choices, default="workflow")
+        if not layer:
+            layer = Prompt.ask("Layer", choices=["L0", "L1", "L2"], default="L2")
+        if priority is None:
+            priority = int(Prompt.ask("Priority (1-10)", default="5"))
+        if tags is None:
+            tags = Prompt.ask("Tags (comma-separated)", default="")
 
-    type_choices = [
-        "persona", "workflow", "tech", "constraint",
-        "snippet", "decision", "knowledge", "interaction", "project",
-    ]
-    mem_type = Prompt.ask(
-        "Type",
-        choices=type_choices,
-        default="workflow",
-    )
+        is_global = Prompt.ask("Global?", choices=["y", "n"], default="y") == "y"
 
-    layer = Prompt.ask("Layer", choices=["L0", "L1", "L2"], default="L2")
-    priority = int(Prompt.ask("Priority (1-10)", default="5"))
-    tags_input = Prompt.ask("Tags (comma-separated)", default="")
-    tags = [t.strip() for t in tags_input.split(",") if t.strip()]
+        data = _build_memory_data(
+            title=title,
+            content=content,
+            mem_type=type,
+            layer=layer,
+            priority=priority,
+            tags=tags,
+            is_global=is_global,
+        )
+    else:
+        # Fully interactive mode
+        console.print("\n[bold]Add New Memory[/bold]\n")
 
-    is_global = Prompt.ask("Global (all projects)?", choices=["y", "n"], default="y") == "y"
+        title = Prompt.ask("Title")
+        content = Prompt.ask("Content (description/rules)")
 
-    data = {
+        type_choices = [
+            "persona", "workflow", "tech", "constraint",
+            "snippet", "decision", "knowledge", "interaction", "project",
+        ]
+        mem_type = Prompt.ask("Type", choices=type_choices, default="workflow")
+        layer_val = Prompt.ask("Layer", choices=["L0", "L1", "L2"], default="L2")
+        priority_val = int(Prompt.ask("Priority (1-10)", default="5"))
+        tags_input = Prompt.ask("Tags (comma-separated)", default="")
+        is_global = Prompt.ask("Global?", choices=["y", "n"], default="y") == "y"
+
+        data = _build_memory_data(
+            title=title,
+            content=content,
+            mem_type=mem_type,
+            layer=layer_val,
+            priority=priority_val,
+            tags=tags_input,
+            is_global=is_global,
+        )
+
+    try:
+        result = client.create_memory(data)
+        console.print(f"\n[green]✓ Memory created![/green] ID: {result['id']}")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+def _build_memory_data(
+    title: str,
+    content: str,
+    mem_type: str,
+    layer: str,
+    priority: int,
+    tags: str,
+    is_global: bool,
+) -> dict:
+    """Build the memory data dict for API submission."""
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    return {
         "title": title,
         "content": content,
         "type": mem_type,
         "layer": layer,
         "priority": priority,
-        "tags": tags,
+        "tags": tag_list,
         "scope": {
             "global": is_global,
             "projects": [],
@@ -106,13 +182,6 @@ def add_memory() -> None:
         },
         "source": "manual",
     }
-
-    try:
-        result = client.create_memory(data)
-        console.print(f"\n[green]Memory created![/green] ID: {result['id']}")
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
 
 
 def search_memories(
@@ -145,7 +214,6 @@ def search_memories(
         score = item.get("score", 0)
         console.print(f"[bold cyan]{i}. {item['title']}[/bold cyan] (score: {score:.2f})")
         console.print(f"   Type: {item['type']} | Tags: {', '.join(item.get('tags', []))}")
-        # Show first 200 chars of content
         content = item.get("content", "")
         if len(content) > 200:
             content = content[:200] + "..."
