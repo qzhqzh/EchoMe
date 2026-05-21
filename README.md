@@ -43,8 +43,8 @@ EchoMe 是一个**跨 AI 的个人上下文同步层**。它把你的工作流�
 | 组件 | 说明 | 位置 |
 |---|---|---|
 | **Hub** | FastAPI 服务端，存储和检索记忆 | `hub/` |
-| **CLI** | `echome` 命令行工具，管理和同步 | `cli/` |
-| **MCP Server** | 向 AI 暴露查询/写入能力 | `mcp_server/` |
+| **CLI** | `echome` 命令行工具，管理和同步 | `echome/` |
+| **MCP Server** | 向 AI 暴露查询/写入能力 | `echome_mcp/` |
 
 ## 快速开始
 
@@ -56,19 +56,25 @@ cp .env.example .env       # 配置数据库和 token
 docker compose up -d       # 启动 Postgres + Redis + App
 ```
 
-### 2. 安装 CLI
+### 2. 安装 CLI + MCP（一条命令）
 
 ```bash
+# 完整安装（CLI + MCP Server）
+pip install echome-cli[mcp]
+
+# 或仅安装 CLI（不需要 MCP）
 pip install echome-cli
-echome init                 # 配置 Hub URL 和 Token
+
+# 初始化：连接 Hub + 注册 MCP（交互式）
+echome init
 ```
 
 ### 3. 添加记忆
 
 ```bash
 echome add                  # 交互式添加
-echome edit workflow-git    # 编辑已有记忆
-echome push                 # 同步到 Hub
+echome list                 # 查看所有记忆
+echome search "PR 规范"     # 搜索
 ```
 
 ### 4. 注入到 AI CLI
@@ -78,10 +84,10 @@ cd your-project
 echome sync                 # 自动检测 + 渲染到 CLAUDE.md / AGENTS.md
 ```
 
-### 5. 启用 MCP
+### 5. 更新
 
 ```bash
-echome mcp install          # 自动配置 Claude Code 的 mcp.json
+echome update               # 自更新到最新版本
 ```
 
 之后 AI 就能通过 MCP 随时查询你的记忆了。
