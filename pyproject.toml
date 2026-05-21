@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
+echome = "echome.main:app"
 eme = "echome.main:app"
 
 [project.optional-dependencies]

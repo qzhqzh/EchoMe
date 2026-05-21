@@ -22,7 +22,7 @@ console = Console()
 def _get_hub_status(config):
     """Check Hub connectivity and get memory stats."""
     if not config.token:
-        return "[dim]not configured[/dim]", "[dim]run `eme init` first[/dim]"
+        return "[dim]not configured[/dim]", "[dim]run `echome init` first[/dim]"
     try:
         from echome.core.client import HubClient
         client = HubClient(config)
@@ -103,13 +103,13 @@ def _welcome_callback(ctx: typer.Context) -> None:
     ))
 
     console.print("\n[bold]Commands:[/bold]")
-    console.print("  [cyan]eme add[/cyan]       Add a memory")
-    console.print("  [cyan]eme list[/cyan]      List memories")
-    console.print("  [cyan]eme sync[/cyan]      Sync to CLAUDE.md")
-    console.print("  [cyan]eme search[/cyan]    Search memories")
-    console.print("  [cyan]eme status[/cyan]    Detailed status")
-    console.print("  [cyan]eme update[/cyan]    Update EchoMe")
-    console.print("  [cyan]eme --help[/cyan]    All commands")
+    console.print("  [cyan]echome add[/cyan]       Add a memory")
+    console.print("  [cyan]echome list[/cyan]      List memories")
+    console.print("  [cyan]echome sync[/cyan]      Sync to CLAUDE.md")
+    console.print("  [cyan]echome search[/cyan]    Search memories")
+    console.print("  [cyan]echome status[/cyan]    Detailed status")
+    console.print("  [cyan]echome update[/cyan]    Update EchoMe")
+    console.print("  [cyan]echome --help[/cyan]    All commands")
     console.print()
 
 
@@ -139,7 +139,7 @@ def status_cmd() -> None:
     try:
         import subprocess
         result = subprocess.run(
-            ["pgrep", "-f", "eme mcp serve"],
+            ["pgrep", "-f", "echome mcp serve"],
             capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
@@ -180,7 +180,7 @@ def status_cmd() -> None:
 
 
 app = typer.Typer(
-    name="eme",
+    name="echome",
     help="EchoMe - Personal memory sync for AI CLI tools",
     invoke_without_command=True,
     callback=_welcome_callback,

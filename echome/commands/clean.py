@@ -74,4 +74,4 @@ def clean(
             console.print("  [dim]Skipped.[/dim]")
 
     console.print("\n[green]Done![/green] Your AI environment is clean.")
-    console.print("[dim]Run `eme sync` when you want to re-inject memories.[/dim]")
+    console.print("[dim]Run `echome sync` when you want to re-inject memories.[/dim]")

@@ -175,4 +175,4 @@ def eject(
             t.eject_project(project_dir)
             console.print(f"  [green]✓[/green] Cleaned {t.name} project: {t.project_file(project_dir)}")
 
-    console.print("\n[green]Eject complete.[/green] Run `eme sync` to re-inject.")
+    console.print("\n[green]Eject complete.[/green] Run `echome sync` to re-inject.")

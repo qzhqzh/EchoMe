@@ -126,7 +126,7 @@ def update(
 
                 # Remind to re-sync
                 console.print("\n[bold]Don't forget:[/bold]")
-                console.print("  [cyan]eme sync[/cyan]  — Re-sync your memories to CLAUDE.md")
+                console.print("  [cyan]echome sync[/cyan]  — Re-sync your memories to CLAUDE.md")
         else:
             console.print(f"[red]Update failed:[/red]")
             console.print(f"[dim]{result.stderr[-500:]}[/dim]")

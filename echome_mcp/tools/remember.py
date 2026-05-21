@@ -53,7 +53,7 @@ async def echome_remember(
             f"Memory saved (pending confirmation).\n\n"
             f"Title: {title}\n"
             f"Type: {type}\n"
-            f"Status: pending (user must run `eme review` to approve)\n"
+            f"Status: pending (user must run `echome review` to approve)\n"
             f"ID: {memory_id}\n\n"
             f"The user will need to confirm this memory before it becomes active."
         )

@@ -24,7 +24,7 @@ def _setup_mcp() -> None:
     from pathlib import Path
 
     mcp_config = {
-        "command": "eme",
+        "command": "echome",
         "args": ["mcp", "serve"],
     }
 
@@ -104,11 +104,11 @@ def init(
             _setup_mcp()
             console.print("   [green]✓[/green] MCP registered. Restart AI CLI to activate.\n")
         else:
-            console.print("   [dim]Skipped. Run `eme mcp install` later if needed.[/dim]\n")
+            console.print("   [dim]Skipped. Run `echome mcp install` later if needed.[/dim]\n")
     else:
         console.print("   [yellow]⚠ MCP 未安装[/yellow]")
         console.print("   [dim]安装 MCP 支持: pip install echome-cli[mcp][/dim]")
-        console.print("   [dim]安装后运行 `eme mcp install` 即可注册[/dim]\n")
+        console.print("   [dim]安装后运行 `echome mcp install` 即可注册[/dim]\n")
 
     # ─── Done ───
     console.print("[bold green]━━━ 初始化完成 ━━━[/bold green]\n")
