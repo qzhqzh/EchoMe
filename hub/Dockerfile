@@ -2,13 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install system deps for asyncpg and pgvector
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv for fast dependency resolution
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
-# Copy project files
+# Copy project definition and install deps
 COPY pyproject.toml .
-RUN uv pip install --system -e ".[dev]"
+RUN uv pip install --system .
 
+# Copy application code
 COPY . .
 
 EXPOSE 8000
