@@ -13,7 +13,9 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const router = useRouter()
-const { clearToken } = useAuth()
+const { clearToken, getUser } = useAuth()
+
+const user = computed(() => getUser())
 
 interface NavItem {
   name: string
@@ -26,6 +28,7 @@ const navItems: NavItem[] = [
   { name: 'Memories', path: '/memories', icon: 'memories' },
   { name: 'Review', path: '/review', icon: 'review' },
   { name: 'Projects', path: '/projects', icon: 'projects' },
+  { name: 'Market', path: '/market', icon: 'market' },
 ]
 
 const currentPath = computed(() => route.path)
@@ -89,6 +92,10 @@ function logout(): void {
         <svg v-else-if="item.icon === 'projects'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
         </svg>
+        <!-- Market icon -->
+        <svg v-else-if="item.icon === 'market'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+        </svg>
         {{ item.name }}
       </button>
     </nav>
@@ -108,6 +115,21 @@ function logout(): void {
 
     <!-- User/Logout -->
     <div class="border-t border-slate-700 px-3 py-3">
+      <div v-if="user" class="flex items-center gap-3 px-3 py-2 mb-2">
+        <img
+          v-if="user.avatar_url"
+          :src="user.avatar_url"
+          :alt="user.username"
+          class="h-7 w-7 rounded-full"
+        />
+        <div v-else class="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+          {{ user.username.charAt(0).toUpperCase() }}
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium text-slate-200">{{ user.username }}</p>
+          <p class="truncate text-xs text-slate-400">{{ user.role }}</p>
+        </div>
+      </div>
       <button
         class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
         @click="logout"

@@ -165,6 +165,47 @@ class ApiClient {
     if (!response.ok) throw new Error(`Health check failed: ${response.status}`)
     return response.json()
   }
+
+  // --- Auth ---
+
+  async getGitHubAuthUrl(): Promise<{ url: string }> {
+    return this.request<{ url: string }>('GET', '/auth/github')
+  }
+
+  async githubCallback(code: string): Promise<{
+    access_token: string
+    token_type: string
+    expires_in: number
+    user: { id: string; github_id: number; username: string; email: string | null; avatar_url: string | null; role: string; created_at: string; last_login_at: string | null }
+  }> {
+    return this.request('GET', '/auth/github/callback', undefined, { code })
+  }
+
+  async getMe(): Promise<{ id: string; github_id: number; username: string; email: string | null; avatar_url: string | null; role: string; created_at: string; last_login_at: string | null }> {
+    return this.request('GET', '/auth/me')
+  }
+
+  async refreshToken(): Promise<{ access_token: string; expires_in: number }> {
+    return this.request('POST', '/auth/refresh')
+  }
+
+  // --- Market ---
+
+  async listMarketMemories(params?: Record<string, string | number>): Promise<{ total: number; offset: number; limit: number; items: any[] }> {
+    return this.request('GET', '/market/memories', undefined, params)
+  }
+
+  async getMarketMemory(id: string): Promise<any> {
+    return this.request('GET', `/market/memories/${id}`)
+  }
+
+  async forkMarketMemory(id: string): Promise<{ id: string; title: string; forked_from: string; message: string }> {
+    return this.request('POST', `/market/memories/${id}/fork`)
+  }
+
+  async getMarketStats(): Promise<{ total_public: number; by_type: Record<string, number>; recent_count_7d: number }> {
+    return this.request('GET', '/market/stats')
+  }
 }
 
 export const api = new ApiClient()
