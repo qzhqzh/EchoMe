@@ -17,7 +17,8 @@ class CodexTarget(BaseTarget):
         return Path.home() / ".codex" / "AGENTS.md"
 
     def project_file(self, project_dir: Path) -> Path:
-        return project_dir / ".echome" / "echome-rules.md"
+        """Project-level: write directly into the project's AGENTS.md (marker area)."""
+        return project_dir / "AGENTS.md"
 
     def detect(self, project_dir: Path) -> bool:
         """Detect Codex CLI by presence of AGENTS.md or .codex/ directory."""

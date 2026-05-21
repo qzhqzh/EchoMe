@@ -17,7 +17,8 @@ class ClaudeCodeTarget(BaseTarget):
         return Path.home() / ".claude" / "CLAUDE.md"
 
     def project_file(self, project_dir: Path) -> Path:
-        return project_dir / ".echome" / "echome-rules.md"
+        """Project-level: write directly into the project's CLAUDE.md (marker area)."""
+        return project_dir / "CLAUDE.md"
 
     def detect(self, project_dir: Path) -> bool:
         """Detect Claude Code by presence of CLAUDE.md or .claude/ directory."""

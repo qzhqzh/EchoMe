@@ -3,6 +3,9 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+MARKER_BEGIN = "<!-- echome:begin -->"
+MARKER_END = "<!-- echome:end -->"
+
 
 class BaseTarget(ABC):
     """Abstract base for AI CLI target adapters."""
@@ -29,58 +32,62 @@ class BaseTarget(ABC):
         """Check if this target is active in the given directory."""
         ...
 
-    def inject_global(self, content: str) -> None:
-        """Inject content into the global rules file using markers."""
-        file_path = self.global_file
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+    def _inject_marker_content(self, file_path: Path, content: str) -> None:
+        """Inject content into a file using marker blocks.
 
-        marker_begin = "<!-- echome:begin -->"
-        marker_end = "<!-- echome:end -->"
+        If the file already exists:
+          - If it has markers: replace only the marker block
+          - If no markers: append the marker block at the end
+        If the file doesn't exist: create it with just the marker block.
+        """
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
         if file_path.exists():
             existing = file_path.read_text()
-            # Replace existing marker block
-            if marker_begin in existing:
-                before = existing.split(marker_begin)[0]
-                after = existing.split(marker_end)[1] if marker_end in existing else ""
+            if MARKER_BEGIN in existing:
+                # Replace existing marker block
+                before = existing.split(MARKER_BEGIN)[0]
+                after = existing.split(MARKER_END)[1] if MARKER_END in existing else ""
                 new_content = f"{before}{content}{after}"
             else:
-                # Append marker block
-                new_content = f"{existing}\n\n{content}\n"
+                # Append marker block at end
+                new_content = f"{existing.rstrip()}\n\n{content}\n"
         else:
             new_content = f"{content}\n"
 
         file_path.write_text(new_content)
 
-    def inject_project(self, content: str, project_dir: Path) -> None:
-        """Inject content into project-level file using markers."""
-        file_path = self.project_file(project_dir)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content)
-
-    def eject_global(self) -> None:
-        """Remove EchoMe content from global file."""
-        file_path = self.global_file
+    def _remove_marker_content(self, file_path: Path) -> None:
+        """Remove marker block from a file. Delete file if nothing remains."""
         if not file_path.exists():
             return
 
-        marker_begin = "<!-- echome:begin -->"
-        marker_end = "<!-- echome:end -->"
         existing = file_path.read_text()
-
-        if marker_begin in existing and marker_end in existing:
-            before = existing.split(marker_begin)[0]
-            after = existing.split(marker_end)[1]
+        if MARKER_BEGIN in existing and MARKER_END in existing:
+            before = existing.split(MARKER_BEGIN)[0]
+            after = existing.split(MARKER_END)[1]
             cleaned = f"{before}{after}".strip()
             if cleaned:
                 file_path.write_text(cleaned + "\n")
             else:
                 file_path.unlink()
 
+    def inject_global(self, content: str) -> None:
+        """Inject content into the global rules file using markers."""
+        self._inject_marker_content(self.global_file, content)
+
+    def inject_project(self, content: str, project_dir: Path) -> None:
+        """Inject content into project-level file using markers.
+
+        Uses the same marker strategy as global — safe to call on files
+        that already have user-written content.
+        """
+        self._inject_marker_content(self.project_file(project_dir), content)
+
+    def eject_global(self) -> None:
+        """Remove EchoMe content from global file."""
+        self._remove_marker_content(self.global_file)
+
     def eject_project(self, project_dir: Path) -> None:
-        """Remove EchoMe project file."""
-        echome_dir = project_dir / ".echome"
-        if echome_dir.exists():
-            for f in echome_dir.iterdir():
-                if f.name.startswith("echome-"):
-                    f.unlink()
+        """Remove EchoMe content from project file."""
+        self._remove_marker_content(self.project_file(project_dir))
