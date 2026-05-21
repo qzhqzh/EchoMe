@@ -6,6 +6,17 @@ from app.services.token_counter import count_tokens
 MARKER_BEGIN = "<!-- echome:begin -->"
 MARKER_END = "<!-- echome:end -->"
 
+# Mandatory MCP instruction — tells AI to always check memories
+MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
+在每次对话开始时，你必须先调用 `echome_search` 查询与当前任务相关的记忆。
+这不是可选的——我的工作流规范、技术偏好和约束都存储在 EchoMe 中。
+
+规则：
+1. 收到用户第一条消息后，根据关键词调用 echome_search
+2. 涉及 git/PR/commit/deploy 操作前，必须查 echome_search
+3. 用户说"记住/以后/永远/always"时，调用 echome_remember
+4. 不确定项目约定时，调用 echome_search 而不是假设"""
+
 
 def render_memories(
     memories: list[Memory],
@@ -18,7 +29,13 @@ def render_memories(
         (rendered_content, memories_included, memories_truncated)
     """
     if not memories:
-        return "", 0, 0
+        # Even with no memories, still emit MCP instruction
+        content = f"""{MARKER_BEGIN}
+## EchoMe Context (auto-managed, do not edit this block)
+
+{MCP_INSTRUCTION}
+{MARKER_END}"""
+        return content, 0, 0
 
     sections: list[str] = []
     current_tokens = 0
@@ -71,29 +88,12 @@ def render_memories(
     # Wrap in markers
     body = "\n".join(sections)
 
-    if target == "claude":
-        content = f"""{MARKER_BEGIN}
+    content = f"""{MARKER_BEGIN}
 ## EchoMe Context (auto-managed, do not edit this block)
 
 {body}
 
-### How to get more context
-When you need my past decisions, project background, or preferences,
-call the MCP tool `echome_search` to retrieve relevant memories.
-{MARKER_END}"""
-    elif target == "codex":
-        content = f"""{MARKER_BEGIN}
-## EchoMe Context (auto-managed, do not edit this block)
-
-{body}
-
-### How to get more context
-When you need my past decisions, project background, or preferences,
-call the MCP tool `echome_search` to retrieve relevant memories.
-{MARKER_END}"""
-    else:
-        content = f"""{MARKER_BEGIN}
-{body}
+{MCP_INSTRUCTION}
 {MARKER_END}"""
 
     return content, included, truncated
