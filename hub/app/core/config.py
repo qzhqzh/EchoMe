@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "EchoMe Hub"
     app_version: str = "0.1.0"
     debug: bool = False
+    port: int = 20000
 
     # Auth
     auth_token: str = "changeme"  # Single-tenant bearer token
