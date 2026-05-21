@@ -14,11 +14,11 @@ class Settings(BaseSettings):
     # Auth
     auth_token: str = "changeme"  # Single-tenant bearer token
 
-    # Database
-    database_url: str = "postgresql+asyncpg://echome:echome@localhost:5432/echome"
+    # Database (default points to docker-compose service name)
+    database_url: str = "postgresql+asyncpg://echome:echome@postgres:5432/echome"
 
     # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://redis:6379/0"
 
     # Embedding
     openai_api_key: str = ""
