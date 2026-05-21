@@ -6,7 +6,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, memories, projects, review, sync
+from app.api import auth, health, memories, projects, review, sync
 from app.core.config import settings
 
 
@@ -39,6 +39,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(health.router)
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
