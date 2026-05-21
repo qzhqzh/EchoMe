@@ -68,7 +68,7 @@ def init(
     console.print("[bold]1. Hub Connection[/bold]")
 
     if not hub_url:
-        hub_url = Prompt.ask("   Hub URL", default="http://localhost:8000")
+        hub_url = Prompt.ask("   Hub URL", default="http://localhost:20000")
     if not token:
         token = Prompt.ask("   Auth Token", password=True, default="")
 

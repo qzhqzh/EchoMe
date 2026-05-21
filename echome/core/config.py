@@ -15,7 +15,7 @@ STATE_DIR = ECHOME_DIR / ".state"
 class Config(BaseModel):
     """EchoMe CLI configuration."""
 
-    hub_url: str = Field(default="http://localhost:8000")
+    hub_url: str = Field(default="http://localhost:20000")
     token: str = Field(default="")
     default_layer: str = Field(default="L2")
     editor: str = Field(default="")

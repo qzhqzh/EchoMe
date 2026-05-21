@@ -12,11 +12,11 @@ CONFIG_FILE = Path.home() / ".echome" / "config.yaml"
 def _load_config() -> dict[str, str]:
     """Load Hub URL and token from ~/.echome/config.yaml."""
     if not CONFIG_FILE.exists():
-        return {"hub_url": "http://localhost:8000", "token": ""}
+        return {"hub_url": "http://localhost:20000", "token": ""}
     with open(CONFIG_FILE) as f:
         data = yaml.safe_load(f) or {}
     return {
-        "hub_url": data.get("hub_url", "http://localhost:8000"),
+        "hub_url": data.get("hub_url", "http://localhost:20000"),
         "token": data.get("token", ""),
     }
 
