@@ -14,8 +14,9 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 规则：
 1. 收到用户第一条消息后，根据关键词调用 echome_search
 2. 涉及 git/PR/commit/deploy 操作前，必须查 echome_search
-3. 用户说"记住/以后/永远/always"时，调用 echome_remember
-4. 不确定项目约定时，调用 echome_search 而不是假设"""
+3. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
+4. 不确定项目约定时，调用 echome_search 而不是假设
+5. 写入记忆时 type 只能是：persona, workflow, tech, constraint, snippet, decision, knowledge, interaction, project"""
 
 
 def render_memories(
