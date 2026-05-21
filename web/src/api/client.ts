@@ -158,7 +158,12 @@ class ApiClient {
   // --- Health ---
 
   async health(): Promise<{ status: string; version: string }> {
-    return this.request('GET', '/health')
+    const { getApiBase } = useAuth()
+    const base = getApiBase()
+    const url = base ? `${base}/health` : '/health'
+    const response = await fetch(url, { headers: this.getHeaders() })
+    if (!response.ok) throw new Error(`Health check failed: ${response.status}`)
+    return response.json()
   }
 }
 

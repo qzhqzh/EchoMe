@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health, memories, projects, review, sync
 from app.core.config import settings
@@ -25,6 +26,15 @@ app = FastAPI(
     version=settings.app_version,
     description="Personal memory and context layer for AI CLI tools",
     lifespan=lifespan,
+)
+
+# CORS: allow web frontend to access the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Single-tenant, allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register routers
