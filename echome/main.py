@@ -10,7 +10,7 @@ from echome.commands.sync import detect, eject, pull, push, status, sync
 from echome.commands.update import update
 
 app = typer.Typer(
-    name="echome",
+    name="eme",
     help="EchoMe - Personal memory sync for AI CLI tools",
     no_args_is_help=True,
 )

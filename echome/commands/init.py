@@ -24,7 +24,7 @@ def _setup_mcp() -> None:
     from pathlib import Path
 
     mcp_config = {
-        "command": "echome",
+        "command": "eme",
         "args": ["mcp", "serve"],
     }
 
@@ -104,19 +104,19 @@ def init(
             _setup_mcp()
             console.print("   [green]✓[/green] MCP registered. Restart AI CLI to activate.\n")
         else:
-            console.print("   [dim]Skipped. Run `echome mcp install` later if needed.[/dim]\n")
+            console.print("   [dim]Skipped. Run `eme mcp install` later if needed.[/dim]\n")
     else:
         console.print("   [yellow]⚠ MCP 未安装[/yellow]")
         console.print("   [dim]安装 MCP 支持: pip install echome-cli[mcp][/dim]")
-        console.print("   [dim]安装后运行 `echome mcp install` 即可注册[/dim]\n")
+        console.print("   [dim]安装后运行 `eme mcp install` 即可注册[/dim]\n")
 
     # ─── Done ───
     console.print("[bold green]━━━ 初始化完成 ━━━[/bold green]\n")
     console.print("下一步:")
-    console.print("  [cyan]echome add[/cyan]      — 添加第一条记忆")
-    console.print("  [cyan]echome list[/cyan]     — 查看所有记忆")
-    console.print("  [cyan]echome search[/cyan]   — 搜索记忆")
-    console.print("  [cyan]echome sync[/cyan]     — 同步到 AI CLI 配置文件")
+    console.print("  [cyan]eme add[/cyan]      — 添加第一条记忆")
+    console.print("  [cyan]eme list[/cyan]     — 查看所有记忆")
+    console.print("  [cyan]eme search[/cyan]   — 搜索记忆")
+    console.print("  [cyan]eme sync[/cyan]     — 同步到 AI CLI 配置文件")
 
 
 if __name__ == "__main__":
