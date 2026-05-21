@@ -150,15 +150,29 @@ def status() -> None:
             console.print(f"  [dim]✗ {t.name} project: not injected[/dim]")
 
 
-def eject() -> None:
-    """Remove all EchoMe injected content."""
+def eject(
+    scope: str = typer.Option(
+        "all",
+        "--scope",
+        "-s",
+        help="What to eject: 'global', 'project', or 'all'",
+    ),
+) -> None:
+    """Remove EchoMe injected content from AI CLI files.
+
+    Same as `echome clean` but without the Hub data deletion option.
+    """
     project_dir = Path.cwd()
     console.print("\n[bold yellow]Ejecting EchoMe content...[/bold yellow]\n")
 
-    for t in ALL_TARGETS:
-        t.eject_global()
-        console.print(f"  [green]✓[/green] Cleaned {t.name} global file")
-        t.eject_project(project_dir)
-        console.print(f"  [green]✓[/green] Cleaned {t.name} project file")
+    if scope in ("global", "all"):
+        for t in ALL_TARGETS:
+            t.eject_global()
+            console.print(f"  [green]✓[/green] Cleaned {t.name} global: {t.global_file}")
 
-    console.print("\n[green]Eject complete. All EchoMe content removed.[/green]")
+    if scope in ("project", "all"):
+        for t in ALL_TARGETS:
+            t.eject_project(project_dir)
+            console.print(f"  [green]✓[/green] Cleaned {t.name} project: {t.project_file(project_dir)}")
+
+    console.print("\n[green]Eject complete.[/green] Run `echome sync` to re-inject.")
