@@ -12,8 +12,16 @@ class Settings(BaseSettings):
     debug: bool = False
     port: int = 20000
 
-    # Auth
-    auth_token: str = "changeme"  # Single-tenant bearer token
+    # Auth - legacy single-tenant bearer token (kept for backward compatibility)
+    auth_token: str = "changeme"
+
+    # GitHub OAuth
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
+    # JWT
+    jwt_secret: str = "changeme-jwt-secret-at-least-32-chars"
+    jwt_expire_days: int = 7
 
     # Database (default points to docker-compose service name)
     database_url: str = "postgresql+asyncpg://echome:echome@postgres:5432/echome"
