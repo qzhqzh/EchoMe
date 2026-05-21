@@ -2,6 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Switch npm to China mirror (npmmirror)
+RUN npm config set registry https://registry.npmmirror.com
+
 # Install dependencies
 COPY package.json package-lock.json* ./
 RUN npm install
