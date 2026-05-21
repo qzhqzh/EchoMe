@@ -4,7 +4,7 @@
 # Usage: ./hub/scripts/test-api.sh [TOKEN]
 
 TOKEN="${1:-changeme}"
-BASE="http://localhost:8000"
+BASE="http://localhost:${ECHOME_PORT:-20000}"
 
 echo "=== EchoMe Hub API Test ==="
 echo ""

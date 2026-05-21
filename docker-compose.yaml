@@ -4,7 +4,7 @@ services:
   hub:
     build: ./hub
     ports:
-      - "8000:8000"
+      - "${ECHOME_PORT:-20000}:${ECHOME_PORT:-20000}"
     env_file:
       - ./hub/.env
     depends_on:
@@ -15,7 +15,7 @@ services:
     volumes:
       - ./hub:/app
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${ECHOME_PORT:-20000} --reload"
 
   postgres:
     image: pgvector/pgvector:pg16
