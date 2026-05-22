@@ -107,6 +107,10 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=20002)
 EOF
 
+# 5. 启动
+uv run server.py
+```
+
 # 5. 下载模型（首次需要，~2GB）
 export HF_ENDPOINT=https://huggingface.co
 uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"
