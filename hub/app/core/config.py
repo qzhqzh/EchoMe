@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     l1_max_tokens: int = 2000
     l1_max_count: int = 30
 
-    model_config = {"env_prefix": "ECHOME_", "env_file": ".env"}
+    model_config = {"env_prefix": "ECHOME_", "env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()
