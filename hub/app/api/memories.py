@@ -179,6 +179,9 @@ async def update_memory(
     embed_text = f"{body.title}\n{body.content}"
     background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
+    # Flush to ensure changes are persisted before response serialization
+    await session.flush()
+
     return memory
 
 
@@ -219,6 +222,9 @@ async def patch_memory(
     if "title" in update_data or "content" in update_data:
         embed_text = f"{memory.title}\n{memory.content}"
         background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
+
+    # Flush to ensure changes are persisted before response serialization
+    await session.flush()
 
     return memory
 
