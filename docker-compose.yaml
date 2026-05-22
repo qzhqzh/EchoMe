@@ -29,7 +29,7 @@ services:
     ports:
       - "20002:20002"
     volumes:
-      - embedding-models:/app/models
+      - ./data/embedding-models:/app/models
     environment:
       - MODEL_DIR=/app/models
     deploy:
@@ -52,9 +52,8 @@ services:
       POSTGRES_USER: echome
       POSTGRES_PASSWORD: echome
       POSTGRES_DB: echome
-    # No external port exposure - only accessible within docker network
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
       - ./hub/scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U echome"]
@@ -64,11 +63,5 @@ services:
 
   redis:
     image: redis:7-alpine
-    # No external port exposure - only accessible within docker network
     volumes:
-      - redisdata:/data
-
-volumes:
-  pgdata:
-  redisdata:
-  embedding-models:
+      - ./data/redis:/data

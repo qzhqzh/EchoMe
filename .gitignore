@@ -37,3 +37,6 @@ uv.lock
 
 # Docker
 docker-compose.override.yaml
+
+# Persistent data (mounted volumes)
+data/
