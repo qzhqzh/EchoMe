@@ -130,6 +130,7 @@ async def create_memory(
         scope_exclude=body.scope.exclude_projects,
         source=body.source.value,
         token_count=token_count,
+        visibility=body.visibility.value,
     )
     session.add(memory)
     await session.flush()
@@ -169,6 +170,7 @@ async def update_memory(
     memory.scope_exclude = body.scope.exclude_projects
     memory.source = body.source.value
     memory.token_count = count_tokens(body.content)
+    memory.visibility = body.visibility.value
 
     # Recompute embedding on content change
     embed_text = f"{body.title}\n{body.content}"
@@ -202,7 +204,7 @@ async def patch_memory(
 
     for field, value in update_data.items():
         if value is not None:
-            if field in ("type", "layer", "status", "source"):
+            if field in ("type", "layer", "status", "source", "visibility"):
                 setattr(memory, field, value.value if hasattr(value, "value") else value)
             else:
                 setattr(memory, field, value)

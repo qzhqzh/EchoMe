@@ -10,6 +10,8 @@ from rich.console import Console
 from rich.panel import Panel
 
 from echome.commands.init import init
+from echome.commands.login import login, logout, whoami
+from echome.commands.market import market_app
 from echome.commands.memories import add_memory, list_memories, search_memories
 from echome.commands.review import review
 from echome.commands.clean import clean
@@ -196,12 +198,20 @@ app.command("review")(review)
 app.command("clean")(clean)
 app.command("status")(status_cmd)
 
+# Auth commands
+app.command("login")(login)
+app.command("logout")(logout)
+app.command("whoami")(whoami)
+
 # Sync commands
 app.command("sync")(sync)
 app.command("push")(push)
 app.command("pull")(pull)
 app.command("detect")(detect)
 app.command("eject")(eject)
+
+# Market subcommand group
+app.add_typer(market_app, name="market")
 
 
 # MCP subcommand group
