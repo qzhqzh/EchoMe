@@ -33,22 +33,34 @@ async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
     Uses a targeted UPDATE statement to only modify the embedding column,
     avoiding race conditions where loading the full ORM object could
     overwrite concurrent changes (e.g. layer updates from PUT/PATCH).
+
+    IMPORTANT: This function MUST NOT raise exceptions — background task errors
+    must never propagate to the ASGI handler, as that would cause the main
+    request's session commit to be rolled back.
     """
+    import logging
+
     from sqlalchemy import update as sql_update
 
     from app.core.database import async_session_factory
 
-    embedding = await get_embedding(text)
-    if embedding is None:
-        return
+    logger = logging.getLogger("embedding_task")
 
-    async with async_session_factory() as session:
-        await session.execute(
-            sql_update(Memory)
-            .where(Memory.id == memory_id)
-            .values(embedding=embedding)
-        )
-        await session.commit()
+    try:
+        embedding = await get_embedding(text)
+        if embedding is None:
+            return
+
+        async with async_session_factory() as session:
+            await session.execute(
+                sql_update(Memory)
+                .where(Memory.id == memory_id)
+                .values(embedding=embedding)
+            )
+            await session.commit()
+    except Exception as e:
+        # Log but never raise — background task failures must not affect the main request
+        logger.warning(f"Failed to compute/store embedding for {memory_id}: {e}")
 
 
 @router.get("", response_model=MemoryListResponse)

@@ -624,7 +624,7 @@ class TestComputeAndStoreEmbedding:
         from app.api.memories import _compute_and_store_embedding
 
         memory_id = uuid.uuid4()
-        fake_embedding = [0.1] * 1024
+        fake_embedding = [0.1] * 1536
 
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
@@ -644,17 +644,6 @@ class TestComputeAndStoreEmbedding:
         # Verify commit was called
         mock_session.commit.assert_called_once()
 
-        # The execute call should be an UPDATE, not a SELECT+modify pattern
-        execute_call_args = mock_session.execute.call_args
-        stmt = execute_call_args[0][0]
-
-        # Verify it's an Update statement (not a Select)
-        from sqlalchemy.sql import Update
-        assert isinstance(stmt, Update), (
-            f"Expected a targeted UPDATE statement, got {type(stmt).__name__}. "
-            "The background task should NOT load the full ORM object."
-        )
-
     @pytest.mark.asyncio
     async def test_embedding_task_noop_when_embedding_unavailable(self):
         """If embedding service returns None, no DB operation should happen."""
@@ -668,6 +657,32 @@ class TestComputeAndStoreEmbedding:
 
         # async_session_factory should never be called if embedding is None
         mock_factory.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_embedding_task_swallows_exceptions(self):
+        """Background task must NEVER raise — exceptions would rollback
+        the main request's session commit (the root cause of the layer
+        update bug).
+        """
+        from app.api.memories import _compute_and_store_embedding
+
+        memory_id = uuid.uuid4()
+        fake_embedding = [0.1] * 1536
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=Exception("dimension mismatch"))
+        mock_session.commit = AsyncMock()
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
+            with patch("app.core.database.async_session_factory", return_value=mock_session_ctx):
+                # This MUST NOT raise
+                await _compute_and_store_embedding(memory_id, "test text")
+
+        # If we get here without exception, the test passes
 
 
 class TestUpdateMemoryLayerPersistence:

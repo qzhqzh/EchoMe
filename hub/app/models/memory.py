@@ -55,8 +55,10 @@ class Memory(Base):
         UUID(as_uuid=True), nullable=True
     )
 
-    # Embedding vector (BGE-M3: 1024 dimensions)
-    embedding = mapped_column(Vector(1024), nullable=True)
+    # Embedding vector (dimension must match DB column and embedding service output)
+    # If mismatch occurs, update DB: ALTER TABLE memories ALTER COLUMN embedding TYPE vector(N);
+    # Or update config: ECHOME_EMBEDDING_DIMENSIONS=N
+    embedding = mapped_column(Vector(1536), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
