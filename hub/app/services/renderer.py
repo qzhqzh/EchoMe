@@ -1,4 +1,8 @@
-"""Render memories into target CLI format with token limits."""
+"""Render memories into target CLI format with token limits.
+
+Memories are rendered in priority order by type, ensuring the most impactful
+categories (persona, constraints) are never truncated before less critical ones.
+"""
 
 from app.models.memory import Memory
 from app.services.token_counter import count_tokens
@@ -18,6 +22,32 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 4. 不确定项目约定时，调用 echome_search 而不是假设
 5. 写入记忆时 type 只能是：persona, workflow, tech, constraint, snippet, decision, knowledge, interaction, project"""
 
+# Type rendering priority (lower number = higher priority = rendered first)
+TYPE_PRIORITY: dict[str, int] = {
+    "persona": 1,
+    "constraint": 2,
+    "workflow": 3,
+    "tech": 4,
+    "interaction": 5,
+    "decision": 6,
+    "knowledge": 7,
+    "snippet": 8,
+    "project": 9,
+}
+
+# Human-readable section headers with emoji markers for visual scanning
+TYPE_HEADERS: dict[str, str] = {
+    "persona": "🧠 Identity & Style",
+    "constraint": "🚫 Constraints (RED LINES)",
+    "workflow": "⚡ Workflow & Methods",
+    "tech": "🔧 Technical Preferences",
+    "interaction": "💬 Communication Style",
+    "decision": "📋 Decisions",
+    "knowledge": "📚 Knowledge & Context",
+    "snippet": "📝 Templates & Snippets",
+    "project": "📁 Project Context",
+}
+
 
 def render_memories(
     memories: list[Memory],
@@ -25,6 +55,11 @@ def render_memories(
     max_tokens: int,
 ) -> tuple[str, int, int]:
     """Render memories into markdown format for a target CLI.
+
+    Memories are grouped by type and rendered in priority order:
+    persona > constraint > workflow > tech > interaction > decision > knowledge > snippet > project
+
+    Within each type group, memories are ordered by priority (desc).
 
     Returns:
         (rendered_content, memories_included, memories_truncated)
@@ -43,25 +78,24 @@ def render_memories(
     included = 0
     truncated = 0
 
-    # Group by type for cleaner output
+    # Group by type
     type_groups: dict[str, list[Memory]] = {}
     for mem in memories:
         type_groups.setdefault(mem.type, []).append(mem)
 
-    type_headers = {
-        "persona": "Identity & Style",
-        "workflow": "Workflow Rules",
-        "tech": "Technical Preferences",
-        "constraint": "Constraints & Boundaries",
-        "interaction": "Communication Preferences",
-        "project": "Project Context",
-        "snippet": "Snippets",
-        "decision": "Decisions",
-        "knowledge": "Knowledge",
-    }
+    # Sort each group by priority (desc) within type
+    for type_mems in type_groups.values():
+        type_mems.sort(key=lambda m: m.priority, reverse=True)
 
-    for type_name, type_mems in type_groups.items():
-        header = f"### {type_headers.get(type_name, type_name.title())}\n"
+    # Render in type priority order
+    sorted_types = sorted(
+        type_groups.keys(),
+        key=lambda t: TYPE_PRIORITY.get(t, 99),
+    )
+
+    for type_name in sorted_types:
+        type_mems = type_groups[type_name]
+        header = f"### {TYPE_HEADERS.get(type_name, type_name.title())}\n"
         header_tokens = count_tokens(header)
 
         if current_tokens + header_tokens > max_tokens:

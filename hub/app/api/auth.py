@@ -23,6 +23,43 @@ GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 
 
+async def _seed_new_user(session: "AsyncSession", user_id: str) -> None:
+    """Seed example memories for a newly registered user."""
+    import json
+    from pathlib import Path
+
+    from app.models.memory import Memory
+    from app.services.token_counter import count_tokens
+
+    seed_file = Path(__file__).parent.parent.parent / "seed_memories.json"
+    if not seed_file.exists():
+        return
+
+    try:
+        seed_data = json.loads(seed_file.read_text())
+        for item in seed_data:
+            memory = Memory(
+                user_id=user_id,
+                title=item["title"],
+                content=item["content"],
+                type=item["type"],
+                layer=item["layer"],
+                priority=item["priority"],
+                tags=item["tags"],
+                status=item["status"],
+                scope_global=item["scope"]["global"],
+                scope_projects=item["scope"].get("projects", []),
+                scope_exclude=item["scope"].get("exclude_projects", []),
+                source=item["source"],
+                visibility=item.get("visibility", "private"),
+                token_count=count_tokens(item["content"]),
+            )
+            session.add(memory)
+    except Exception:
+        # Don't fail registration if seeding fails
+        pass
+
+
 @router.get("/github", response_model=GitHubLoginURL)
 async def github_login() -> GitHubLoginURL:
     """Return the GitHub OAuth authorization URL for the frontend to redirect to."""
@@ -125,6 +162,9 @@ async def github_callback(
         )
         session.add(user)
         await session.flush()  # Populate user.id
+
+        # Seed example memories for new user
+        await _seed_new_user(session, str(user.id))
     else:
         # Update existing user info
         user.username = username
