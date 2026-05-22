@@ -17,20 +17,41 @@ const githubLoading = ref(false)
 const showManual = ref(false)
 const showAdvanced = ref(false)
 
+// CLI mode: when ?source=cli, show token for copying instead of redirecting
+const cliMode = ref(false)
+const cliToken = ref('')
+const cliUsername = ref('')
+const cliTokenCopied = ref(false)
+
 // Handle GitHub OAuth callback
 onMounted(async () => {
   const code = route.query.code as string | undefined
+  const source = (route.query.source as string | undefined) || sessionStorage.getItem('echome_login_source') || undefined
+
   if (code) {
+    // Clear stored source
+    sessionStorage.removeItem('echome_login_source')
     githubLoading.value = true
     try {
       if (apiBase.value.trim()) {
         setApiBase(apiBase.value.trim().replace(/\/$/, ''))
       }
       const data = await api.githubCallback(code)
-      setToken(data.access_token)
-      setUser(data.user)
-      success(`Welcome, ${data.user.username}!`)
-      router.push('/')
+
+      if (source === 'cli') {
+        // CLI mode: show token for user to copy, don't redirect
+        cliMode.value = true
+        cliToken.value = data.access_token
+        cliUsername.value = data.user.username
+        // Also save to local storage for web use
+        setToken(data.access_token)
+        setUser(data.user)
+      } else {
+        setToken(data.access_token)
+        setUser(data.user)
+        success(`Welcome, ${data.user.username}!`)
+        router.push('/')
+      }
     } catch (e) {
       error('GitHub login failed. Please try again.')
     } finally {
@@ -39,6 +60,23 @@ onMounted(async () => {
   }
 })
 
+async function copyCliToken(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(cliToken.value)
+    cliTokenCopied.value = true
+    setTimeout(() => { cliTokenCopied.value = false }, 3000)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = cliToken.value
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    cliTokenCopied.value = true
+    setTimeout(() => { cliTokenCopied.value = false }, 3000)
+  }
+}
+
 async function handleGitHubLogin(): Promise<void> {
   githubLoading.value = true
   try {
@@ -46,6 +84,11 @@ async function handleGitHubLogin(): Promise<void> {
       setApiBase(apiBase.value.trim().replace(/\/$/, ''))
     } else {
       setApiBase('')
+    }
+    // Preserve CLI source through OAuth redirect
+    const source = route.query.source as string | undefined
+    if (source === 'cli') {
+      sessionStorage.setItem('echome_login_source', 'cli')
     }
     const data = await api.getGitHubAuthUrl()
     window.location.href = data.url
@@ -111,6 +154,45 @@ async function handleTokenLogin(): Promise<void> {
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
         <p class="mt-3 text-slate-300">Completing GitHub login...</p>
+      </div>
+
+      <!-- CLI mode: show token for copying -->
+      <div v-else-if="cliMode" class="card space-y-4">
+        <div class="text-center">
+          <svg class="mx-auto h-10 w-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h2 class="mt-2 text-lg font-semibold text-slate-100">Login Successful!</h2>
+          <p class="mt-1 text-sm text-slate-400">Welcome, <span class="font-medium text-slate-200">{{ cliUsername }}</span></p>
+        </div>
+
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-slate-300">Your API Token</label>
+          <div class="rounded-lg border border-slate-600 bg-slate-900 p-3">
+            <code class="block break-all text-xs text-slate-300 max-h-32 overflow-y-auto">{{ cliToken }}</code>
+          </div>
+        </div>
+
+        <button
+          class="btn-primary w-full gap-2"
+          @click="copyCliToken"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          {{ cliTokenCopied ? 'Copied!' : 'Copy Token' }}
+        </button>
+
+        <div class="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
+          <p class="text-xs text-slate-400">Paste this token back in your terminal when prompted by <code class="text-green-400">echome login --manual</code>.</p>
+        </div>
+
+        <button
+          class="w-full rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-600 transition-colors"
+          @click="router.push('/')"
+        >
+          Go to Console
+        </button>
       </div>
 
       <!-- Login form -->

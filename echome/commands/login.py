@@ -69,23 +69,25 @@ def login(
     if manual:
         console.print("\n[bold]Manual Login[/bold]\n")
 
-        # Fetch the GitHub OAuth URL from Hub API
-        console.print(f"[dim]Fetching auth URL from {hub_url} ...[/dim]")
+        # Verify Hub is reachable
+        console.print(f"[dim]Checking Hub at {hub_url} ...[/dim]")
         try:
-            resp = httpx.get(f"{hub_url}/api/v1/auth/github", timeout=10)
+            resp = httpx.get(f"{hub_url}/health", timeout=10)
             resp.raise_for_status()
-            github_url = resp.json()["url"]
         except Exception as e:
             console.print(f"[red]Failed to connect to Hub:[/red] {e}")
             console.print(f"Check that Hub is running at: {hub_url}")
             raise typer.Exit(1)
 
-        console.print(f"\n  1. Open this URL in any browser:\n")
-        console.print(f"     [cyan]{github_url}[/cyan]\n")
-        console.print(f"  2. Authorize on GitHub")
-        console.print(f"  3. Copy [bold]access_token[/bold] from the JSON response\n")
+        # Direct user to the CLI-friendly login page
+        cli_login_url = f"{hub_url}/login?source=cli"
 
-        token = typer.prompt("Paste access_token")
+        console.print(f"  1. Open this URL in your browser:\n")
+        console.print(f"     [cyan]{cli_login_url}[/cyan]\n")
+        console.print(f"  2. Click [bold]Login with GitHub[/bold] and authorize")
+        console.print(f"  3. Copy the token shown on the page\n")
+
+        token = typer.prompt("Paste token here")
         if not token.strip():
             console.print("[red]No token provided.[/red]")
             raise typer.Exit(1)

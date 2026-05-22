@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # JWT
     jwt_secret: str = "changeme-jwt-secret-at-least-32-chars"
-    jwt_expire_days: int = 7
+    jwt_expire_days: int = 3650
 
     # Database (default points to docker-compose service name)
     database_url: str = "postgresql+asyncpg://echome:echome@postgres:5432/echome"
