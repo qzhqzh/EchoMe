@@ -43,6 +43,12 @@ const routes = [
     name: 'Market',
     component: () => import('@/views/Market.vue'),
   },
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/Admin.vue'),
+    meta: { requiresAdmin: true },
+  },
 ]
 
 export const router = createRouter({
@@ -51,8 +57,14 @@ export const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, getUser } = useAuth()
   if (!to.meta.public && !isAuthenticated()) {
     return { name: 'Login' }
+  }
+  if (to.meta.requiresAdmin) {
+    const user = getUser()
+    if (!user || user.role !== 'admin') {
+      return { name: 'Dashboard' }
+    }
   }
 })

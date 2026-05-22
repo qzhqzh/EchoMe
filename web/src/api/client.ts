@@ -206,6 +206,28 @@ class ApiClient {
   async getMarketStats(): Promise<{ total_public: number; by_type: Record<string, number>; recent_count_7d: number }> {
     return this.request('GET', '/market/stats')
   }
+
+  // --- Admin ---
+
+  async getAdminStats(): Promise<any> {
+    return this.request('GET', '/admin/stats')
+  }
+
+  async getAdminUsers(params?: { offset?: number; limit?: number }): Promise<{ total: number; items: any[] }> {
+    return this.request('GET', '/admin/users', undefined, params)
+  }
+
+  async updateUserRole(userId: string, role: string): Promise<any> {
+    return this.request('PATCH', `/admin/users/${userId}/role`, { role })
+  }
+
+  async deleteAdminUser(userId: string): Promise<any> {
+    return this.request('DELETE', `/admin/users/${userId}`)
+  }
+
+  async deleteAdminMemory(memoryId: string): Promise<any> {
+    return this.request('DELETE', `/admin/memories/${memoryId}`)
+  }
 }
 
 export const api = new ApiClient()
