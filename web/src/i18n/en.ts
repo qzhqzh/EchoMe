@@ -102,7 +102,12 @@ export default {
   memory_detail_tags: 'Tags:',
   memory_detail_delete_title: 'Delete Memory',
   memory_detail_delete_confirm: 'Are you sure you want to archive this memory? It will be removed from active use but can be recovered later.',
-  memory_detail_archive: 'Archive Memory',
+  memory_detail_archive: 'Archive',
+  memory_detail_hard_delete: 'Permanently Delete',
+  memory_detail_hard_delete_title: 'Permanently Delete Memory',
+  memory_detail_hard_delete_confirm: 'This action CANNOT be undone. The memory will be permanently removed from the database. Are you sure?',
+  memory_detail_archived_success: 'Memory archived',
+  memory_detail_deleted_success: 'Memory permanently deleted',
 
   // Review
   review_title: 'Review Queue',

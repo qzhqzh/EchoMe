@@ -102,7 +102,12 @@ export default {
   memory_detail_tags: '标签：',
   memory_detail_delete_title: '删除记忆',
   memory_detail_delete_confirm: '确定要归档这条记忆吗？它将从活跃列表移除，但可以稍后恢复。',
-  memory_detail_archive: '归档记忆',
+  memory_detail_archive: '归档',
+  memory_detail_hard_delete: '永久删除',
+  memory_detail_hard_delete_title: '永久删除记忆',
+  memory_detail_hard_delete_confirm: '此操作不可撤销！记忆将从数据库中永久移除。确定要继续吗？',
+  memory_detail_archived_success: '记忆已归档',
+  memory_detail_deleted_success: '记忆已永久删除',
 
   // Review
   review_title: '审核队列',

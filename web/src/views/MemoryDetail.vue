@@ -20,6 +20,7 @@ const loading = ref(true)
 const saving = ref(false)
 const editing = ref(false)
 const showDeleteModal = ref(false)
+const showHardDeleteModal = ref(false)
 
 const memoryId = route.params.id as string
 
@@ -51,10 +52,20 @@ async function handleUpdate(data: MemoryCreateRequest): Promise<void> {
   }
 }
 
-async function handleDelete(): Promise<void> {
+async function handleArchive(): Promise<void> {
   try {
     await api.deleteMemory(memoryId)
-    success('Memory archived')
+    success(t('memory_detail_archived_success'))
+    router.push('/memories')
+  } catch {
+    // handled
+  }
+}
+
+async function handleHardDelete(): Promise<void> {
+  try {
+    await api.deleteMemory(memoryId, true)
+    success(t('memory_detail_deleted_success'))
     router.push('/memories')
   } catch {
     // handled
@@ -193,7 +204,24 @@ function formatDate(dateStr: string): string {
       </p>
       <template #footer>
         <button class="btn-secondary" @click="showDeleteModal = false">{{ t('cancel') }}</button>
-        <button class="btn-danger" @click="handleDelete">{{ t('memory_detail_archive') }}</button>
+        <button class="btn-danger" @click="handleArchive">{{ t('memory_detail_archive') }}</button>
+        <button
+          class="rounded-lg border border-red-700 bg-red-900/50 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-900 transition-colors"
+          @click="showDeleteModal = false; showHardDeleteModal = true"
+        >
+          {{ t('memory_detail_hard_delete') }}
+        </button>
+      </template>
+    </Modal>
+
+    <!-- Hard delete confirmation modal -->
+    <Modal :open="showHardDeleteModal" :title="t('memory_detail_hard_delete_title')" @close="showHardDeleteModal = false">
+      <p class="text-sm text-red-300">
+        {{ t('memory_detail_hard_delete_confirm') }}
+      </p>
+      <template #footer>
+        <button class="btn-secondary" @click="showHardDeleteModal = false">{{ t('cancel') }}</button>
+        <button class="btn-danger" @click="handleHardDelete">{{ t('memory_detail_hard_delete') }}</button>
       </template>
     </Modal>
   </div>
