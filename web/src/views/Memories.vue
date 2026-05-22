@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import SearchBar from '@/components/SearchBar.vue'
 import MemoryCard from '@/components/MemoryCard.vue'
-import { MEMORY_TYPES, MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
+import { MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
 import type { MemoryListItem, MemoryType } from '@/types'
 
 const router = useRouter()
