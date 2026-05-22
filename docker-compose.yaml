@@ -12,12 +12,10 @@ services:
         condition: service_started
       embedding:
         condition: service_healthy
-    volumes:
-      - ./hub:/app
     environment:
       - ECHOME_EMBEDDING_URL=http://embedding:20002
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 20000 --reload"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 20000"
 
   web:
     build: ./web
@@ -54,8 +52,7 @@ services:
       POSTGRES_USER: echome
       POSTGRES_PASSWORD: echome
       POSTGRES_DB: echome
-    ports:
-      - "5432:5432"
+    # No external port exposure - only accessible within docker network
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./hub/scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -67,8 +64,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # No external port exposure - only accessible within docker network
     volumes:
       - redisdata:/data
 

@@ -1,6 +1,13 @@
 """Application configuration via environment variables."""
 
+import logging
+import sys
+
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
+
+_INSECURE_JWT_SECRET = "changeme-jwt-secret-at-least-32-chars"
 
 
 class Settings(BaseSettings):
@@ -12,16 +19,20 @@ class Settings(BaseSettings):
     debug: bool = False
     port: int = 20000
 
-    # Auth - legacy single-tenant bearer token (kept for backward compatibility)
-    auth_token: str = "changeme"
+    # Emergency auth token (disabled by default, set in .env for GitHub-down scenarios)
+    # When set, allows Bearer token login mapped to first admin user.
+    auth_token: str = ""
 
     # GitHub OAuth
     github_client_id: str = ""
     github_client_secret: str = ""
 
     # JWT
-    jwt_secret: str = "changeme-jwt-secret-at-least-32-chars"
+    jwt_secret: str = _INSECURE_JWT_SECRET
     jwt_expire_days: int = 3650
+
+    # CORS (comma-separated origins, or "*" for all)
+    cors_origins: str = "*"
 
     # Database (default points to docker-compose service name)
     database_url: str = "postgresql+asyncpg://echome:echome@postgres:5432/echome"
@@ -43,3 +54,25 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_settings() -> None:
+    """Validate critical settings on startup. Called from app lifespan."""
+    if settings.jwt_secret == _INSECURE_JWT_SECRET:
+        if settings.debug:
+            logger.warning(
+                "⚠️  Using default JWT secret! Set ECHOME_JWT_SECRET in .env for production."
+            )
+        else:
+            logger.critical(
+                "🚨 ECHOME_JWT_SECRET is using the insecure default value! "
+                "Set a strong random secret in .env before running in production. "
+                "Use: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+            sys.exit(1)
+
+    if settings.auth_token:
+        logger.info(
+            "ℹ️  Emergency auth token is enabled (ECHOME_AUTH_TOKEN). "
+            "This bypasses OAuth — use only when GitHub is unreachable."
+        )

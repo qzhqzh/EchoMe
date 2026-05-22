@@ -7,7 +7,7 @@ from sqlalchemy import BigInteger, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.memory import Base
+from app.models.memory import Base, _utcnow
 
 
 class User(Base):
@@ -25,7 +25,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=_utcnow
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

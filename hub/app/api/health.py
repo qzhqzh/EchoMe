@@ -20,5 +20,5 @@ async def health_check() -> HealthResponse:
     return HealthResponse(
         status="ok",
         version=settings.app_version,
-        embedding_model=settings.embedding_model,
+        embedding_model="BAAI/bge-m3",
     )

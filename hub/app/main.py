@@ -7,13 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import admin, auth, health, market, memories, projects, review, sync
-from app.core.config import settings
+from app.core.config import settings, validate_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup and shutdown."""
-    # Startup
+    # Startup: validate critical config
+    validate_settings()
     yield
     # Shutdown: close DB connections
     from app.core.database import engine
@@ -28,10 +29,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS: allow web frontend to access the API
+# CORS: configurable via ECHOME_CORS_ORIGINS env var
+_cors_origins = (
+    ["*"] if settings.cors_origins == "*"
+    else [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Single-tenant, allow all origins
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

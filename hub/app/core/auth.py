@@ -23,12 +23,14 @@ async def get_current_user(
 
     Supports two modes:
     1. JWT token (multi-user) - decoded to get user_id
-    2. Legacy bearer token (ECHOME_AUTH_TOKEN) - mapped to first admin user
+    2. Emergency auth token (ECHOME_AUTH_TOKEN) - mapped to first admin user
+       Only active when ECHOME_AUTH_TOKEN is explicitly set (non-empty) in .env.
+       Use when GitHub OAuth is unreachable.
     """
     token = credentials.credentials
 
-    # Check legacy token first (backward compatibility)
-    if token == settings.auth_token:
+    # Check emergency auth token (only if configured)
+    if settings.auth_token and token == settings.auth_token:
         # Map to first admin user
         result = await session.execute(
             select(User).where(User.role == "admin").order_by(User.created_at).limit(1)

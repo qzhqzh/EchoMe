@@ -61,11 +61,11 @@ class MemoryCreate(BaseModel):
     """Request body for creating a memory."""
 
     title: str = Field(..., max_length=256)
-    content: str
+    content: str = Field(..., max_length=100000)
     type: MemoryType
     layer: MemoryLayer = MemoryLayer.L2
     priority: int = Field(5, ge=1, le=10)
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list, max_length=20)
     status: MemoryStatus = MemoryStatus.active
     scope: ScopeSchema = Field(default_factory=ScopeSchema)
     source: MemorySource = MemorySource.manual
@@ -76,7 +76,7 @@ class MemoryUpdate(BaseModel):
     """Request body for full update."""
 
     title: str = Field(..., max_length=256)
-    content: str
+    content: str = Field(..., max_length=100000)
     type: MemoryType
     layer: MemoryLayer
     priority: int = Field(..., ge=1, le=10)
