@@ -116,6 +116,9 @@ async function refreshToken(): Promise<void> {
             Role: <span class="rounded bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-200">{{ user.role }}</span>
           </p>
           <p class="text-xs text-slate-500">
+            User ID: <code class="rounded bg-slate-700/50 px-1.5 py-0.5 text-slate-400 select-all">{{ user.id }}</code>
+          </p>
+          <p class="text-xs text-slate-500">
             Member since {{ new Date(user.created_at).toLocaleDateString() }}
           </p>
         </div>
