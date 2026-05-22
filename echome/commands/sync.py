@@ -40,6 +40,11 @@ def sync(
 ) -> None:
     """Render and inject memories into AI CLI configuration files."""
     config = Config.load()
+
+    if not config.token:
+        console.print("[yellow]Not logged in.[/yellow] Run: [cyan]echome login[/cyan]\n")
+        raise typer.Exit(1)
+
     client = HubClient(config)
     project_dir = Path.cwd()
 
@@ -92,6 +97,11 @@ def sync(
 def push() -> None:
     """Push local vault changes to Hub."""
     config = Config.load()
+
+    if not config.token:
+        console.print("[yellow]Not logged in.[/yellow] Run: [cyan]echome login[/cyan]\n")
+        raise typer.Exit(1)
+
     client = HubClient(config)
 
     console.print("\n[bold]Pushing to Hub...[/bold]")
@@ -114,6 +124,11 @@ def push() -> None:
 def pull() -> None:
     """Pull latest memories from Hub to local vault."""
     config = Config.load()
+
+    if not config.token:
+        console.print("[yellow]Not logged in.[/yellow] Run: [cyan]echome login[/cyan]\n")
+        raise typer.Exit(1)
+
     client = HubClient(config)
 
     console.print("\n[bold]Pulling from Hub...[/bold]")
