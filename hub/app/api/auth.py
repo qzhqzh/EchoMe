@@ -73,30 +73,6 @@ async def _seed_new_user(session: "AsyncSession", user_id: str) -> None:
         pass
 
 
-async def _claim_default_data(session: "AsyncSession", user_id: str) -> None:
-    """Claim orphaned data from pre-multi-user era.
-
-    Reassigns all records with user_id='default' to the given user.
-    This runs once when the first admin user is created.
-    """
-    from sqlalchemy import update as sql_update
-
-    from app.models.memory import Memory, Project, SyncLog
-
-    try:
-        await session.execute(
-            sql_update(Memory).where(Memory.user_id == "default").values(user_id=user_id)
-        )
-        await session.execute(
-            sql_update(Project).where(Project.user_id == "default").values(user_id=user_id)
-        )
-        await session.execute(
-            sql_update(SyncLog).where(SyncLog.user_id == "default").values(user_id=user_id)
-        )
-    except Exception:
-        # Don't fail registration if claiming fails
-        pass
-
 
 @router.get("/github", response_model=GitHubLoginURL)
 async def github_login() -> GitHubLoginURL:
@@ -200,10 +176,6 @@ async def github_callback(
         )
         session.add(user)
         await session.flush()  # Populate user.id
-
-        # Claim any orphaned 'default' user data (from pre-multi-user era)
-        if role == "admin":
-            await _claim_default_data(session, str(user.id))
 
         # Seed example memories for new user
         await _seed_new_user(session, str(user.id))
