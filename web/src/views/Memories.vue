@@ -145,7 +145,7 @@ const totalPages = () => Math.ceil(total.value / limit)
         <h1 class="text-2xl font-bold text-slate-100">{{ t('memories_title') }}</h1>
         <p class="text-sm text-slate-400">{{ total }} memories{{ activeType ? ` in ${activeType}` : '' }}</p>
       </div>
-      <button class="btn-primary" @click="router.push('/memories/new')">
+      <button class="btn-primary" @click="router.push({ path: '/memories/new', query: activeType ? { type: activeType } : {} })">
         <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>

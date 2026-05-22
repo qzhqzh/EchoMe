@@ -9,6 +9,7 @@ const { t } = useI18n()
 const props = defineProps<{
   initial?: Memory | null
   loading?: boolean
+  defaultType?: MemoryType
 }>()
 
 const emit = defineEmits<{
@@ -18,7 +19,7 @@ const emit = defineEmits<{
 
 const title = ref(props.initial?.title || '')
 const content = ref(props.initial?.content || '')
-const type = ref<MemoryType>(props.initial?.type || 'context')
+const type = ref<MemoryType>(props.initial?.type || props.defaultType || 'context')
 const layer = ref<MemoryLayer>(props.initial?.layer || 'L2')
 const priority = ref(props.initial?.priority || 5)
 const tagsInput = ref(props.initial?.tags.join(', ') || '')
