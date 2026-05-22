@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { useAuth } from '@/stores/auth'
 import { useToast } from '@/stores/toast'
 import { api } from '@/api/client'
 
+const { t } = useI18n()
 const { getToken, getUser, setToken } = useAuth()
 const { success, error } = useToast()
 
@@ -94,11 +96,11 @@ async function refreshToken(): Promise<void> {
 
 <template>
   <div class="mx-auto max-w-3xl space-y-6">
-    <h1 class="text-2xl font-bold text-slate-100">Settings</h1>
+    <h1 class="text-2xl font-bold text-slate-100">{{ t('settings_title') }}</h1>
 
     <!-- User Info -->
     <div class="card">
-      <h2 class="mb-4 text-lg font-semibold text-slate-100">Profile</h2>
+      <h2 class="mb-4 text-lg font-semibold text-slate-100">{{ t('settings_profile') }}</h2>
       <div v-if="user" class="flex items-start gap-4">
         <img
           v-if="user.avatar_url"
@@ -111,7 +113,7 @@ async function refreshToken(): Promise<void> {
         </div>
         <div class="space-y-1">
           <p class="text-lg font-medium text-slate-100">{{ user.username }}</p>
-          <p class="text-sm text-slate-400">{{ user.email || 'No email' }}</p>
+          <p class="text-sm text-slate-400">{{ user.email || t('settings_no_email') }}</p>
           <p class="text-sm text-slate-400">
             Role: <span class="rounded bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-200">{{ user.role }}</span>
           </p>
@@ -119,7 +121,7 @@ async function refreshToken(): Promise<void> {
             User ID: <code class="rounded bg-slate-700/50 px-1.5 py-0.5 text-slate-400 select-all">{{ user.id }}</code>
           </p>
           <p class="text-xs text-slate-500">
-            Member since {{ new Date(user.created_at).toLocaleDateString() }}
+            {{ t('settings_member_since') }} {{ new Date(user.created_at).toLocaleDateString() }}
           </p>
         </div>
       </div>
@@ -127,9 +129,9 @@ async function refreshToken(): Promise<void> {
 
     <!-- Token Management -->
     <div class="card">
-      <h2 class="mb-4 text-lg font-semibold text-slate-100">API Token</h2>
+      <h2 class="mb-4 text-lg font-semibold text-slate-100">{{ t('settings_api_token') }}</h2>
       <p class="mb-3 text-sm text-slate-400">
-        Use this token to authenticate the CLI or any API client.
+        {{ t('settings_api_token_desc') }}
       </p>
 
       <!-- Token display -->
@@ -165,32 +167,32 @@ async function refreshToken(): Promise<void> {
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
-          Copy Token
+          {{ t('settings_copy_token') }}
         </button>
         <button
           class="rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600 transition-colors disabled:opacity-50"
           :disabled="refreshing"
           @click="refreshToken"
         >
-          {{ refreshing ? 'Refreshing...' : 'Generate New Token' }}
+          {{ refreshing ? t('settings_refreshing') : t('settings_generate_new') }}
         </button>
         <span v-if="tokenExpiry" class="text-xs text-slate-500">
-          Expires: {{ tokenExpiry.toLocaleDateString() }} ({{ tokenExpiryText }})
+          {{ t('settings_expires') }} {{ tokenExpiry.toLocaleDateString() }} ({{ tokenExpiryText }})
         </span>
       </div>
     </div>
 
     <!-- CLI Configuration Guide -->
     <div class="card">
-      <h2 class="mb-4 text-lg font-semibold text-slate-100">CLI Configuration</h2>
+      <h2 class="mb-4 text-lg font-semibold text-slate-100">{{ t('settings_cli_config') }}</h2>
       <p class="mb-3 text-sm text-slate-400">
-        To use the EchoMe CLI, copy the token above and configure it:
+        {{ t('settings_cli_config_desc') }}
       </p>
 
       <div class="space-y-4">
         <!-- Option 1 -->
         <div>
-          <h3 class="mb-1 text-sm font-medium text-slate-200">Option 1: Login command</h3>
+          <h3 class="mb-1 text-sm font-medium text-slate-200">{{ t('settings_option1') }}</h3>
           <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
             <code class="text-sm text-green-400">echome login</code>
             <button
@@ -202,13 +204,13 @@ async function refreshToken(): Promise<void> {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </button>
-            <p class="mt-1 text-xs text-slate-500">Then paste the token when prompted.</p>
+            <p class="mt-1 text-xs text-slate-500">{{ t('settings_option1_hint') }}</p>
           </div>
         </div>
 
         <!-- Option 2 -->
         <div>
-          <h3 class="mb-1 text-sm font-medium text-slate-200">Option 2: Direct config</h3>
+          <h3 class="mb-1 text-sm font-medium text-slate-200">{{ t('settings_option2') }}</h3>
           <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
             <code class="block text-sm text-green-400">mkdir -p ~/.config/echome</code>
             <code class="block text-sm text-green-400 mt-1">cat &gt; ~/.config/echome/config.toml &lt;&lt;EOF</code>
@@ -229,7 +231,7 @@ async function refreshToken(): Promise<void> {
 
         <!-- Verify -->
         <div>
-          <h3 class="mb-1 text-sm font-medium text-slate-200">Verify</h3>
+          <h3 class="mb-1 text-sm font-medium text-slate-200">{{ t('settings_verify') }}</h3>
           <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
             <code class="text-sm text-green-400">echome whoami</code>
             <button

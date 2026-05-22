@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
 import { useToast } from '@/stores/toast'
 
+const { t } = useI18n()
 const { isAuthenticated } = useAuth()
 const { success, error } = useToast()
 
@@ -107,23 +109,23 @@ onMounted(() => {
   <div class="space-y-6">
     <!-- Header -->
     <div>
-      <h1 class="text-2xl font-bold text-slate-100">Memory Market</h1>
-      <p class="mt-1 text-sm text-slate-400">Browse and fork public memories shared by the community</p>
+      <h1 class="text-2xl font-bold text-slate-100">{{ t('market_title') }}</h1>
+      <p class="mt-1 text-sm text-slate-400">{{ t('market_subtitle') }}</p>
     </div>
 
     <!-- Stats -->
     <div v-if="stats" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
       <div class="card">
         <div class="text-2xl font-bold text-blue-400">{{ stats.total_public }}</div>
-        <div class="text-sm text-slate-400">Public Memories</div>
+        <div class="text-sm text-slate-400">{{ t('market_public_memories') }}</div>
       </div>
       <div class="card">
         <div class="text-2xl font-bold text-green-400">{{ stats.recent_count_7d }}</div>
-        <div class="text-sm text-slate-400">New This Week</div>
+        <div class="text-sm text-slate-400">{{ t('market_new_this_week') }}</div>
       </div>
       <div class="card">
         <div class="text-2xl font-bold text-purple-400">{{ Object.keys(stats.by_type).length }}</div>
-        <div class="text-sm text-slate-400">Memory Types</div>
+        <div class="text-sm text-slate-400">{{ t('market_memory_types') }}</div>
       </div>
     </div>
 
@@ -134,17 +136,17 @@ onMounted(() => {
           v-model="searchQuery"
           type="text"
           class="input-field flex-1"
-          placeholder="Search public memories..."
+          :placeholder="t('market_search_placeholder')"
         />
         <select v-model="filterType" class="input-field sm:w-40" @change="handleSearch">
-          <option value="">All Types</option>
-          <option v-for="t in memoryTypes" :key="t" :value="t">{{ t }}</option>
+          <option value="">{{ t('market_all_types') }}</option>
+          <option v-for="tp in memoryTypes" :key="tp" :value="tp">{{ tp }}</option>
         </select>
         <select v-model="filterLayer" class="input-field sm:w-32" @change="handleSearch">
-          <option value="">All Layers</option>
+          <option value="">{{ t('market_all_layers') }}</option>
           <option v-for="l in layers" :key="l" :value="l">{{ l }}</option>
         </select>
-        <button type="submit" class="btn-primary whitespace-nowrap">Search</button>
+        <button type="submit" class="btn-primary whitespace-nowrap">{{ t('search') }}</button>
       </form>
     </div>
 
@@ -157,7 +159,7 @@ onMounted(() => {
     </div>
 
     <div v-else-if="memories.length === 0" class="text-center py-12">
-      <p class="text-slate-400">No public memories found.</p>
+      <p class="text-slate-400">{{ t('market_no_found') }}</p>
     </div>
 
     <div v-else class="space-y-3">
@@ -184,7 +186,7 @@ onMounted(() => {
               >
                 {{ tag }}
               </span>
-              <span class="text-xs text-slate-500">{{ mem.token_count }} tokens</span>
+              <span class="text-xs text-slate-500">{{ mem.token_count }} {{ t('market_tokens') }}</span>
             </div>
           </div>
           <button
@@ -192,7 +194,7 @@ onMounted(() => {
             class="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-slate-100 transition-colors"
             @click="forkMemory(mem.id)"
           >
-            Fork
+            {{ t('fork') }}
           </button>
         </div>
       </div>
@@ -205,17 +207,17 @@ onMounted(() => {
         class="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
         @click="prevPage"
       >
-        Previous
+        {{ t('previous') }}
       </button>
       <span class="text-sm text-slate-400">
-        {{ offset + 1 }}-{{ Math.min(offset + limit, total) }} of {{ total }}
+        {{ offset + 1 }}-{{ Math.min(offset + limit, total) }} {{ t('of') }} {{ total }}
       </span>
       <button
         :disabled="!hasNextPage"
         class="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
         @click="nextPage"
       >
-        Next
+        {{ t('next') }}
       </button>
     </div>
   </div>

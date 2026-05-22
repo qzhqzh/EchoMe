@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useToast } from '@/stores/toast'
 import MemoryForm from '@/components/MemoryForm.vue'
 import type { MemoryCreateRequest } from '@/types'
 
+const { t } = useI18n()
 const router = useRouter()
 const { success } = useToast()
 const loading = ref(false)
@@ -35,10 +37,10 @@ function handleCancel(): void {
         class="mb-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
         @click="router.push('/memories')"
       >
-        &larr; Back to memories
+        &larr; {{ t('memory_new_back') }}
       </button>
-      <h1 class="text-2xl font-bold text-slate-100">New Memory</h1>
-      <p class="text-sm text-slate-400">Add a new memory to your context store</p>
+      <h1 class="text-2xl font-bold text-slate-100">{{ t('memory_new_title') }}</h1>
+      <p class="text-sm text-slate-400">{{ t('memory_new_subtitle') }}</p>
     </div>
 
     <div class="card">

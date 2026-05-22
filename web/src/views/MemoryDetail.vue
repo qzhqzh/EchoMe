@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useToast } from '@/stores/toast'
 import Badge from '@/components/Badge.vue'
@@ -9,6 +10,7 @@ import Modal from '@/components/Modal.vue'
 import { MEMORY_TYPE_COLORS, LAYER_COLORS, STATUS_COLORS } from '@/types'
 import type { Memory, MemoryCreateRequest } from '@/types'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { success } = useToast()
@@ -76,7 +78,7 @@ function formatDate(dateStr: string): string {
     <!-- Editing mode -->
     <div v-else-if="editing && memory" class="space-y-4">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-slate-100">Edit Memory</h1>
+        <h1 class="text-2xl font-bold text-slate-100">{{ t('memory_detail_edit') }}</h1>
       </div>
       <div class="card">
         <MemoryForm
@@ -98,7 +100,7 @@ function formatDate(dateStr: string): string {
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
         </svg>
-        Back
+        {{ t('back') }}
       </button>
 
       <!-- Header -->
@@ -117,58 +119,58 @@ function formatDate(dateStr: string): string {
             <svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            Edit
+            {{ t('edit') }}
           </button>
           <button class="btn-danger" @click="showDeleteModal = true">
             <svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            Delete
+            {{ t('delete') }}
           </button>
         </div>
       </div>
 
       <!-- Content -->
       <div class="card">
-        <h3 class="mb-2 text-sm font-medium text-slate-400">Content</h3>
+        <h3 class="mb-2 text-sm font-medium text-slate-400">{{ t('memory_detail_content') }}</h3>
         <div class="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed">{{ memory.content }}</div>
       </div>
 
       <!-- Metadata -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="card">
-          <h3 class="mb-3 text-sm font-medium text-slate-400">Details</h3>
+          <h3 class="mb-3 text-sm font-medium text-slate-400">{{ t('memory_detail_details') }}</h3>
           <dl class="space-y-2 text-sm">
             <div class="flex justify-between">
-              <dt class="text-slate-400">Source</dt>
+              <dt class="text-slate-400">{{ t('memory_detail_source') }}</dt>
               <dd class="text-slate-200">{{ memory.source }}</dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-slate-400">Token Count</dt>
+              <dt class="text-slate-400">{{ t('memory_detail_token_count') }}</dt>
               <dd class="text-slate-200">{{ memory.token_count }}</dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-slate-400">Created</dt>
+              <dt class="text-slate-400">{{ t('memory_detail_created') }}</dt>
               <dd class="text-slate-200">{{ formatDate(memory.created_at) }}</dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-slate-400">Updated</dt>
+              <dt class="text-slate-400">{{ t('memory_detail_updated') }}</dt>
               <dd class="text-slate-200">{{ formatDate(memory.updated_at) }}</dd>
             </div>
           </dl>
         </div>
 
         <div class="card">
-          <h3 class="mb-3 text-sm font-medium text-slate-400">Scope & Tags</h3>
+          <h3 class="mb-3 text-sm font-medium text-slate-400">{{ t('memory_detail_scope_tags') }}</h3>
           <div class="space-y-3">
             <div>
-              <span class="text-xs text-slate-500">Scope:</span>
+              <span class="text-xs text-slate-500">{{ t('memory_detail_scope') }}</span>
               <p class="text-sm text-slate-200">
-                {{ memory.scope.global ? 'Global' : `Projects: ${memory.scope.projects.join(', ')}` }}
+                {{ memory.scope.global ? t('memory_detail_global') : `Projects: ${memory.scope.projects.join(', ')}` }}
               </p>
             </div>
             <div v-if="memory.tags.length > 0">
-              <span class="text-xs text-slate-500">Tags:</span>
+              <span class="text-xs text-slate-500">{{ t('memory_detail_tags') }}</span>
               <div class="mt-1 flex flex-wrap gap-1.5">
                 <span
                   v-for="tag in memory.tags"
@@ -185,14 +187,13 @@ function formatDate(dateStr: string): string {
     </div>
 
     <!-- Delete confirmation modal -->
-    <Modal :open="showDeleteModal" title="Delete Memory" @close="showDeleteModal = false">
+    <Modal :open="showDeleteModal" :title="t('memory_detail_delete_title')" @close="showDeleteModal = false">
       <p class="text-sm text-slate-300">
-        Are you sure you want to archive this memory? It will be removed from active use
-        but can be recovered later.
+        {{ t('memory_detail_delete_confirm') }}
       </p>
       <template #footer>
-        <button class="btn-secondary" @click="showDeleteModal = false">Cancel</button>
-        <button class="btn-danger" @click="handleDelete">Archive Memory</button>
+        <button class="btn-secondary" @click="showDeleteModal = false">{{ t('cancel') }}</button>
+        <button class="btn-danger" @click="handleDelete">{{ t('memory_detail_archive') }}</button>
       </template>
     </Modal>
   </div>

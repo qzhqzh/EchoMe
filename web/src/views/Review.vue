@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useToast } from '@/stores/toast'
 import Badge from '@/components/Badge.vue'
 import { MEMORY_TYPE_COLORS, LAYER_COLORS } from '@/types'
 import type { MemoryListItem } from '@/types'
 
+const { t } = useI18n()
 const router = useRouter()
 const { success } = useToast()
 
@@ -65,9 +67,9 @@ async function reject(id: string): Promise<void> {
   <div class="space-y-6">
     <!-- Header -->
     <div>
-      <h1 class="text-2xl font-bold text-slate-100">Review Queue</h1>
+      <h1 class="text-2xl font-bold text-slate-100">{{ t('review_title') }}</h1>
       <p class="text-sm text-slate-400">
-        {{ total }} AI-suggested memories awaiting your review
+        {{ total }} {{ t('review_subtitle').replace('{count}', '') }}
       </p>
     </div>
 
@@ -84,8 +86,8 @@ async function reject(id: string): Promise<void> {
       <svg class="mx-auto h-16 w-16 text-emerald-500/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <h3 class="mt-4 text-lg font-medium text-slate-200">All caught up!</h3>
-      <p class="mt-1 text-sm text-slate-400">No pending memories to review.</p>
+      <h3 class="mt-4 text-lg font-medium text-slate-200">{{ t('review_all_caught_up') }}</h3>
+      <p class="mt-1 text-sm text-slate-400">{{ t('review_no_pending') }}</p>
     </div>
 
     <!-- Pending list -->
@@ -122,21 +124,21 @@ async function reject(id: string): Promise<void> {
               class="text-xs text-slate-400 hover:text-slate-200 transition-colors"
               @click="router.push(`/memories/${item.id}`)"
             >
-              View
+              {{ t('view') }}
             </button>
             <button
               class="btn-danger text-xs px-3 py-1.5"
               :disabled="processingId === item.id"
               @click="reject(item.id)"
             >
-              Reject
+              {{ t('reject') }}
             </button>
             <button
               class="btn-success text-xs px-3 py-1.5"
               :disabled="processingId === item.id"
               @click="approve(item.id)"
             >
-              Approve
+              {{ t('approve') }}
             </button>
           </div>
         </div>

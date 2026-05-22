@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import SearchBar from '@/components/SearchBar.vue'
 import MemoryCard from '@/components/MemoryCard.vue'
 import { MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
 import type { MemoryListItem, MemoryType } from '@/types'
 
+const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 
@@ -140,14 +142,14 @@ const totalPages = () => Math.ceil(total.value / limit)
     <!-- Header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-slate-100">Memories</h1>
+        <h1 class="text-2xl font-bold text-slate-100">{{ t('memories_title') }}</h1>
         <p class="text-sm text-slate-400">{{ total }} memories{{ activeType ? ` in ${activeType}` : '' }}</p>
       </div>
       <button class="btn-primary" @click="router.push('/memories/new')">
         <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
-        New Memory
+        {{ t('memories_new') }}
       </button>
     </div>
 
@@ -172,14 +174,14 @@ const totalPages = () => Math.ceil(total.value / limit)
     <!-- Search -->
     <SearchBar
       v-model="searchQuery"
-      placeholder="Search memories..."
+      :placeholder="t('memories_search_placeholder')"
       @search="handleSearch"
     />
 
     <!-- Secondary Filters -->
     <div class="flex flex-wrap gap-3">
       <select v-model="filterLayer" class="input-field w-auto min-w-[100px]">
-        <option value="">All Layers</option>
+        <option value="">{{ t('memories_all_layers') }}</option>
         <option v-for="l in MEMORY_LAYERS" :key="l" :value="l">{{ l }}</option>
       </select>
       <select v-model="filterStatus" class="input-field w-auto min-w-[120px]">
@@ -189,7 +191,7 @@ const totalPages = () => Math.ceil(total.value / limit)
         v-model="filterTags"
         type="text"
         class="input-field w-auto min-w-[160px]"
-        placeholder="Filter by tags..."
+        :placeholder="t('memories_filter_tags')"
         @change="loadMemories()"
       />
     </div>
@@ -211,9 +213,9 @@ const totalPages = () => Math.ceil(total.value / limit)
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
       </svg>
       <p class="mt-3 text-slate-400">
-        {{ activeType ? `No ${activeType} memories found` : 'No memories found' }}
+        {{ t('memories_no_found') }}
       </p>
-      <button class="btn-primary mt-4" @click="router.push('/memories/new')">Create your first memory</button>
+      <button class="btn-primary mt-4" @click="router.push('/memories/new')">{{ t('memories_create_first') }}</button>
     </div>
 
     <div v-else class="grid gap-3">
@@ -227,7 +229,7 @@ const totalPages = () => Math.ceil(total.value / limit)
     <!-- Pagination -->
     <div v-if="total > limit" class="flex items-center justify-between pt-2">
       <p class="text-sm text-slate-400">
-        Showing {{ offset + 1 }}-{{ Math.min(offset + limit, total) }} of {{ total }}
+        {{ t('showing') }} {{ offset + 1 }}-{{ Math.min(offset + limit, total) }} {{ t('of') }} {{ total }}
       </p>
       <div class="flex gap-2">
         <button
@@ -235,7 +237,7 @@ const totalPages = () => Math.ceil(total.value / limit)
           :disabled="offset === 0"
           @click="prevPage"
         >
-          Previous
+          {{ t('previous') }}
         </button>
         <span class="flex items-center px-3 text-sm text-slate-400">
           {{ currentPage() }} / {{ totalPages() }}
@@ -245,7 +247,7 @@ const totalPages = () => Math.ceil(total.value / limit)
           :disabled="offset + limit >= total"
           @click="nextPage"
         >
-          Next
+          {{ t('next') }}
         </button>
       </div>
     </div>

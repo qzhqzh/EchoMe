@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useToast } from '@/stores/toast'
 import Modal from '@/components/Modal.vue'
 import type { Project, ProjectCreate } from '@/types'
 
+const { t } = useI18n()
 const { success } = useToast()
 
 const projects = ref<Project[]>([])
@@ -112,14 +114,14 @@ async function handleDelete(): Promise<void> {
     <!-- Header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-slate-100">Projects</h1>
-        <p class="text-sm text-slate-400">Manage your project scopes</p>
+        <h1 class="text-2xl font-bold text-slate-100">{{ t('projects_title') }}</h1>
+        <p class="text-sm text-slate-400">{{ t('projects_subtitle') }}</p>
       </div>
       <button class="btn-primary" @click="openCreate">
         <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
-        Add Project
+        {{ t('projects_add') }}
       </button>
     </div>
 
@@ -136,8 +138,8 @@ async function handleDelete(): Promise<void> {
       <svg class="mx-auto h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
       </svg>
-      <p class="mt-3 text-slate-400">No projects yet</p>
-      <button class="btn-primary mt-4" @click="openCreate">Add your first project</button>
+      <p class="mt-3 text-slate-400">{{ t('projects_no_yet') }}</p>
+      <button class="btn-primary mt-4" @click="openCreate">{{ t('projects_add_first') }}</button>
     </div>
 
     <!-- Projects grid -->
@@ -194,79 +196,78 @@ async function handleDelete(): Promise<void> {
     <!-- Create/Edit Form Modal -->
     <Modal
       :open="showForm"
-      :title="editingProject ? 'Edit Project' : 'New Project'"
+      :title="editingProject ? t('projects_edit') : t('projects_new')"
       @close="showForm = false"
     >
       <form class="space-y-4" @submit.prevent="handleSubmit">
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-slate-300">ID</label>
+          <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('projects_form_id') }}</label>
           <input
             v-model="formId"
             type="text"
             class="input-field"
-            placeholder="owner/repo-name"
+            :placeholder="t('projects_form_id_placeholder')"
             :disabled="!!editingProject"
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-slate-300">Name</label>
+          <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('projects_form_name') }}</label>
           <input
             v-model="formName"
             type="text"
             class="input-field"
-            placeholder="Project Name"
+            :placeholder="t('projects_form_name_placeholder')"
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-slate-300">Description</label>
+          <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('projects_form_description') }}</label>
           <textarea
             v-model="formDescription"
             class="input-field resize-none"
             rows="2"
-            placeholder="Brief description..."
+            :placeholder="t('projects_form_description_placeholder')"
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-slate-300">Git Remote</label>
+          <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('projects_form_git_remote') }}</label>
           <input
             v-model="formGitRemote"
             type="text"
             class="input-field"
-            placeholder="git@github.com:owner/repo.git"
+            :placeholder="t('projects_form_git_remote_placeholder')"
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-slate-300">Path Patterns</label>
+          <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('projects_form_path_patterns') }}</label>
           <input
             v-model="formPathPatterns"
             type="text"
             class="input-field"
-            placeholder="~/projects/my-app, ~/work/app*"
+            :placeholder="t('projects_form_path_patterns_placeholder')"
           />
-          <p class="mt-1 text-xs text-slate-500">Comma-separated local paths</p>
+          <p class="mt-1 text-xs text-slate-500">{{ t('projects_form_path_patterns_hint') }}</p>
         </div>
       </form>
       <template #footer>
-        <button class="btn-secondary" @click="showForm = false">Cancel</button>
+        <button class="btn-secondary" @click="showForm = false">{{ t('cancel') }}</button>
         <button
           class="btn-primary"
           :disabled="!formId.trim() || !formName.trim() || saving"
           @click="handleSubmit"
         >
-          {{ editingProject ? 'Update' : 'Create' }}
+          {{ editingProject ? t('update') : t('create') }}
         </button>
       </template>
     </Modal>
 
     <!-- Delete confirmation -->
-    <Modal :open="showDeleteModal" title="Delete Project" @close="showDeleteModal = false">
+    <Modal :open="showDeleteModal" :title="t('projects_delete_title')" @close="showDeleteModal = false">
       <p class="text-sm text-slate-300">
-        Are you sure you want to delete "{{ deleteTarget?.name }}"?
-        This will not delete memories scoped to this project.
+        {{ t('projects_delete_confirm').replace('{name}', deleteTarget?.name || '') }}
       </p>
       <template #footer>
-        <button class="btn-secondary" @click="showDeleteModal = false">Cancel</button>
-        <button class="btn-danger" @click="handleDelete">Delete</button>
+        <button class="btn-secondary" @click="showDeleteModal = false">{{ t('cancel') }}</button>
+        <button class="btn-danger" @click="handleDelete">{{ t('delete') }}</button>
       </template>
     </Modal>
   </div>

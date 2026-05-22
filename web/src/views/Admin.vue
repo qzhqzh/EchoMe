@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
 import { useToast } from '@/stores/toast'
 
+const { t } = useI18n()
 const { getUser } = useAuth()
 const { success, error } = useToast()
 
@@ -94,8 +96,8 @@ function formatDate(dateStr: string | null): string {
   <div class="space-y-6">
     <!-- Header -->
     <div>
-      <h1 class="text-2xl font-bold text-slate-100">Admin Panel</h1>
-      <p class="mt-1 text-sm text-slate-400">System management and user administration</p>
+      <h1 class="text-2xl font-bold text-slate-100">{{ t('admin_title') }}</h1>
+      <p class="mt-1 text-sm text-slate-400">{{ t('admin_subtitle') }}</p>
     </div>
 
     <!-- Tabs -->
@@ -109,7 +111,7 @@ function formatDate(dateStr: string | null): string {
         ]"
         @click="activeTab = 'stats'"
       >
-        System Stats
+        {{ t('admin_system_stats') }}
       </button>
       <button
         :class="[
@@ -120,7 +122,7 @@ function formatDate(dateStr: string | null): string {
         ]"
         @click="activeTab = 'users'"
       >
-        Users ({{ totalUsers }})
+        {{ t('admin_users') }} ({{ totalUsers }})
       </button>
     </div>
 
@@ -138,56 +140,56 @@ function formatDate(dateStr: string | null): string {
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div class="card">
           <div class="text-2xl font-bold text-blue-400">{{ stats.total_users }}</div>
-          <div class="text-xs text-slate-400 mt-1">Total Users</div>
+          <div class="text-xs text-slate-400 mt-1">{{ t('admin_total_users') }}</div>
         </div>
         <div class="card">
           <div class="text-2xl font-bold text-green-400">{{ stats.total_memories }}</div>
-          <div class="text-xs text-slate-400 mt-1">Total Memories</div>
+          <div class="text-xs text-slate-400 mt-1">{{ t('admin_total_memories') }}</div>
         </div>
         <div class="card">
           <div class="text-2xl font-bold text-purple-400">{{ stats.total_projects }}</div>
-          <div class="text-xs text-slate-400 mt-1">Projects</div>
+          <div class="text-xs text-slate-400 mt-1">{{ t('admin_projects') }}</div>
         </div>
         <div class="card">
           <div class="text-2xl font-bold text-orange-400">{{ stats.total_syncs }}</div>
-          <div class="text-xs text-slate-400 mt-1">Sync Operations</div>
+          <div class="text-xs text-slate-400 mt-1">{{ t('admin_sync_operations') }}</div>
         </div>
       </div>
 
       <!-- Memory Breakdown -->
       <div class="card">
-        <h3 class="text-sm font-semibold text-slate-200 mb-4">Memory Breakdown</h3>
+        <h3 class="text-sm font-semibold text-slate-200 mb-4">{{ t('admin_memory_breakdown') }}</h3>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
             <div class="text-lg font-bold text-green-400">{{ stats.memories_active }}</div>
-            <div class="text-xs text-slate-400">Active</div>
+            <div class="text-xs text-slate-400">{{ t('admin_active') }}</div>
           </div>
           <div>
             <div class="text-lg font-bold text-yellow-400">{{ stats.memories_pending }}</div>
-            <div class="text-xs text-slate-400">Pending Review</div>
+            <div class="text-xs text-slate-400">{{ t('admin_pending_review') }}</div>
           </div>
           <div>
             <div class="text-lg font-bold text-cyan-400">{{ stats.memories_public }}</div>
-            <div class="text-xs text-slate-400">Public (Market)</div>
+            <div class="text-xs text-slate-400">{{ t('admin_public_market') }}</div>
           </div>
           <div>
             <div class="text-lg font-bold text-slate-300">{{ stats.memories_last_7d }}</div>
-            <div class="text-xs text-slate-400">New (7 days)</div>
+            <div class="text-xs text-slate-400">{{ t('admin_new_7d') }}</div>
           </div>
         </div>
       </div>
 
       <!-- Activity -->
       <div class="card">
-        <h3 class="text-sm font-semibold text-slate-200 mb-4">Recent Activity (7 days)</h3>
+        <h3 class="text-sm font-semibold text-slate-200 mb-4">{{ t('admin_recent_activity') }}</h3>
         <div class="grid grid-cols-2 gap-4">
           <div>
             <div class="text-lg font-bold text-blue-400">{{ stats.users_last_7d }}</div>
-            <div class="text-xs text-slate-400">New Users</div>
+            <div class="text-xs text-slate-400">{{ t('admin_new_users') }}</div>
           </div>
           <div>
             <div class="text-lg font-bold text-green-400">{{ stats.memories_last_7d }}</div>
-            <div class="text-xs text-slate-400">New Memories</div>
+            <div class="text-xs text-slate-400">{{ t('admin_new_memories') }}</div>
           </div>
         </div>
       </div>
@@ -225,10 +227,10 @@ function formatDate(dateStr: string | null): string {
             </span>
           </div>
           <div class="text-xs text-slate-400 mt-0.5">
-            {{ u.email || 'No email' }} · {{ u.memory_count }} memories · Last login: {{ formatDate(u.last_login_at) }}
+            {{ u.email || t('admin_no_email') }} · {{ u.memory_count }} {{ t('admin_memories') }} · {{ t('admin_last_login') }} {{ formatDate(u.last_login_at) }}
           </div>
           <div class="text-xs text-slate-500">
-            Joined {{ formatDate(u.created_at) }}
+            {{ t('admin_joined') }} {{ formatDate(u.created_at) }}
           </div>
         </div>
 
@@ -239,29 +241,29 @@ function formatDate(dateStr: string | null): string {
             class="rounded px-2 py-1 text-xs text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-colors"
             @click="changeRole(u.id, 'admin')"
           >
-            Promote
+            {{ t('admin_promote') }}
           </button>
           <button
             v-else
             class="rounded px-2 py-1 text-xs text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/10 transition-colors"
             @click="changeRole(u.id, 'user')"
           >
-            Demote
+            {{ t('admin_demote') }}
           </button>
           <button
             class="rounded px-2 py-1 text-xs text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
             @click="deleteUser(u.id, u.username)"
           >
-            Delete
+            {{ t('delete') }}
           </button>
         </div>
         <div v-else class="shrink-0">
-          <span class="text-xs text-slate-500">You</span>
+          <span class="text-xs text-slate-500">{{ t('admin_you') }}</span>
         </div>
       </div>
 
       <div v-if="users.length === 0" class="text-center py-8 text-slate-400">
-        No users found.
+        {{ t('admin_no_users') }}
       </div>
     </div>
   </div>
