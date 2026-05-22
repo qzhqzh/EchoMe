@@ -15,6 +15,7 @@ const apiBase = ref(localStorage.getItem('echome_api_base') || '')
 const loading = ref(false)
 const githubLoading = ref(false)
 const showManual = ref(false)
+const showAdvanced = ref(false)
 
 // Handle GitHub OAuth callback
 onMounted(async () => {
@@ -114,20 +115,6 @@ async function handleTokenLogin(): Promise<void> {
 
       <!-- Login form -->
       <div v-else class="card space-y-5">
-        <!-- Hub URL (shared) -->
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-slate-300">
-            Hub URL <span class="text-slate-500">(optional)</span>
-          </label>
-          <input
-            v-model="apiBase"
-            type="url"
-            class="input-field"
-            placeholder="http://localhost:20000 (default: same origin)"
-          />
-          <p class="mt-1 text-xs text-slate-500">Leave empty for same-origin or dev proxy</p>
-        </div>
-
         <!-- GitHub OAuth button -->
         <button
           class="btn-primary w-full gap-2"
@@ -180,10 +167,30 @@ async function handleTokenLogin(): Promise<void> {
             {{ loading ? 'Connecting...' : 'Connect with Token' }}
           </button>
         </form>
+
+        <!-- Advanced: Hub URL (hidden by default) -->
+        <div class="pt-2">
+          <button
+            class="text-xs text-slate-500 hover:text-slate-400 cursor-pointer"
+            @click="showAdvanced = !showAdvanced"
+          >
+            {{ showAdvanced ? '▾ Hide advanced' : '▸ Advanced settings' }}
+          </button>
+          <div v-if="showAdvanced" class="mt-2">
+            <label class="mb-1.5 block text-xs font-medium text-slate-400">Hub URL</label>
+            <input
+              v-model="apiBase"
+              type="url"
+              class="input-field text-xs"
+              placeholder="Leave empty (default: same origin)"
+            />
+            <p class="mt-1 text-xs text-slate-500">Only change this for local development</p>
+          </div>
+        </div>
       </div>
 
       <p class="mt-6 text-center text-xs text-slate-500">
-        Token is stored in localStorage and used for Bearer auth.
+        Authenticate via GitHub to access your memory hub.
       </p>
     </div>
   </div>
