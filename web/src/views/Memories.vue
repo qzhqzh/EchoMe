@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { api } from '@/api/client'
 import SearchBar from '@/components/SearchBar.vue'
 import MemoryCard from '@/components/MemoryCard.vue'
@@ -8,18 +8,19 @@ import { MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
 import type { MemoryListItem, MemoryType } from '@/types'
 
 const router = useRouter()
+const route = useRoute()
 
 const memories = ref<MemoryListItem[]>([])
 const total = ref(0)
 const loading = ref(false)
-const offset = ref(0)
 const limit = 20
 
-// Tab-based type filter (empty = all)
-const activeType = ref<MemoryType | ''>('')
-const filterLayer = ref('')
-const filterStatus = ref('active')
-const filterTags = ref('')
+// Restore filters from URL query params (preserves state on back navigation)
+const activeType = ref<MemoryType | ''>((route.query.type as MemoryType) || '')
+const filterLayer = ref((route.query.layer as string) || '')
+const filterStatus = ref((route.query.status as string) || 'active')
+const filterTags = ref((route.query.tags as string) || '')
+const offset = ref(Number(route.query.offset) || 0)
 const searchQuery = ref('')
 
 // Type tab config with priority order and display info
@@ -40,8 +41,20 @@ onMounted(() => {
   loadMemories()
 })
 
+// Sync filters to URL query params so back navigation restores state
+function updateUrlQuery(): void {
+  const query: Record<string, string> = {}
+  if (activeType.value) query.type = activeType.value
+  if (filterLayer.value) query.layer = filterLayer.value
+  if (filterStatus.value && filterStatus.value !== 'active') query.status = filterStatus.value
+  if (filterTags.value) query.tags = filterTags.value
+  if (offset.value > 0) query.offset = String(offset.value)
+  router.replace({ query })
+}
+
 watch([activeType, filterLayer, filterStatus, filterTags], () => {
   offset.value = 0
+  updateUrlQuery()
   loadMemories()
 })
 
@@ -104,6 +117,7 @@ async function handleSearch(query: string): Promise<void> {
 function nextPage(): void {
   if (offset.value + limit < total.value) {
     offset.value += limit
+    updateUrlQuery()
     loadMemories()
   }
 }
@@ -111,6 +125,7 @@ function nextPage(): void {
 function prevPage(): void {
   if (offset.value > 0) {
     offset.value = Math.max(0, offset.value - limit)
+    updateUrlQuery()
     loadMemories()
   }
 }
