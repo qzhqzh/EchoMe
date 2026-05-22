@@ -2,10 +2,10 @@
 
 import http.server
 import threading
-import time
 import urllib.parse
 import webbrowser
 
+import httpx
 import typer
 from rich.console import Console
 
@@ -64,52 +64,56 @@ def login(
         config.hub_url = hub.strip().rstrip("/")
         config.save()
 
-    if manual:
-        # Simple manual flow: user copies token from web UI
-        hub = config.hub_url.rstrip("/")
-        console.print("\n[bold]Manual Login (for servers without GUI)[/bold]\n")
-        console.print("Steps:")
-        console.print(f"  1. On any device with a browser, open:")
-        console.print(f"     [cyan]{hub}/api/v1/auth/github[/cyan]")
-        console.print(f"  2. Click the GitHub authorization URL in the response")
-        console.print(f"  3. After authorizing, you'll get a JSON response")
-        console.print(f"  4. Copy the [bold]access_token[/bold] value from the JSON\n")
-        console.print("[dim]Tip: The JSON looks like: {\"access_token\": \"eyJhbG...\", ...}[/dim]\n")
+    hub_url = config.hub_url.rstrip("/")
 
-        token = typer.prompt("Paste your access_token here")
+    if manual:
+        console.print("\n[bold]Manual Login[/bold]\n")
+
+        # Fetch the GitHub OAuth URL from Hub API
+        console.print(f"[dim]Fetching auth URL from {hub_url} ...[/dim]")
+        try:
+            resp = httpx.get(f"{hub_url}/api/v1/auth/github", timeout=10)
+            resp.raise_for_status()
+            github_url = resp.json()["url"]
+        except Exception as e:
+            console.print(f"[red]Failed to connect to Hub:[/red] {e}")
+            console.print(f"Check that Hub is running at: {hub_url}")
+            raise typer.Exit(1)
+
+        console.print(f"\n  1. Open this URL in any browser:\n")
+        console.print(f"     [cyan]{github_url}[/cyan]\n")
+        console.print(f"  2. Authorize on GitHub")
+        console.print(f"  3. Copy [bold]access_token[/bold] from the JSON response\n")
+
+        token = typer.prompt("Paste access_token")
         if not token.strip():
             console.print("[red]No token provided.[/red]")
             raise typer.Exit(1)
 
         config.token = token.strip()
         config.save()
-        console.print("[green]✓ Token saved![/green]\n")
-
-        # Verify
+        console.print("[green]✓ Saved![/green]\n")
         _verify_and_show_user(config)
         return
 
     # Browser flow with local callback server
     console.print("\n[bold]GitHub OAuth Login[/bold]\n")
 
-    # Start local callback server
     port = 19876
     server = http.server.HTTPServer(("127.0.0.1", port), _CallbackHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    # Open browser to Hub's GitHub auth
-    auth_url = f"{config.hub_url}/api/v1/auth/github"
+    auth_url = f"{hub_url}/api/v1/auth/github"
     console.print(f"Opening browser to: [cyan]{auth_url}[/cyan]")
     console.print(f"[dim]Waiting for callback on http://127.0.0.1:{port} ...[/dim]\n")
 
     try:
         webbrowser.open(auth_url)
     except Exception:
-        console.print(f"[yellow]Could not open browser. Please open manually:[/yellow]")
-        console.print(f"  [cyan]{auth_url}[/cyan]\n")
+        console.print(f"[yellow]Could not open browser.[/yellow]")
+        console.print(f"Try: [cyan]echome login --manual[/cyan]\n")
 
-    # Wait for callback (up to 120 seconds)
     if _server_event.wait(timeout=120):
         server.shutdown()
         if _received_token:
@@ -122,35 +126,32 @@ def login(
             raise typer.Exit(1)
     else:
         server.shutdown()
-        console.print("[red]✗ Timeout waiting for login callback.[/red]")
-        console.print("Try [cyan]echome login --manual[/cyan] instead.\n")
+        console.print("[red]✗ Timeout.[/red] Try: [cyan]echome login --manual[/cyan]\n")
         raise typer.Exit(1)
 
 
 def logout() -> None:
-    """Clear saved JWT token and logout."""
+    """Clear saved JWT token."""
     config = Config.load()
     if not config.token:
         console.print("[dim]Not logged in.[/dim]")
         return
-
     config.token = ""
     config.save()
-    console.print("[green]✓ Logged out.[/green] Token cleared from ~/.echome/config.yaml\n")
+    console.print("[green]✓ Logged out.[/green]\n")
 
 
 def whoami() -> None:
-    """Show current logged-in user info."""
+    """Show current user info."""
     config = Config.load()
     if not config.token:
-        console.print("[yellow]Not logged in.[/yellow] Run [cyan]echome login[/cyan] to authenticate.\n")
+        console.print("[yellow]Not logged in.[/yellow] Run: [cyan]echome login[/cyan]\n")
         raise typer.Exit(1)
-
     _verify_and_show_user(config)
 
 
 def _verify_and_show_user(config: Config) -> None:
-    """Verify token with Hub and display user info."""
+    """Verify token and display user info."""
     from echome.core.client import HubClient
 
     try:
@@ -160,13 +161,11 @@ def _verify_and_show_user(config: Config) -> None:
             resp.raise_for_status()
             user = resp.json()
 
-        console.print(f"  [bold]User:[/bold]     {user['username']}")
-        console.print(f"  [bold]Role:[/bold]     {user['role']}")
-        if user.get("email"):
-            console.print(f"  [bold]Email:[/bold]    {user['email']}")
-        console.print(f"  [bold]Hub:[/bold]      {config.hub_url}")
+        console.print(f"  User:  [bold]{user['username']}[/bold]")
+        console.print(f"  Role:  {user['role']}")
+        console.print(f"  Hub:   {config.hub_url}")
         console.print()
     except Exception as e:
-        console.print(f"[red]✗ Token verification failed:[/red] {e}")
-        console.print("Try [cyan]echome login[/cyan] to re-authenticate.\n")
+        console.print(f"[red]✗ Verification failed:[/red] {e}")
+        console.print("Try: [cyan]echome login[/cyan]\n")
         raise typer.Exit(1)
