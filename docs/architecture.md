@@ -258,3 +258,21 @@ echome sync → 检测目标 CLI → 从 Hub 拉取 (layer=L0, scope=global) + (
 | Embedding | OpenAI text-embedding-3-small | 成本低、效果好；可换本地模型 |
 | 部署 | Docker Compose | 一键启动，适合单机 |
 | 包管理 | uv / pip | 现代 Python 工作流 |
+
+
+---
+
+## 精致版架构图（D2）
+
+源文件：[`docs/architecture.d2`](architecture.d2)
+
+渲染命令：
+
+```bash
+# 安装 D2: https://d2lang.com/releases/install
+d2 docs/architecture.d2 docs/architecture.svg --layout elk --theme 200
+```
+
+渲染效果（需先执行上述命令生成 SVG）：
+
+![EchoMe Architecture](architecture.svg)

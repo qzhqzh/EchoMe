@@ -1,0 +1,137 @@
+direction: right
+
+title: |md
+  # EchoMe Architecture
+| { near: top-center }
+
+# --- Clients ---
+
+cli: "CLI (echome)" {
+  icon: https://icons.terrastruct.com/essentials%2F112-command-line.svg
+  shape: rectangle
+  style: {
+    fill: "#e3f2fd"
+    stroke: "#1565c0"
+    border-radius: 8
+  }
+}
+
+web: "Web Console" {
+  icon: https://icons.terrastruct.com/essentials%2F213-monitor.svg
+  shape: rectangle
+  style: {
+    fill: "#fce4ec"
+    stroke: "#c62828"
+    border-radius: 8
+  }
+  desc: "Vue 3 + Tailwind\nport 20001"
+}
+
+mcp: "MCP Server" {
+  icon: https://icons.terrastruct.com/essentials%2F117-plug.svg
+  shape: rectangle
+  style: {
+    fill: "#f3e5f5"
+    stroke: "#6a1b9a"
+    border-radius: 8
+  }
+  desc: "Claude Code / Codex"
+}
+
+# --- Hub ---
+
+hub: "EchoMe Hub" {
+  style: {
+    fill: "#fff8e1"
+    stroke: "#f57f17"
+    border-radius: 12
+  }
+
+  api: "FastAPI Routes" {
+    style.fill: "#fff3e0"
+  }
+  auth: "Auth\n(JWT + OAuth)" {
+    style.fill: "#fff3e0"
+  }
+  services: "Services" {
+    style.fill: "#fff3e0"
+    desc: "renderer\nembedding client\ntoken counter"
+  }
+
+  api -> auth: verify
+  api -> services
+}
+
+# --- Data ---
+
+pg: "PostgreSQL\n+ pgvector" {
+  icon: https://icons.terrastruct.com/dev%2Fpostgresql.svg
+  shape: cylinder
+  style: {
+    fill: "#e8f5e9"
+    stroke: "#2e7d32"
+  }
+}
+
+redis: "Redis" {
+  icon: https://icons.terrastruct.com/dev%2Fredis.svg
+  shape: cylinder
+  style: {
+    fill: "#ffebee"
+    stroke: "#c62828"
+  }
+}
+
+# --- Embedding ---
+
+embedding: "Embedding Service" {
+  style: {
+    fill: "#e0f2f1"
+    stroke: "#00695c"
+    border-radius: 12
+  }
+
+  model: "BGE-M3\n(1024d)" {
+    style.fill: "#b2dfdb"
+  }
+  desc: "GPU / ModelScope\nport 20002"
+}
+
+# --- GitHub ---
+
+github: "GitHub OAuth" {
+  icon: https://icons.terrastruct.com/dev%2Fgithub.svg
+  shape: rectangle
+  style: {
+    fill: "#f5f5f5"
+    stroke: "#424242"
+    border-radius: 8
+  }
+}
+
+# --- Connections ---
+
+cli -> hub.api: "REST\nBearer / JWT" {
+  style.stroke: "#1565c0"
+}
+web -> hub.api: "REST\nJWT" {
+  style.stroke: "#c62828"
+}
+mcp -> hub.api: "REST\nBearer" {
+  style.stroke: "#6a1b9a"
+}
+
+hub.services -> pg: "asyncpg" {
+  style.stroke: "#2e7d32"
+}
+hub.services -> redis: "cache" {
+  style.stroke: "#c62828"
+}
+hub.services -> embedding.model: "POST /embed" {
+  style.stroke: "#00695c"
+}
+
+hub.auth -> github: "OAuth callback" {
+  style.stroke: "#424242"
+  style.stroke-dash: 3
+}
