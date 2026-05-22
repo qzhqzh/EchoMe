@@ -2,13 +2,14 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
 from app.core.config import settings
 from app.core.database import get_session
+from app.core.ratelimit import RATE_SYNC, limiter
 from app.models.memory import Memory, SyncLog
 from app.schemas.memory import (
     MemoryResponse,
@@ -26,7 +27,9 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 
 
 @router.post("/push", response_model=SyncPushResponse)
+@limiter.limit(RATE_SYNC)
 async def push_sync(
+    request: Request,
     body: SyncPushRequest,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),

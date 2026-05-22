@@ -434,10 +434,42 @@ CLI 批量上传本地 vault 到 Hub。
 
 ## 11. Rate Limiting
 
-单租户模式下默认不做限流。预留 header：
+所有 API 均有请求频率限制，基于客户端 IP 地址。超限时返回 `429 Too Many Requests`。
+
+### 限制规则
+
+| 端点 | 限制 | 说明 |
+|------|------|------|
+| `GET /auth/github/callback` | 10 次/分钟 | 防止 OAuth code 暴力尝试 |
+| `POST /memories` | 30 次/分钟 | 记忆创建写入限制 |
+| `POST /memories/search` | 60 次/分钟 | 搜索限制（稍宽松） |
+| `POST /sync/push` | 10 次/分钟 | 批量同步不需要太频繁 |
+| 其他所有端点 | 120 次/分钟 | 通用默认限制 |
+
+### 响应 Header
+
+每个响应都包含以下 header：
 
 ```
-X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 999
-X-RateLimit-Reset: 1716300000
+X-RateLimit-Limit: 30
+X-RateLimit-Remaining: 29
+X-RateLimit-Reset: 1716300060
 ```
+
+### 超限响应
+
+```json
+{
+  "error": "Rate limit exceeded: 30 per 1 minute"
+}
+```
+
+HTTP Status: `429 Too Many Requests`
+
+### 内容大小限制
+
+| 字段 | 限制 | 说明 |
+|------|------|------|
+| `title` | 最长 256 字符 | 记忆标题 |
+| `content` | 最长 100,000 字符 (~25,000 汉字) | 记忆正文 |
+| `tags` | 最多 20 个 | 标签数量 |

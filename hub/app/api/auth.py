@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_session
 from app.core.jwt import create_access_token, decode_access_token
+from app.core.ratelimit import RATE_AUTH, RATE_DEFAULT, limiter
 from app.models.user import User
 from app.schemas.user import GitHubLoginURL, TokenResponse, UserInfo
 
@@ -40,7 +41,9 @@ async def github_login() -> GitHubLoginURL:
 
 
 @router.get("/github/callback", response_model=TokenResponse)
+@limiter.limit(RATE_AUTH)
 async def github_callback(
+    request: Request,
     code: str,
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:

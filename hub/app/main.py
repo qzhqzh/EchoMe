@@ -3,11 +3,15 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api import admin, auth, health, market, memories, projects, review, sync
 from app.core.config import settings, validate_settings
+from app.core.ratelimit import limiter
 
 
 @asynccontextmanager
@@ -28,6 +32,10 @@ app = FastAPI(
     description="Personal memory and context layer for AI CLI tools",
     lifespan=lifespan,
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: configurable via ECHOME_CORS_ORIGINS env var
 _cors_origins = (

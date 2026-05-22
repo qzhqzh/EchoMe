@@ -2,12 +2,13 @@
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
 from app.core.database import get_session
+from app.core.ratelimit import RATE_DEFAULT, RATE_SEARCH, RATE_WRITE, limiter
 from app.models.memory import Memory
 from app.schemas.memory import (
     MemoryCreate,
@@ -107,7 +108,9 @@ async def get_memory(
 
 
 @router.post("", response_model=MemoryCreateResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(RATE_WRITE)
 async def create_memory(
+    request: Request,
     body: MemoryCreate,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
@@ -242,7 +245,9 @@ async def delete_memory(
 
 
 @router.post("/search", response_model=SearchResponse)
+@limiter.limit(RATE_SEARCH)
 async def search_memories(
+    request: Request,
     body: MemorySearchRequest,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
