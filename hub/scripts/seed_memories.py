@@ -55,7 +55,17 @@ async def seed_memories_for_user(user_id: str, force: bool = False) -> int:
         seed_data = json.loads(SEED_FILE.read_text())
         created = 0
 
+        # Get existing titles to avoid duplicates (even with --force)
+        result = await session.execute(
+            select(Memory.title).where(Memory.user_id == user_id)
+        )
+        existing_titles = {row[0] for row in result}
+
         for item in seed_data:
+            if item["title"] in existing_titles:
+                print(f"  Skipping (already exists): {item['title']}")
+                continue
+
             memory = Memory(
                 user_id=user_id,
                 title=item["title"],

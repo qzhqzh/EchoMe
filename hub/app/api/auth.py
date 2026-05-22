@@ -24,9 +24,14 @@ GITHUB_USER_URL = "https://api.github.com/user"
 
 
 async def _seed_new_user(session: "AsyncSession", user_id: str) -> None:
-    """Seed example memories for a newly registered user."""
+    """Seed example memories for a newly registered user.
+
+    Skips any memory whose title already exists for this user (idempotent).
+    """
     import json
     from pathlib import Path
+
+    from sqlalchemy import select
 
     from app.models.memory import Memory
     from app.services.token_counter import count_tokens
@@ -37,7 +42,17 @@ async def _seed_new_user(session: "AsyncSession", user_id: str) -> None:
 
     try:
         seed_data = json.loads(seed_file.read_text())
+
+        # Get existing titles for this user to avoid duplicates
+        result = await session.execute(
+            select(Memory.title).where(Memory.user_id == user_id)
+        )
+        existing_titles = {row[0] for row in result}
+
         for item in seed_data:
+            if item["title"] in existing_titles:
+                continue  # Skip duplicate
+
             memory = Memory(
                 user_id=user_id,
                 title=item["title"],
