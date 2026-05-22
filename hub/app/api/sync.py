@@ -147,31 +147,47 @@ async def render(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> RenderResponse:
-    """Render memories into target CLI format."""
+    """Render memories into target CLI format.
+
+    Behavior:
+    - No project_id: render only L0 global memories (for ~/.claude/CLAUDE.md)
+    - With project_id: render L0 global + L1 project-scoped memories (for project CLAUDE.md)
+    - With explicit layer: render only that layer (override)
+    """
     # Fetch relevant memories
     query = select(Memory).where(Memory.user_id == user_id, Memory.status == "active")
 
     if body.layer:
+        # Explicit layer override
         query = query.where(Memory.layer == body.layer.value)
-    else:
-        # Default: L0 global + L1 for project
-        query = query.where(Memory.layer.in_(["L0", "L1"]))
-
-    if body.project_id:
+        if body.project_id:
+            query = query.where(
+                (Memory.scope_global.is_(True))
+                | (Memory.scope_projects.contains([body.project_id]))
+            )
+        else:
+            query = query.where(Memory.scope_global.is_(True))
+        max_tokens = settings.l0_max_tokens
+    elif body.project_id:
+        # Project render: L0 global + L1 scoped to this project
         query = query.where(
-            (Memory.scope_global.is_(True)) | (Memory.scope_projects.contains([body.project_id]))
+            # L0 global memories
+            ((Memory.layer == "L0") & (Memory.scope_global.is_(True)))
+            # L1 memories scoped to this project (or global L1)
+            | ((Memory.layer == "L1") & (
+                (Memory.scope_global.is_(True))
+                | (Memory.scope_projects.contains([body.project_id]))
+            ))
         )
+        max_tokens = settings.l0_max_tokens + settings.l1_max_tokens
     else:
-        query = query.where(Memory.scope_global.is_(True))
+        # Global render: only L0 global memories
+        query = query.where(Memory.layer == "L0", Memory.scope_global.is_(True))
+        max_tokens = settings.l0_max_tokens
 
     query = query.order_by(Memory.priority.desc())
     result = await session.execute(query)
     memories = list(result.scalars().all())
-
-    # Render with token limit
-    max_tokens = settings.l0_max_tokens if body.layer and body.layer.value == "L0" else (
-        settings.l0_max_tokens + settings.l1_max_tokens
-    )
 
     content, included, truncated = render_memories(memories, body.target, max_tokens)
     token_count = count_tokens(content)

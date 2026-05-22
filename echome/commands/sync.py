@@ -38,7 +38,11 @@ def sync(
     project_id: Optional[str] = typer.Option(None, "--project", "-p", help="Project ID"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be changed"),
 ) -> None:
-    """Render and inject memories into AI CLI configuration files."""
+    """Render and inject memories into AI CLI configuration files.
+
+    Without --project: injects only L0 global memories into ~/.claude/CLAUDE.md
+    With --project:    injects L0 global + L1 project memories into project CLAUDE.md
+    """
     config = Config.load()
 
     if not config.token:
@@ -63,10 +67,11 @@ def sync(
 
     for t in targets:
         console.print(f"\n[bold]Syncing to {t.name}...[/bold]")
+        target_name = "claude" if isinstance(t, ClaudeCodeTarget) else "codex"
 
-        # Render L0 (global)
+        # ── Step 1: Always sync L0 global → global file ──
         try:
-            result = client.render(target="claude" if isinstance(t, ClaudeCodeTarget) else "codex")
+            result = client.render(target=target_name)
         except Exception as e:
             console.print(f"  [red]Error fetching from Hub: {e}[/red]")
             continue
@@ -77,18 +82,37 @@ def sync(
         token_count = result.get("token_count", 0)
 
         if dry_run:
-            console.print(f"  [dim]Would inject {included} memories ({token_count} tokens) into {t.global_file}[/dim]")
+            console.print(f"  [dim]Would inject {included} L0 memories ({token_count} tokens) into {t.global_file}[/dim]")
             if truncated:
                 console.print(f"  [yellow]  {truncated} memories would be truncated (token limit)[/yellow]")
-            console.print(f"\n  [dim]--- Preview ---[/dim]")
-            console.print(content[:500])
-            if len(content) > 500:
-                console.print("  [dim]...(truncated preview)[/dim]")
         else:
             t.inject_global(content)
-            console.print(f"  [green]✓[/green] Global: {t.global_file} ({included} memories, {token_count} tokens)")
+            console.print(f"  [green]✓[/green] Global: {t.global_file} ({included} L0 memories, {token_count} tokens)")
             if truncated:
                 console.print(f"  [yellow]  ⚠ {truncated} memories truncated (token limit exceeded)[/yellow]")
+
+        # ── Step 2: If --project given, sync L0+L1 → project file ──
+        if project_id:
+            try:
+                proj_result = client.render(target=target_name, project_id=project_id)
+            except Exception as e:
+                console.print(f"  [red]Error fetching project memories: {e}[/red]")
+                continue
+
+            proj_content = proj_result.get("content", "")
+            proj_included = proj_result.get("memories_included", 0)
+            proj_truncated = proj_result.get("memories_truncated", 0)
+            proj_token_count = proj_result.get("token_count", 0)
+
+            if dry_run:
+                console.print(f"  [dim]Would inject {proj_included} memories ({proj_token_count} tokens) into {t.project_file(project_dir)}[/dim]")
+                if proj_truncated:
+                    console.print(f"  [yellow]  {proj_truncated} memories would be truncated[/yellow]")
+            else:
+                t.inject_project(proj_content, project_dir)
+                console.print(f"  [green]✓[/green] Project: {t.project_file(project_dir)} ({proj_included} memories, {proj_token_count} tokens)")
+                if proj_truncated:
+                    console.print(f"  [yellow]  ⚠ {proj_truncated} memories truncated (token limit exceeded)[/yellow]")
 
     if not dry_run:
         console.print("\n[green]Sync complete![/green]")
