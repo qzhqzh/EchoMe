@@ -69,16 +69,6 @@ def login(
     if manual:
         console.print("\n[bold]Manual Login[/bold]\n")
 
-        # Verify Hub is reachable
-        console.print(f"[dim]Checking Hub at {hub_url} ...[/dim]")
-        try:
-            resp = httpx.get(f"{hub_url}/health", timeout=10)
-            resp.raise_for_status()
-        except Exception as e:
-            console.print(f"[red]Failed to connect to Hub:[/red] {e}")
-            console.print(f"Check that Hub is running at: {hub_url}")
-            raise typer.Exit(1)
-
         # Direct user to the CLI-friendly login page
         cli_login_url = f"{hub_url}/login?source=cli"
 
@@ -87,16 +77,32 @@ def login(
         console.print(f"  2. Click [bold]Login with GitHub[/bold] and authorize")
         console.print(f"  3. Copy the token shown on the page\n")
 
-        token = typer.prompt("Paste token here")
-        if not token.strip():
-            console.print("[red]No token provided.[/red]")
-            raise typer.Exit(1)
+        # Allow retrying if token is wrong
+        while True:
+            token = typer.prompt("Paste token here")
+            if not token.strip():
+                console.print("[red]No token provided.[/red]")
+                raise typer.Exit(1)
 
-        config.token = token.strip()
-        config.save()
-        console.print("[green]✓ Saved![/green]\n")
-        _verify_and_show_user(config)
-        return
+            # Strip common accidental prefixes (e.g. "$ " from copy-paste)
+            cleaned = token.strip()
+            if cleaned.startswith("$ "):
+                cleaned = cleaned[2:]
+
+            config.token = cleaned
+            config.save()
+
+            # Verify the token works
+            try:
+                _verify_and_show_user(config)
+                console.print("[green]✓ Login successful![/green]\n")
+                return
+            except SystemExit:
+                # _verify_and_show_user calls typer.Exit on failure
+                console.print("[yellow]Token invalid or expired. Try again (Ctrl+C to quit).[/yellow]\n")
+                config.token = ""
+                config.save()
+                continue
 
     # Browser flow with local callback server
     console.print("\n[bold]GitHub OAuth Login[/bold]\n")
@@ -153,7 +159,7 @@ def whoami() -> None:
 
 
 def _verify_and_show_user(config: Config) -> None:
-    """Verify token and display user info."""
+    """Verify token and display user info. Raises typer.Exit(1) on failure."""
     from echome.core.client import HubClient
 
     try:
@@ -167,7 +173,8 @@ def _verify_and_show_user(config: Config) -> None:
         console.print(f"  Role:  {user['role']}")
         console.print(f"  Hub:   {config.hub_url}")
         console.print()
+    except SystemExit:
+        raise
     except Exception as e:
         console.print(f"[red]✗ Verification failed:[/red] {e}")
-        console.print("Try: [cyan]echome login[/cyan]\n")
         raise typer.Exit(1)

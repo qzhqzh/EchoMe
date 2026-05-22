@@ -63,6 +63,21 @@ async function copyToken(): Promise<void> {
   }
 }
 
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    success('Copied to clipboard')
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    success('Copied to clipboard')
+  }
+}
+
 async function refreshToken(): Promise<void> {
   refreshing.value = true
   try {
@@ -173,8 +188,17 @@ async function refreshToken(): Promise<void> {
         <!-- Option 1 -->
         <div>
           <h3 class="mb-1 text-sm font-medium text-slate-200">Option 1: Login command</h3>
-          <div class="rounded-lg bg-slate-900 border border-slate-700 p-3">
-            <code class="text-sm text-green-400">$ echome login --manual</code>
+          <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
+            <code class="text-sm text-green-400">echome login --manual</code>
+            <button
+              class="absolute right-2 top-2 rounded p-1 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-700 hover:text-slate-200 transition-all"
+              title="Copy command"
+              @click="copyText('echome login --manual')"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
             <p class="mt-1 text-xs text-slate-500">Then paste the token when prompted.</p>
           </div>
         </div>
@@ -182,20 +206,38 @@ async function refreshToken(): Promise<void> {
         <!-- Option 2 -->
         <div>
           <h3 class="mb-1 text-sm font-medium text-slate-200">Option 2: Direct config</h3>
-          <div class="rounded-lg bg-slate-900 border border-slate-700 p-3">
-            <code class="block text-sm text-green-400">$ mkdir -p ~/.config/echome</code>
-            <code class="block text-sm text-green-400 mt-1">$ cat &gt; ~/.config/echome/config.toml &lt;&lt;EOF</code>
+          <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
+            <code class="block text-sm text-green-400">mkdir -p ~/.config/echome</code>
+            <code class="block text-sm text-green-400 mt-1">cat &gt; ~/.config/echome/config.toml &lt;&lt;EOF</code>
             <code class="block text-sm text-slate-300 mt-1">hub_url = "https://echome.qzhqzh.com"</code>
-            <code class="block text-sm text-slate-300">token = "&lt;paste your token here&gt;"</code>
+            <code class="block text-sm text-slate-300">token = "{{ maskedToken }}"</code>
             <code class="block text-sm text-green-400">EOF</code>
+            <button
+              class="absolute right-2 top-2 rounded p-1 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-700 hover:text-slate-200 transition-all"
+              title="Copy config commands (with your token)"
+              @click="copyText(`mkdir -p ~/.config/echome\ncat > ~/.config/echome/config.toml <<EOF\nhub_url = &quot;https://echome.qzhqzh.com&quot;\ntoken = &quot;${token}&quot;\nEOF`)"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
           </div>
         </div>
 
         <!-- Verify -->
         <div>
           <h3 class="mb-1 text-sm font-medium text-slate-200">Verify</h3>
-          <div class="rounded-lg bg-slate-900 border border-slate-700 p-3">
-            <code class="text-sm text-green-400">$ echome whoami</code>
+          <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
+            <code class="text-sm text-green-400">echome whoami</code>
+            <button
+              class="absolute right-2 top-2 rounded p-1 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-700 hover:text-slate-200 transition-all"
+              title="Copy command"
+              @click="copyText('echome whoami')"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
