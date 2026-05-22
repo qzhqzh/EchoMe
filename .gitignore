@@ -32,5 +32,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Package manager
+uv.lock
+
 # Docker
 docker-compose.override.yaml
