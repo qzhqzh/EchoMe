@@ -189,11 +189,11 @@ async function refreshToken(): Promise<void> {
         <div>
           <h3 class="mb-1 text-sm font-medium text-slate-200">Option 1: Login command</h3>
           <div class="group relative rounded-lg bg-slate-900 border border-slate-700 p-3">
-            <code class="text-sm text-green-400">echome login --manual</code>
+            <code class="text-sm text-green-400">echome login</code>
             <button
               class="absolute right-2 top-2 rounded p-1 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-700 hover:text-slate-200 transition-all"
               title="Copy command"
-              @click="copyText('echome login --manual')"
+              @click="copyText('echome login')"
             >
               <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />

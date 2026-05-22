@@ -50,10 +50,11 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
 
 
 def login(
-    manual: bool = typer.Option(False, "--manual", "-m", help="Manually paste token instead of browser flow"),
+    browser: bool = typer.Option(False, "--browser", "-b", help="Use browser flow (requires GUI desktop)"),
+    manual: bool = typer.Option(False, "--manual", "-m", help="(deprecated, now default) Paste token manually"),
     hub: str = typer.Option("", "--hub", help="Hub URL (default: from config or https://echome.qzhqzh.com)"),
 ) -> None:
-    """Login via GitHub OAuth. Opens browser for authorization."""
+    """Login via GitHub OAuth. Default: open URL, copy token, paste back."""
     global _received_token
     _received_token = None
 
@@ -66,46 +67,54 @@ def login(
 
     hub_url = config.hub_url.rstrip("/")
 
-    if manual:
-        console.print("\n[bold]Manual Login[/bold]\n")
+    if browser:
+        # Browser flow with local callback server (for GUI desktops)
+        _login_browser(config, hub_url)
+        return
 
-        # Direct user to the CLI-friendly login page
-        cli_login_url = f"{hub_url}/login?source=cli"
+    # Default: manual/token-paste flow (works on any Linux)
+    console.print("\n[bold]EchoMe Login[/bold]\n")
 
-        console.print(f"  1. Open this URL in your browser:\n")
-        console.print(f"     [cyan]{cli_login_url}[/cyan]\n")
-        console.print(f"  2. Click [bold]Login with GitHub[/bold] and authorize")
-        console.print(f"  3. Copy the token shown on the page\n")
+    # Direct user to the CLI-friendly login page
+    cli_login_url = f"{hub_url}/login?source=cli"
 
-        # Allow retrying if token is wrong
-        while True:
-            token = typer.prompt("Paste token here")
-            if not token.strip():
-                console.print("[red]No token provided.[/red]")
-                raise typer.Exit(1)
+    console.print(f"  1. Open this URL in your browser:\n")
+    console.print(f"     [cyan]{cli_login_url}[/cyan]\n")
+    console.print(f"  2. Click [bold]Login with GitHub[/bold] and authorize")
+    console.print(f"  3. Copy the token shown on the page\n")
 
-            # Strip common accidental prefixes (e.g. "$ " from copy-paste)
-            cleaned = token.strip()
-            if cleaned.startswith("$ "):
-                cleaned = cleaned[2:]
+    # Allow retrying if token is wrong
+    while True:
+        token = typer.prompt("Paste token here")
+        if not token.strip():
+            console.print("[red]No token provided.[/red]")
+            raise typer.Exit(1)
 
-            config.token = cleaned
+        # Strip common accidental prefixes (e.g. "$ " from copy-paste)
+        cleaned = token.strip()
+        if cleaned.startswith("$ "):
+            cleaned = cleaned[2:]
+
+        config.token = cleaned
+        config.save()
+
+        # Verify the token works
+        try:
+            _verify_and_show_user(config)
+            console.print("[green]✓ Login successful![/green]\n")
+            return
+        except SystemExit:
+            # _verify_and_show_user calls typer.Exit on failure
+            console.print("[yellow]Token invalid or expired. Try again (Ctrl+C to quit).[/yellow]\n")
+            config.token = ""
             config.save()
+            continue
 
-            # Verify the token works
-            try:
-                _verify_and_show_user(config)
-                console.print("[green]✓ Login successful![/green]\n")
-                return
-            except SystemExit:
-                # _verify_and_show_user calls typer.Exit on failure
-                console.print("[yellow]Token invalid or expired. Try again (Ctrl+C to quit).[/yellow]\n")
-                config.token = ""
-                config.save()
-                continue
 
-    # Browser flow with local callback server
-    console.print("\n[bold]GitHub OAuth Login[/bold]\n")
+def _login_browser(config: Config, hub_url: str) -> None:
+    """Browser-based login with local callback server (for GUI desktops)."""
+    global _received_token
+    console.print("\n[bold]GitHub OAuth Login (Browser)[/bold]\n")
 
     port = 19876
     server = http.server.HTTPServer(("127.0.0.1", port), _CallbackHandler)
@@ -120,7 +129,7 @@ def login(
         webbrowser.open(auth_url)
     except Exception:
         console.print(f"[yellow]Could not open browser.[/yellow]")
-        console.print(f"Try: [cyan]echome login --manual[/cyan]\n")
+        console.print(f"Try: [cyan]echome login[/cyan] (default token-paste flow)\n")
 
     if _server_event.wait(timeout=120):
         server.shutdown()
@@ -134,7 +143,7 @@ def login(
             raise typer.Exit(1)
     else:
         server.shutdown()
-        console.print("[red]✗ Timeout.[/red] Try: [cyan]echome login --manual[/cyan]\n")
+        console.print("[red]✗ Timeout.[/red] Try: [cyan]echome login[/cyan]\n")
         raise typer.Exit(1)
 
 

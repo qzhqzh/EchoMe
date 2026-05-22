@@ -184,7 +184,7 @@ async function handleTokenLogin(): Promise<void> {
         </button>
 
         <div class="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-          <p class="text-xs text-slate-400">Paste this token back in your terminal when prompted by <code class="text-green-400">echome login --manual</code>.</p>
+          <p class="text-xs text-slate-400">Paste this token back in your terminal when prompted by <code class="text-green-400">echome login</code>.</p>
         </div>
 
         <button
