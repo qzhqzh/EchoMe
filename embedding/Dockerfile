@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Switch apt to Aliyun mirror
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+
 # Install system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ git \
@@ -9,6 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Configure uv to use Tsinghua PyPI mirror
+ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Copy project files
 COPY pyproject.toml .
