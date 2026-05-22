@@ -36,13 +36,13 @@ async def echome_get_project_context(project_id: str | None = None) -> str:
         by_type.setdefault(mem_type, []).append(item)
 
     type_headers = {
-        "persona": "Identity & Style",
-        "workflow": "Workflow Rules",
+        "identity": "Identity & Style",
+        "method": "Workflow & Methods",
         "tech": "Technical Preferences",
-        "constraint": "Constraints",
+        "guardrail": "Constraints",
         "project": "Project Details",
         "decision": "Past Decisions",
-        "knowledge": "Domain Knowledge",
+        "context": "Domain Knowledge",
     }
 
     for mem_type, memories in by_type.items():

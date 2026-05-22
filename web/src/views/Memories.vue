@@ -26,14 +26,15 @@ const searchQuery = ref('')
 // Type tab config with priority order and display info
 const typeTabs: { key: MemoryType | ''; label: string; icon: string; color: string }[] = [
   { key: '', label: 'All', icon: '📋', color: 'text-slate-300' },
-  { key: 'persona', label: 'Identity', icon: '🧠', color: 'text-purple-300' },
-  { key: 'constraint', label: 'Constraints', icon: '🚫', color: 'text-red-300' },
-  { key: 'workflow', label: 'Workflow', icon: '⚡', color: 'text-blue-300' },
-  { key: 'tech', label: 'Tech', icon: '🔧', color: 'text-emerald-300' },
-  { key: 'interaction', label: 'Style', icon: '💬', color: 'text-pink-300' },
+  { key: 'identity', label: 'Identity', icon: '🧠', color: 'text-purple-300' },
+  { key: 'guardrail', label: 'Guardrails', icon: '🚫', color: 'text-red-300' },
+  { key: 'reasoning', label: 'Reasoning', icon: '💡', color: 'text-violet-300' },
+  { key: 'method', label: 'Methods', icon: '⚡', color: 'text-blue-300' },
+  { key: 'stack', label: 'Stack', icon: '🔧', color: 'text-emerald-300' },
+  { key: 'style', label: 'Style', icon: '💬', color: 'text-pink-300' },
   { key: 'decision', label: 'Decisions', icon: '📋', color: 'text-indigo-300' },
-  { key: 'knowledge', label: 'Knowledge', icon: '📚', color: 'text-cyan-300' },
-  { key: 'snippet', label: 'Snippets', icon: '📝', color: 'text-amber-300' },
+  { key: 'context', label: 'Context', icon: '📚', color: 'text-cyan-300' },
+  { key: 'template', label: 'Templates', icon: '📝', color: 'text-amber-300' },
   { key: 'project', label: 'Project', icon: '📁', color: 'text-teal-300' },
 ]
 

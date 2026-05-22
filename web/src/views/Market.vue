@@ -38,7 +38,7 @@ const filterLayer = ref('')
 const offset = ref(0)
 const limit = 20
 
-const memoryTypes = ['persona', 'workflow', 'tech', 'constraint', 'snippet', 'decision', 'knowledge', 'interaction', 'project']
+const memoryTypes = ['identity', 'guardrail', 'reasoning', 'method', 'stack', 'style', 'decision', 'context', 'template', 'project']
 const layers = ['L0', 'L1', 'L2']
 
 async function loadStats() {

@@ -9,15 +9,16 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class MemoryType(str, Enum):
-    persona = "persona"
-    workflow = "workflow"
-    tech = "tech"
-    constraint = "constraint"
-    snippet = "snippet"
+    identity = "identity"
+    method = "method"
+    stack = "stack"
+    guardrail = "guardrail"
+    template = "template"
     decision = "decision"
-    knowledge = "knowledge"
-    interaction = "interaction"
+    context = "context"
+    style = "style"
     project = "project"
+    reasoning = "reasoning"
 
 
 class MemoryLayer(str, Enum):

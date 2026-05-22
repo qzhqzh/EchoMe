@@ -40,8 +40,8 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "persona", "workflow", "tech", "constraint",
-                            "snippet", "decision", "knowledge", "interaction", "project",
+                            "identity", "guardrail", "reasoning", "method", "stack",
+                            "style", "decision", "context", "template", "project",
                         ],
                         "description": "Optional: filter by memory type",
                     },
@@ -84,8 +84,8 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "persona", "workflow", "tech", "constraint",
-                            "snippet", "decision", "knowledge", "interaction", "project",
+                            "identity", "guardrail", "reasoning", "method", "stack",
+                            "style", "decision", "context", "template", "project",
                         ],
                         "description": "Memory type to list",
                     },
@@ -121,8 +121,8 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "persona", "workflow", "tech", "constraint",
-                            "snippet", "decision", "knowledge", "interaction", "project",
+                            "identity", "guardrail", "reasoning", "method", "stack",
+                            "style", "decision", "context", "template", "project",
                         ],
                         "description": "Memory type",
                     },

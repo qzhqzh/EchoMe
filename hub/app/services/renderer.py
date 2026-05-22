@@ -20,31 +20,33 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 2. 涉及 git/PR/commit/deploy 操作前，必须查 echome_search
 3. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
 4. 不确定项目约定时，调用 echome_search 而不是假设
-5. 写入记忆时 type 只能是：persona, workflow, tech, constraint, snippet, decision, knowledge, interaction, project"""
+5. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project"""
 
 # Type rendering priority (lower number = higher priority = rendered first)
 TYPE_PRIORITY: dict[str, int] = {
-    "persona": 1,
-    "constraint": 2,
-    "workflow": 3,
-    "tech": 4,
-    "interaction": 5,
-    "decision": 6,
-    "knowledge": 7,
-    "snippet": 8,
-    "project": 9,
+    "identity": 1,
+    "guardrail": 2,
+    "reasoning": 3,
+    "method": 4,
+    "stack": 5,
+    "style": 6,
+    "decision": 7,
+    "context": 8,
+    "template": 9,
+    "project": 10,
 }
 
 # Human-readable section headers with emoji markers for visual scanning
 TYPE_HEADERS: dict[str, str] = {
-    "persona": "🧠 Identity & Style",
-    "constraint": "🚫 Constraints (RED LINES)",
-    "workflow": "⚡ Workflow & Methods",
-    "tech": "🔧 Technical Preferences",
-    "interaction": "💬 Communication Style",
+    "identity": "🧠 Identity & Style",
+    "guardrail": "🚫 Constraints (RED LINES)",
+    "reasoning": "💡 Thinking Framework",
+    "method": "⚡ Workflow & Methods",
+    "stack": "🔧 Technical Preferences",
+    "style": "💬 Communication Style",
     "decision": "📋 Decisions",
-    "knowledge": "📚 Knowledge & Context",
-    "snippet": "📝 Templates & Snippets",
+    "context": "📚 Knowledge & Context",
+    "template": "📝 Templates & Snippets",
     "project": "📁 Project Context",
 }
 

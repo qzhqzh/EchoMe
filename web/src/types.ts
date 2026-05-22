@@ -1,12 +1,13 @@
 export type MemoryType =
-  | 'persona'
-  | 'workflow'
-  | 'tech'
-  | 'constraint'
-  | 'snippet'
+  | 'identity'
+  | 'guardrail'
+  | 'reasoning'
+  | 'method'
+  | 'stack'
+  | 'style'
   | 'decision'
-  | 'knowledge'
-  | 'interaction'
+  | 'context'
+  | 'template'
   | 'project'
 
 export type MemoryLayer = 'L0' | 'L1' | 'L2'
@@ -130,14 +131,15 @@ export interface ApproveRequest {
 }
 
 export const MEMORY_TYPE_COLORS: Record<MemoryType, string> = {
-  persona: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  workflow: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  tech: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  constraint: 'bg-red-500/20 text-red-300 border-red-500/30',
-  snippet: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+  identity: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  guardrail: 'bg-red-500/20 text-red-300 border-red-500/30',
+  reasoning: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
+  method: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  stack: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  style: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
   decision: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  knowledge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  interaction: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  context: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  template: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
   project: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
 }
 
@@ -155,8 +157,8 @@ export const STATUS_COLORS: Record<MemoryStatus, string> = {
 }
 
 export const MEMORY_TYPES: MemoryType[] = [
-  'persona', 'workflow', 'tech', 'constraint', 'snippet',
-  'decision', 'knowledge', 'interaction', 'project',
+  'identity', 'guardrail', 'reasoning', 'method', 'stack',
+  'style', 'decision', 'context', 'template', 'project',
 ]
 
 export const MEMORY_LAYERS: MemoryLayer[] = ['L0', 'L1', 'L2']

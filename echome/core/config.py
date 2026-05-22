@@ -40,14 +40,15 @@ class Config(BaseModel):
 def ensure_vault_dirs() -> None:
     """Create vault directory structure if it doesn't exist."""
     dirs = [
-        VAULT_DIR / "persona",
-        VAULT_DIR / "workflow",
-        VAULT_DIR / "tech",
-        VAULT_DIR / "constraint",
-        VAULT_DIR / "snippet",
+        VAULT_DIR / "identity",
+        VAULT_DIR / "guardrail",
+        VAULT_DIR / "reasoning",
+        VAULT_DIR / "method",
+        VAULT_DIR / "stack",
+        VAULT_DIR / "style",
         VAULT_DIR / "decision",
-        VAULT_DIR / "knowledge",
-        VAULT_DIR / "interaction",
+        VAULT_DIR / "context",
+        VAULT_DIR / "template",
         VAULT_DIR / "project",
         PENDING_DIR,
         STATE_DIR,

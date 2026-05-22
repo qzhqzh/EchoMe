@@ -7,8 +7,8 @@ async def echome_list_by_type(type: str, status: str = "active") -> str:
     """List all memories of a given type.
 
     Args:
-        type: Memory type (persona, workflow, tech, constraint, snippet,
-              decision, knowledge, interaction, project).
+        type: Memory type (identity, guardrail, reasoning, method, stack,
+              style, decision, context, template, project).
         status: Filter by status (default: active).
 
     Returns:

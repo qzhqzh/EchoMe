@@ -99,11 +99,11 @@ def add_memory(
             content = Prompt.ask("Content (description/rules)")
 
         type_choices = [
-            "persona", "workflow", "tech", "constraint",
-            "snippet", "decision", "knowledge", "interaction", "project",
+            "identity", "guardrail", "reasoning", "method", "stack",
+            "style", "decision", "context", "template", "project",
         ]
         if not type:
-            type = Prompt.ask("Type", choices=type_choices, default="workflow")
+            type = Prompt.ask("Type", choices=type_choices, default="context")
         if not layer:
             layer = Prompt.ask("Layer", choices=["L0", "L1", "L2"], default="L2")
         if priority is None:
@@ -130,10 +130,10 @@ def add_memory(
         content = Prompt.ask("Content (description/rules)")
 
         type_choices = [
-            "persona", "workflow", "tech", "constraint",
-            "snippet", "decision", "knowledge", "interaction", "project",
+            "identity", "guardrail", "reasoning", "method", "stack",
+            "style", "decision", "context", "template", "project",
         ]
-        mem_type = Prompt.ask("Type", choices=type_choices, default="workflow")
+        mem_type = Prompt.ask("Type", choices=type_choices, default="context")
         layer_val = Prompt.ask("Layer", choices=["L0", "L1", "L2"], default="L2")
         priority_val = int(Prompt.ask("Priority (1-10)", default="5"))
         tags_input = Prompt.ask("Tags (comma-separated)", default="")
@@ -158,20 +158,24 @@ def add_memory(
 
 
 VALID_TYPES = {
-    "persona", "workflow", "tech", "constraint",
-    "snippet", "decision", "knowledge", "interaction", "project",
+    "identity", "guardrail", "reasoning", "method", "stack",
+    "style", "decision", "context", "template", "project",
 }
 
 TYPE_ALIASES = {
-    "feedback": "interaction", "preference": "interaction", "style": "interaction",
-    "rule": "workflow", "rules": "workflow", "process": "workflow", "convention": "workflow",
-    "technology": "tech", "technical": "tech", "stack": "tech", "tool": "tech",
-    "framework": "tech", "tools": "tech",
-    "limit": "constraint", "boundary": "constraint", "forbidden": "constraint",
-    "code": "snippet", "template": "snippet",
-    "context": "project", "background": "project",
-    "info": "knowledge", "fact": "knowledge", "domain": "knowledge",
+    "feedback": "style", "preference": "style", "interaction": "style",
+    "rule": "method", "rules": "method", "process": "method", "convention": "method",
+    "workflow": "method",
+    "technology": "stack", "technical": "stack", "tech": "stack", "tool": "stack",
+    "framework": "stack", "tools": "stack",
+    "limit": "guardrail", "boundary": "guardrail", "forbidden": "guardrail",
+    "constraint": "guardrail", "red_line": "guardrail",
+    "code": "template", "snippet": "template",
+    "background": "project",
+    "info": "context", "fact": "context", "domain": "context", "knowledge": "context",
     "architecture": "decision", "choice": "decision",
+    "persona": "identity", "character": "identity",
+    "thinking": "reasoning", "framework": "reasoning",
 }
 
 
@@ -182,7 +186,7 @@ def _normalize_type(raw_type: str) -> str:
         return t
     if t in TYPE_ALIASES:
         return TYPE_ALIASES[t]
-    return "knowledge"
+    return "context"
 
 
 def _build_memory_data(

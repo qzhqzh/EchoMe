@@ -4,8 +4,8 @@ from echome_mcp.hub_client import MCPHubClient
 
 # Valid types and common aliases that AI might use
 VALID_TYPES = {
-    "persona", "workflow", "tech", "constraint",
-    "snippet", "decision", "knowledge", "interaction", "project",
+    "identity", "guardrail", "reasoning", "method", "stack",
+    "style", "decision", "context", "template", "project",
 }
 
 # Mapping for common AI mistakes → correct type
@@ -66,8 +66,8 @@ async def echome_remember(
     Args:
         title: Short, descriptive title for the memory.
         content: Detailed content of the rule/knowledge/preference.
-        type: Memory type. Valid: persona, workflow, tech, constraint,
-              snippet, decision, knowledge, interaction, project.
+        type: Memory type. Valid: identity, guardrail, reasoning, method, stack,
+              style, decision, context, template, project.
         tags: List of relevant tags.
         suggested_layer: Suggested loading layer (L0/L1/L2, default L2).
         project_id: If project-specific, the project ID.

@@ -15,7 +15,7 @@ const emit = defineEmits<{
 
 const title = ref(props.initial?.title || '')
 const content = ref(props.initial?.content || '')
-const type = ref<MemoryType>(props.initial?.type || 'knowledge')
+const type = ref<MemoryType>(props.initial?.type || 'context')
 const layer = ref<MemoryLayer>(props.initial?.layer || 'L2')
 const priority = ref(props.initial?.priority || 5)
 const tagsInput = ref(props.initial?.tags.join(', ') || '')

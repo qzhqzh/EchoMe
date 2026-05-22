@@ -68,8 +68,8 @@ class Memory(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "type IN ('persona','workflow','tech','constraint','snippet',"
-            "'decision','knowledge','interaction','project')",
+            "type IN ('identity','method','stack','guardrail','template',"
+            "'decision','context','style','project','reasoning')",
             name="valid_type",
         ),
         CheckConstraint("layer IN ('L0','L1','L2')", name="valid_layer"),
