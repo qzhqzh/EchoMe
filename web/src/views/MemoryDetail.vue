@@ -90,15 +90,20 @@ function formatDate(dateStr: string): string {
 
     <!-- View mode -->
     <div v-else-if="memory" class="space-y-6">
+      <!-- Back button -->
+      <button
+        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 transition-all"
+        @click="router.back()"
+      >
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0 flex-1">
-          <button
-            class="mb-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
-            @click="router.push('/memories')"
-          >
-            &larr; Back to memories
-          </button>
           <h1 class="text-2xl font-bold text-slate-100">{{ memory.title }}</h1>
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <Badge :color="MEMORY_TYPE_COLORS[memory.type]">{{ memory.type }}</Badge>
