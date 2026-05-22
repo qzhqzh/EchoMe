@@ -31,8 +31,6 @@ async def _seed_new_user(session: "AsyncSession", user_id: str) -> None:
     import json
     from pathlib import Path
 
-    from sqlalchemy import select
-
     from app.models.memory import Memory
     from app.services.token_counter import count_tokens
 

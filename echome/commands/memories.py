@@ -175,7 +175,7 @@ TYPE_ALIASES = {
     "info": "context", "fact": "context", "domain": "context", "knowledge": "context",
     "architecture": "decision", "choice": "decision",
     "persona": "identity", "character": "identity",
-    "thinking": "reasoning", "framework": "reasoning",
+    "thinking": "reasoning",
 }
 
 

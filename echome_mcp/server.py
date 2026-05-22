@@ -1,7 +1,6 @@
 """EchoMe MCP Server - Main server implementation."""
 
 import asyncio
-import json
 from typing import Any
 
 from mcp.server import Server

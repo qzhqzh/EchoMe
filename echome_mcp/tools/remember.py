@@ -2,40 +2,46 @@
 
 from echome_mcp.hub_client import MCPHubClient
 
-# Valid types and common aliases that AI might use
+# Valid types (must match the database CHECK constraint)
 VALID_TYPES = {
     "identity", "guardrail", "reasoning", "method", "stack",
     "style", "decision", "context", "template", "project",
 }
 
-# Mapping for common AI mistakes → correct type
+# Mapping for common AI mistakes → correct valid type
 TYPE_ALIASES = {
-    "feedback": "interaction",
-    "preference": "interaction",
-    "style": "interaction",
-    "rule": "workflow",
-    "rules": "workflow",
-    "process": "workflow",
-    "convention": "workflow",
-    "technology": "tech",
-    "technical": "tech",
-    "stack": "tech",
-    "tool": "tech",
-    "tools": "tech",
-    "framework": "tech",
-    "limit": "constraint",
-    "boundary": "constraint",
-    "forbidden": "constraint",
-    "safety": "constraint",
-    "code": "snippet",
-    "template": "snippet",
-    "context": "project",
+    "feedback": "style",
+    "preference": "style",
+    "interaction": "style",
+    "rule": "method",
+    "rules": "method",
+    "process": "method",
+    "convention": "method",
+    "workflow": "method",
+    "technology": "stack",
+    "technical": "stack",
+    "tech": "stack",
+    "tool": "stack",
+    "tools": "stack",
+    "framework": "stack",
+    "limit": "guardrail",
+    "boundary": "guardrail",
+    "forbidden": "guardrail",
+    "constraint": "guardrail",
+    "red_line": "guardrail",
+    "safety": "guardrail",
+    "code": "template",
+    "snippet": "template",
     "background": "project",
-    "info": "knowledge",
-    "fact": "knowledge",
-    "domain": "knowledge",
+    "info": "context",
+    "fact": "context",
+    "domain": "context",
+    "knowledge": "context",
     "architecture": "decision",
     "choice": "decision",
+    "persona": "identity",
+    "character": "identity",
+    "thinking": "reasoning",
 }
 
 
@@ -46,8 +52,8 @@ def _normalize_type(raw_type: str) -> str:
         return t
     if t in TYPE_ALIASES:
         return TYPE_ALIASES[t]
-    # Default fallback
-    return "knowledge"
+    # Default fallback to a valid type
+    return "context"
 
 
 async def echome_remember(

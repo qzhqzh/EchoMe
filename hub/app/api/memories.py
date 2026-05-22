@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
 from app.core.database import get_session
-from app.core.ratelimit import RATE_DEFAULT, RATE_SEARCH, RATE_WRITE, limiter
+from app.core.ratelimit import RATE_SEARCH, RATE_WRITE, limiter
 from app.models.memory import Memory
 from app.schemas.memory import (
     MemoryCreate,
