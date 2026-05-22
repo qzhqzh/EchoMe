@@ -64,6 +64,7 @@ async def push_sync(
             existing.scope_projects = item.scope.projects
             existing.scope_exclude = item.scope.exclude_projects
             existing.source = item.source.value
+            existing.visibility = item.visibility.value
             existing.token_count = count_tokens(item.content)
             updated += 1
             affected_ids.append(str(existing.id))
@@ -83,6 +84,7 @@ async def push_sync(
                 scope_projects=item.scope.projects,
                 scope_exclude=item.scope.exclude_projects,
                 source=item.source.value,
+                visibility=item.visibility.value,
                 token_count=count_tokens(item.content),
             )
             session.add(memory)

@@ -52,6 +52,11 @@ class ScopeSchema(BaseModel):
 # --- Request Schemas ---
 
 
+class Visibility(str, Enum):
+    private = "private"
+    public = "public"
+
+
 class MemoryCreate(BaseModel):
     """Request body for creating a memory."""
 
@@ -64,6 +69,7 @@ class MemoryCreate(BaseModel):
     status: MemoryStatus = MemoryStatus.active
     scope: ScopeSchema = Field(default_factory=ScopeSchema)
     source: MemorySource = MemorySource.manual
+    visibility: Visibility = Visibility.private
 
 
 class MemoryUpdate(BaseModel):
@@ -78,6 +84,7 @@ class MemoryUpdate(BaseModel):
     status: MemoryStatus
     scope: ScopeSchema
     source: MemorySource
+    visibility: Visibility = Visibility.private
 
 
 class MemoryPatch(BaseModel):
@@ -92,6 +99,7 @@ class MemoryPatch(BaseModel):
     status: MemoryStatus | None = None
     scope: ScopeSchema | None = None
     source: MemorySource | None = None
+    visibility: Visibility | None = None
 
 
 class MemorySearchRequest(BaseModel):
@@ -131,6 +139,8 @@ class _OrmScopeMixin:
                 "token_count": data.token_count,
                 "created_at": data.created_at,
                 "updated_at": data.updated_at,
+                "visibility": getattr(data, "visibility", "private"),
+                "forked_from": getattr(data, "forked_from", None),
                 "scope": {
                     "global": data.scope_global,
                     "projects": data.scope_projects,
@@ -154,6 +164,8 @@ class MemoryResponse(_OrmScopeMixin, BaseModel):
     scope: ScopeSchema
     source: MemorySource
     token_count: int
+    visibility: Visibility = Visibility.private
+    forked_from: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -173,6 +185,8 @@ class MemoryListItem(_OrmScopeMixin, BaseModel):
     scope: ScopeSchema
     source: MemorySource
     token_count: int
+    visibility: Visibility = Visibility.private
+    forked_from: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -234,6 +248,7 @@ class SyncPushItem(BaseModel):
     status: MemoryStatus = MemoryStatus.active
     scope: ScopeSchema = Field(default_factory=ScopeSchema)
     source: MemorySource = MemorySource.manual
+    visibility: Visibility = Visibility.private
     updated_at: datetime | None = None
 
 

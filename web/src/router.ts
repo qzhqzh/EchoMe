@@ -38,6 +38,11 @@ const routes = [
     name: 'Projects',
     component: () => import('@/views/Projects.vue'),
   },
+  {
+    path: '/market',
+    name: 'Market',
+    component: () => import('@/views/Market.vue'),
+  },
 ]
 
 export const router = createRouter({
