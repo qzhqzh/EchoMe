@@ -51,12 +51,18 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
 
 def login(
     manual: bool = typer.Option(False, "--manual", "-m", help="Manually paste token instead of browser flow"),
+    hub: str = typer.Option("", "--hub", help="Hub URL (default: from config or https://echome.qzhqzh.com)"),
 ) -> None:
     """Login via GitHub OAuth. Opens browser for authorization."""
     global _received_token
     _received_token = None
 
     config = Config.load()
+
+    # Allow overriding hub URL
+    if hub.strip():
+        config.hub_url = hub.strip().rstrip("/")
+        config.save()
 
     if manual:
         # Simple manual flow: user copies token from web UI
