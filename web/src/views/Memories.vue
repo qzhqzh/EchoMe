@@ -215,7 +215,7 @@ const totalPages = () => Math.ceil(total.value / limit)
       <p class="mt-3 text-slate-400">
         {{ t('memories_no_found') }}
       </p>
-      <button class="btn-primary mt-4" @click="router.push('/memories/new')">{{ t('memories_create_first') }}</button>
+      <button class="btn-primary mt-4" @click="router.push({ path: '/memories/new', query: activeType ? { type: activeType } : {} })">{{ t('memories_create_first') }}</button>
     </div>
 
     <div v-else class="grid gap-3">
