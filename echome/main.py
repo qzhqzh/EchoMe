@@ -137,17 +137,29 @@ def status_cmd() -> None:
     mcp_status = _get_mcp_status()
     console.print(f"  [bold]MCP:[/bold]       {mcp_status}")
 
-    # MCP process check — try to see if eme mcp serve is running
+    # MCP process check — cross-platform
     try:
+        import platform
         import subprocess
-        result = subprocess.run(
-            ["pgrep", "-f", "echome mcp serve"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            console.print(f"  [bold]MCP Proc:[/bold]  [green]✓ Running[/green] (PID {result.stdout.strip().split()[0]})")
+
+        if platform.system() == "Windows":
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if "echome" in result.stdout.lower():
+                console.print(f"  [bold]MCP Proc:[/bold]  [green]✓ Running[/green]")
+            else:
+                console.print(f"  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
         else:
-            console.print(f"  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
+            result = subprocess.run(
+                ["pgrep", "-f", "echome mcp serve"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                console.print(f"  [bold]MCP Proc:[/bold]  [green]✓ Running[/green] (PID {result.stdout.strip().split()[0]})")
+            else:
+                console.print(f"  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
     except Exception:
         console.print(f"  [bold]MCP Proc:[/bold]  [dim]unknown[/dim]")
 

@@ -31,10 +31,13 @@ class Config(BaseModel):
 
     def save(self) -> None:
         """Save config to ~/.echome/config.yaml."""
+        import platform
+
         ECHOME_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(yaml.dump(self.model_dump(), default_flow_style=False))
-        # Secure the config file (contains token)
-        CONFIG_FILE.chmod(0o600)
+        # Secure the config file (contains token) — Unix only
+        if platform.system() != "Windows":
+            CONFIG_FILE.chmod(0o600)
 
 
 def ensure_vault_dirs() -> None:
