@@ -15,9 +15,6 @@ services:
     volumes:
       - ./hub:/app
     environment:
-      # Point to your self-hosted embedding service
-      # The service must expose POST /embed accepting {"texts": [...]}
-      # and returning {"embeddings": [[...], ...], "dimension": N}
       - ECHOME_EMBEDDING_URL=${ECHOME_EMBEDDING_URL:-http://host.docker.internal:20002}
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 20000 --reload"
