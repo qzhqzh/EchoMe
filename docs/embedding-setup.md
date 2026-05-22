@@ -107,11 +107,15 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=20002)
 EOF
 
-# 5. 启动
+# 5. 下载模型（首次需要，~2GB）
+export HF_ENDPOINT=https://huggingface.co
+uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"
+
+# 6. 启动
 uv run server.py
 ```
 
-> **注意**：首次运行会自动下载 BGE-M3 模型（~2GB），请确保网络畅通。
+> **注意**：下载模型需要设置 `HF_ENDPOINT=https://huggingface.co`，如果网络不通可换镜像源。
 
 ### 方法 B：uv 一行跑（快速验证，无需 init）
 
@@ -135,6 +139,7 @@ ExecStart=/opt/echome-embed/.venv/bin/python server.py
 Restart=always
 RestartSec=10
 Environment=CUDA_VISIBLE_DEVICES=0
+Environment=HF_ENDPOINT=https://huggingface.co
 
 [Install]
 WantedBy=multi-user.target
