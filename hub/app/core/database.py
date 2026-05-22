@@ -1,10 +1,12 @@
 """Database engine and session management."""
 
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from app.core.config import settings
+
+logger = logging.getLogger("db_session")
 
 engine = create_async_engine(
     settings.database_url,
@@ -25,7 +27,10 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         try:
             yield session
+            logger.info(f"Session: about to commit (dirty={session.dirty})")
             await session.commit()
-        except Exception:
+            logger.info("Session: commit succeeded")
+        except Exception as e:
+            logger.error(f"Session: commit failed, rolling back: {e}")
             await session.rollback()
             raise
