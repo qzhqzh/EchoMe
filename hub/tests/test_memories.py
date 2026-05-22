@@ -609,3 +609,144 @@ class TestMemorySchemaValidation:
         assert req.min_score == 0.3
         assert req.type is None
         assert req.tags == []
+
+
+
+class TestComputeAndStoreEmbedding:
+    """Tests for the _compute_and_store_embedding background task."""
+
+    @pytest.mark.asyncio
+    async def test_embedding_task_uses_targeted_update(self):
+        """Background embedding task should only update the embedding column,
+        not load and re-commit the full ORM object (which would overwrite
+        concurrent changes like layer updates).
+        """
+        from app.api.memories import _compute_and_store_embedding
+
+        memory_id = uuid.uuid4()
+        fake_embedding = [0.1] * 1024
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock()
+        mock_session.commit = AsyncMock()
+
+        # Mock the context manager
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
+            with patch("app.core.database.async_session_factory", return_value=mock_session_ctx):
+                await _compute_and_store_embedding(memory_id, "test text")
+
+        # Verify session.execute was called (the UPDATE statement)
+        mock_session.execute.assert_called_once()
+        # Verify commit was called
+        mock_session.commit.assert_called_once()
+
+        # The execute call should be an UPDATE, not a SELECT+modify pattern
+        execute_call_args = mock_session.execute.call_args
+        stmt = execute_call_args[0][0]
+
+        # Verify it's an Update statement (not a Select)
+        from sqlalchemy.sql import Update
+        assert isinstance(stmt, Update), (
+            f"Expected a targeted UPDATE statement, got {type(stmt).__name__}. "
+            "The background task should NOT load the full ORM object."
+        )
+
+    @pytest.mark.asyncio
+    async def test_embedding_task_noop_when_embedding_unavailable(self):
+        """If embedding service returns None, no DB operation should happen."""
+        from app.api.memories import _compute_and_store_embedding
+
+        memory_id = uuid.uuid4()
+
+        with patch("app.api.memories.get_embedding", return_value=None):
+            with patch("app.core.database.async_session_factory") as mock_factory:
+                await _compute_and_store_embedding(memory_id, "test text")
+
+        # async_session_factory should never be called if embedding is None
+        mock_factory.assert_not_called()
+
+
+class TestUpdateMemoryLayerPersistence:
+    """Tests verifying that layer changes via PUT/PATCH actually persist
+    and are not overwritten by the background embedding task.
+    """
+
+    @pytest.mark.asyncio
+    async def test_put_update_layer_persists(self, test_user_id: str, sample_memory_update_data: dict):
+        """PUT should persist layer change and background task should not revert it."""
+        from app.api.memories import update_memory
+        from app.schemas.memory import MemoryUpdate
+
+        # Start with L0
+        existing_mem = _make_memory(user_id=test_user_id, layer="L0")
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing_mem
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.flush = AsyncMock()
+
+        mock_background = MagicMock()
+
+        # Update to L1
+        sample_memory_update_data["layer"] = "L1"
+        body = MemoryUpdate(**sample_memory_update_data)
+
+        with patch("app.api.memories.count_tokens", return_value=20):
+            result = await update_memory(
+                memory_id=existing_mem.id,
+                body=body,
+                background_tasks=mock_background,
+                session=mock_session,
+                user_id=test_user_id,
+            )
+
+        # Layer should be updated on the ORM object
+        assert result.layer == "L1"
+
+        # flush must have been called to persist before response
+        mock_session.flush.assert_called_once()
+
+        # Background task should be scheduled but won't affect layer
+        mock_background.add_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_patch_update_layer_persists(self, test_user_id: str):
+        """PATCH with just layer change should persist it."""
+        from app.api.memories import patch_memory
+        from app.schemas.memory import MemoryPatch
+
+        # Start with L0
+        existing_mem = _make_memory(user_id=test_user_id, layer="L0")
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing_mem
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.flush = AsyncMock()
+
+        mock_background = MagicMock()
+
+        # PATCH to L1
+        body = MemoryPatch(layer="L1")
+
+        result = await patch_memory(
+            memory_id=existing_mem.id,
+            body=body,
+            background_tasks=mock_background,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        # Layer should be updated
+        assert result.layer == "L1"
+
+        # flush must have been called
+        mock_session.flush.assert_called_once()
+
+        # Background task should NOT be triggered (no title/content change)
+        mock_background.add_task.assert_not_called()

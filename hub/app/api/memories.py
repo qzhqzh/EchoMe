@@ -28,7 +28,14 @@ router = APIRouter(prefix="/memories", tags=["memories"])
 
 
 async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
-    """Background task: compute embedding and store it."""
+    """Background task: compute embedding and store it.
+
+    Uses a targeted UPDATE statement to only modify the embedding column,
+    avoiding race conditions where loading the full ORM object could
+    overwrite concurrent changes (e.g. layer updates from PUT/PATCH).
+    """
+    from sqlalchemy import update as sql_update
+
     from app.core.database import async_session_factory
 
     embedding = await get_embedding(text)
@@ -36,11 +43,12 @@ async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
         return
 
     async with async_session_factory() as session:
-        result = await session.execute(select(Memory).where(Memory.id == memory_id))
-        memory = result.scalar_one_or_none()
-        if memory:
-            memory.embedding = embedding
-            await session.commit()
+        await session.execute(
+            sql_update(Memory)
+            .where(Memory.id == memory_id)
+            .values(embedding=embedding)
+        )
+        await session.commit()
 
 
 @router.get("", response_model=MemoryListResponse)
