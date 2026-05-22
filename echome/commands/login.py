@@ -60,12 +60,17 @@ def login(
 
     if manual:
         # Simple manual flow: user copies token from web UI
-        console.print("\n[bold]Manual Login[/bold]\n")
-        console.print(f"1. Open in browser: [cyan]{config.hub_url}/api/v1/auth/github[/cyan]")
-        console.print("2. Complete GitHub authorization")
-        console.print("3. Copy the token from the response\n")
+        hub = config.hub_url.rstrip("/")
+        console.print("\n[bold]Manual Login (for servers without GUI)[/bold]\n")
+        console.print("Steps:")
+        console.print(f"  1. On any device with a browser, open:")
+        console.print(f"     [cyan]{hub}/api/v1/auth/github[/cyan]")
+        console.print(f"  2. Click the GitHub authorization URL in the response")
+        console.print(f"  3. After authorizing, you'll get a JSON response")
+        console.print(f"  4. Copy the [bold]access_token[/bold] value from the JSON\n")
+        console.print("[dim]Tip: The JSON looks like: {\"access_token\": \"eyJhbG...\", ...}[/dim]\n")
 
-        token = typer.prompt("Paste your JWT token")
+        token = typer.prompt("Paste your access_token here")
         if not token.strip():
             console.print("[red]No token provided.[/red]")
             raise typer.Exit(1)
