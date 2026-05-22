@@ -3,6 +3,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
@@ -12,16 +13,49 @@ from sentence_transformers import SentenceTransformer
 logger = logging.getLogger("embedding")
 logging.basicConfig(level=logging.INFO)
 
-MODEL_DIR = os.environ.get("MODEL_DIR", "/app/models/BAAI/bge-m3")
+MODEL_DIR = os.environ.get("MODEL_DIR", "/app/models")
 model: SentenceTransformer | None = None
+
+
+def _find_model_path() -> str:
+    """Find the actual model path inside MODEL_DIR.
+
+    ModelScope downloads to: MODEL_DIR/BAAI/bge-m3/
+    Direct download might be: MODEL_DIR/ (with config.json at root)
+    """
+    base = Path(MODEL_DIR)
+
+    # Check if config.json exists directly in MODEL_DIR
+    if (base / "config.json").exists():
+        return str(base)
+
+    # Check ModelScope layout: MODEL_DIR/BAAI/bge-m3/
+    ms_path = base / "BAAI" / "bge-m3"
+    if (ms_path / "config.json").exists():
+        return str(ms_path)
+
+    # Check HuggingFace cache layout: MODEL_DIR/models--BAAI--bge-m3/snapshots/xxx/
+    hf_path = base / "models--BAAI--bge-m3"
+    if hf_path.exists():
+        snapshots = hf_path / "snapshots"
+        if snapshots.exists():
+            # Get the latest snapshot
+            snapshot_dirs = sorted(snapshots.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+            if snapshot_dirs and (snapshot_dirs[0] / "config.json").exists():
+                return str(snapshot_dirs[0])
+
+    # Fallback: return MODEL_DIR and let sentence-transformers handle the error
+    logger.warning(f"Could not find config.json in {MODEL_DIR}, trying as-is...")
+    return str(base)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Load model on startup."""
     global model
-    logger.info(f"Loading model from {MODEL_DIR} ...")
-    model = SentenceTransformer(MODEL_DIR)
+    model_path = _find_model_path()
+    logger.info(f"Loading model from {model_path} ...")
+    model = SentenceTransformer(model_path)
     logger.info(f"Model loaded. Dimension: {model.get_sentence_embedding_dimension()}")
     yield
     del model
