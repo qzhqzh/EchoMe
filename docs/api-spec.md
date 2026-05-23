@@ -42,7 +42,7 @@ Authorization: Bearer <token>
 |---|---|---|---|
 | type | string | 否 | 按 type 过滤 |
 | layer | string | 否 | L0/L1/L2 |
-| status | string | 否 | active/pending/deprecated/archived，默认 active |
+| status | string | 否 | active/ai_review/pending/deprecated/archived，默认 active |
 | tags | string | 否 | 逗号分隔，AND 匹配 |
 | project_id | string | 否 | 过滤 scope 包含该项目的记忆 |
 | offset | int | 否 | 分页偏移，默认 0 |

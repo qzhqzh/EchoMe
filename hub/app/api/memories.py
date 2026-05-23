@@ -85,7 +85,7 @@ async def list_memories(
     if status_filter:
         query = query.where(Memory.status == status_filter)
     else:
-        query = query.where(Memory.status == "active")
+        query = query.where(Memory.status.in_(["active", "ai_review"]))
     if tags:
         tag_list = [t.strip() for t in tags.split(",")]
         for tag in tag_list:
@@ -282,7 +282,7 @@ async def search_memories(
     from pgvector.sqlalchemy import Vector
 
     # Base filters
-    base_filter = [Memory.user_id == user_id, Memory.status == "active"]
+    base_filter = [Memory.user_id == user_id, Memory.status.in_(["active", "ai_review"])]
     if body.type:
         base_filter.append(Memory.type == body.type.value)
     if body.layer:

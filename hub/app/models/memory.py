@@ -65,9 +65,8 @@ class Memory(Base):
     )
 
     # Embedding vector (dimension must match DB column and embedding service output)
-    # If mismatch occurs, update DB: ALTER TABLE memories ALTER COLUMN embedding TYPE vector(N);
-    # Or update config: ECHOME_EMBEDDING_DIMENSIONS=N
-    embedding = mapped_column(Vector(1536), nullable=True)
+    # bge-m3 outputs 1024 dimensions
+    embedding = mapped_column(Vector(1024), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -85,7 +84,7 @@ class Memory(Base):
         ),
         CheckConstraint("layer IN ('L0','L1','L2')", name="valid_layer"),
         CheckConstraint(
-            "status IN ('active','pending','deprecated','archived')", name="valid_status"
+            "status IN ('active','ai_review','pending','deprecated','archived')", name="valid_status"
         ),
         CheckConstraint("priority BETWEEN 1 AND 10", name="valid_priority"),
         Index("idx_memories_user_type", "user_id", "type"),

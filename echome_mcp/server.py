@@ -113,7 +113,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "status": {
                         "type": "string",
-                        "enum": ["active", "pending", "deprecated"],
+                        "enum": ["active", "ai_review", "pending", "deprecated"],
                         "default": "active",
                         "description": "Filter by status (default: active)",
                     },
@@ -124,10 +124,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="echome_remember",
             description=(
-                "Save a new memory to the user's vault. "
-                "ONLY call this when the user explicitly says to remember something, "
-                "e.g. 'remember this', 'always do this', 'from now on', '以后都这样'. "
-                "The memory will be saved as 'pending' and requires user confirmation."
+                "Save a proposed memory to the user's vault in ai_review state. "
+                "You may call this proactively when you observe durable user preferences, "
+                "project decisions, workflow conventions, repeated corrections, or reusable context. "
+                "Do not save secrets, one-off temporary facts, or uncertain guesses. "
+                "ai_review memories are immediately searchable by AI, and can later be promoted or archived with `echome review`."
             ),
             inputSchema={
                 "type": "object",
@@ -170,8 +171,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="memory_remember",
             description=(
-                "Alias for echome_remember. Save a new memory as pending when the user "
-                "explicitly asks the agent to remember something."
+                "Alias for echome_remember. Save a proposed memory in ai_review state. "
+                "Agents may use this proactively for durable preferences, decisions, conventions, "
+                "and reusable context; ai_review memories are searchable immediately and can be curated later."
             ),
             inputSchema={
                 "type": "object",

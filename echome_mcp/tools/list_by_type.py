@@ -9,7 +9,7 @@ async def echome_list_by_type(type: str, status: str = "active") -> str:  # noqa
     Args:
         type: Memory type (identity, guardrail, reasoning, method, stack,
               style, decision, context, template, project).
-        status: Filter by status (default: active).
+        status: Filter by status (default: active). Use ai_review to inspect AI-reviewed memories.
 
     Returns:
         Formatted list of memory titles.

@@ -352,13 +352,13 @@ echome mcp serve
 
 预期：Claude 会显示 `🔧 Using tool: echome_search` 然后返回你的 PR 规范。
 
-**场景 2：让 AI 记住新规则**
+**场景 2：AI 写入新规则或主动提出候选记忆**
 
 ```
 你：以后所有 Python 项目都用 pytest，记住这个。
 ```
 
-预期：Claude 调用 `🔧 Using tool: echome_remember`，保存为 pending 记忆。然后你用 `echome review` 审核。
+预期：Claude 调用 `🔧 Using tool: echome_remember`，保存为 ai_review 记忆。即使你没有明确说"记住"，当它观察到稳定偏好、项目决策或工作流约定时，也可以主动写入 ai_review。ai_review 会立即参与后续检索；你可以用 `echome review` 做事后清理或提升为 active。
 
 **场景 3：强制触发**
 

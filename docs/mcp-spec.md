@@ -154,7 +154,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
     },
     "status": {
       "type": "string",
-      "enum": ["active", "pending", "deprecated"],
+      "enum": ["active", "ai_review", "pending", "deprecated"],
       "default": "active"
     }
   },
@@ -166,7 +166,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ### 4.4 echome_remember / memory_remember
 
-**描述**: 将新知识写入用户的记忆库。当用户明确表示"以后都这样做"、"记住这个规则"、"这是我的偏好"时调用。写入的记忆需要用户确认后才会正式生效。
+**描述**: 将新知识作为 ai_review 记忆写入用户的记忆库。Agent 可以在用户明确要求时调用，也可以在观察到稳定偏好、项目决策、工作流约定、反复纠正或可复用上下文时主动调用。ai_review 记忆会立即参与后续检索；用户之后可用 `echome review` 将其提升为 active 或归档。
 
 **Input Schema**:
 ```json
@@ -208,17 +208,18 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 **Output**:
 ```
-✓ 记忆已保存（待确认）
+✓ 记忆已保存（ai_review）
 
 标题: 用户偏好 ruff 作为 Python linter
 类型: tech
-状态: pending（需要用户通过 `echome review` 确认后生效）
+状态: ai_review（AI 可立即检索；用户可通过 `echome review` 提升或归档）
 ```
 
 **重要约束**:
-- 只在用户**明确表达**"记住/以后/总是/永远"等意图时调用
-- 不要基于单次讨论就自动写入
-- 写入后告知用户需要确认
+- 可以主动写入 ai_review 记忆，但必须是可复用、稳定、高置信度的信息
+- 用户明确表达"记住/以后/总是/永远"等意图时必须调用
+- 不要写入密码/密钥/隐私敏感内容、一次性临时事实、低置信度猜测
+- 默认写入 ai_review，会立即参与后续 AI 检索；用户通过 `echome review` 做事后清理或提升为 active
 
 ---
 
@@ -294,6 +295,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 3. 用户提到"之前讨论过"、"按照惯例"等暗示已有上下文
 4. 开始一个新任务前，查询是否有相关约束或偏好
 5. 用户说"记住这个"、"以后都这样"时，调用 echome_remember
+6. 观察到稳定偏好、项目决策、工作流约定、反复纠正或可复用上下文时，可以主动调用 echome_remember 写入 ai_review 记忆
 ```
 
 ### 7.2 触发时机总结
@@ -304,6 +306,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 | 开始新任务 | echome_get_project_context |
 | 用户说"按老规矩" | echome_search + 相关上下文 |
 | 用户说"记住/以后" | echome_remember |
+| 观察到稳定偏好/决策/约定 | echome_remember（ai_review） |
 | 技术选型问题 | echome_search "技术偏好" |
 | 不确定项目约定 | echome_search |
 
@@ -337,6 +340,6 @@ MCP Tool 调用失败时返回：
 
 - MCP Server 以用户身份运行，继承用户文件权限
 - 不暴露 Hub token 给 AI（MCP Server 内部使用）
-- echome_remember 写入的内容默认 pending，防止 AI 误写
+- echome_remember 写入的内容默认 ai_review，允许 AI 自主学习，同时保留人工事后纠偏
 - 不支持删除操作（AI 不能删用户记忆）
 - 内容不包含密码/密钥等敏感信息（CLI 层过滤）

@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # Embedding service
     embedding_url: str = "http://embedding:20002"
-    embedding_dimensions: int = 1536  # Must match DB vector column dimension
+    embedding_dimensions: int = 1024  # Must match bge-m3 model output
 
     # Limits
     l0_max_tokens: int = 1500

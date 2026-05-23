@@ -45,7 +45,7 @@ def upgrade() -> None:
             name="valid_type",
         ),
         sa.CheckConstraint("layer IN ('L0','L1','L2')", name="valid_layer"),
-        sa.CheckConstraint("status IN ('active','pending','deprecated','archived')", name="valid_status"),
+        sa.CheckConstraint("status IN ('active','ai_review','pending','deprecated','archived')", name="valid_status"),
         sa.CheckConstraint("priority BETWEEN 1 AND 10", name="valid_priority"),
     )
 

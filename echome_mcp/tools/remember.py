@@ -1,4 +1,4 @@
-"""echome_remember - AI writes a new memory (pending user approval)."""
+"""echome_remember - AI writes a new memory in ai_review state."""
 
 from echome_mcp.hub_client import MCPHubClient
 
@@ -64,10 +64,13 @@ async def echome_remember(
     suggested_layer: str = "L2",
     project_id: str | None = None,
 ) -> str:
-    """Write a new memory to the user's vault (requires user confirmation).
+    """Write a proposed memory to the user's vault in ai_review state.
 
-    Only call this when the user explicitly says to remember something,
-    e.g. "remember this", "always do this", "from now on".
+    Agents may call this proactively when they observe durable user preferences,
+    project decisions, workflow conventions, repeated corrections, or reusable
+    context that is likely to help future sessions. Do not write secrets,
+    one-off temporary facts, or uncertain guesses. Writes are immediately available to future AI queries as ai_review,
+    and the user can later archive or promote them with `echome review`.
 
     Args:
         title: Short, descriptive title for the memory.
@@ -97,7 +100,7 @@ async def echome_remember(
         "layer": suggested_layer if suggested_layer in ("L0", "L1", "L2") else "L2",
         "priority": 5,
         "tags": tags,
-        "status": "pending",
+        "status": "ai_review",
         "scope": scope,
         "source": "ai_suggested",
     }
@@ -111,12 +114,12 @@ async def echome_remember(
             type_note = f" (normalized from '{type}' -> '{normalized_type}')"
 
         return (
-            f"Memory saved (pending confirmation).\n\n"
+            f"Memory saved (ai_review).\n\n"
             f"Title: {title}\n"
             f"Type: {normalized_type}{type_note}\n"
-            f"Status: pending (user must run `echome review` to approve)\n"
+            f"Status: ai_review (available to AI; user may run `echome review` to promote/archive)\n"
             f"ID: {memory_id}\n\n"
-            f"The user will need to confirm this memory before it becomes active."
+            f"This memory is available to AI search now; the user can archive or promote it later."
         )
     except Exception as e:
         return f"Error saving memory: {e}"

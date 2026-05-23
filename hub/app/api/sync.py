@@ -155,7 +155,7 @@ async def render(
     - With explicit layer: render only that layer (override)
     """
     # Fetch relevant memories
-    query = select(Memory).where(Memory.user_id == user_id, Memory.status == "active")
+    query = select(Memory).where(Memory.user_id == user_id, Memory.status.in_(["active", "ai_review"]))
 
     if body.layer:
         # Explicit layer override

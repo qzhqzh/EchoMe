@@ -11,36 +11,37 @@ console = Console()
 
 
 def review(
-    approve_all: bool = typer.Option(False, "--approve-all", help="Approve all pending"),
-    reject_all: bool = typer.Option(False, "--reject-all", help="Reject all pending"),
+    approve_all: bool = typer.Option(False, "--approve-all", help="Promote all listed memories to active"),
+    reject_all: bool = typer.Option(False, "--reject-all", help="Archive all listed memories"),
+    status: str = typer.Option("ai_review", "--status", help="Status to review: ai_review or pending"),
 ) -> None:
-    """Review AI-suggested memories (status: pending)."""
+    """Review AI-written memories. Defaults to status: ai_review."""
     config = Config.load()
     client = HubClient(config)
 
     try:
-        result = client.list_memories(status="pending")
+        result = client.list_memories(status=status)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1) from e
 
     items = result.get("items", [])
     if not items:
-        console.print("[green]No pending memories to review.[/green]")
+        console.print(f"[green]No memories to review for status: {status}.[/green]")
         return
 
-    console.print(f"\n[bold]Pending memories: {len(items)}[/bold]\n")
+    console.print(f"\n[bold]{status} memories: {len(items)}[/bold]\n")
 
     if approve_all:
         for item in items:
             client.update_memory(item["id"], {"status": "active"})
-        console.print(f"[green]✓ Approved {len(items)} memories.[/green]")
+        console.print(f"[green]✓ Promoted {len(items)} memories to active.[/green]")
         return
 
     if reject_all:
         for item in items:
             client.delete_memory(item["id"])
-        console.print(f"[yellow]✗ Rejected {len(items)} memories.[/yellow]")
+        console.print(f"[yellow]✗ Archived {len(items)} memories.[/yellow]")
         return
 
     # Interactive review
@@ -55,13 +56,13 @@ def review(
         except Exception:
             pass
 
-        action = Prompt.ask("[a]pprove / [r]eject / [s]kip / [q]uit", default="s")
+        action = Prompt.ask("[a]ctivate / [r]archive / [s]kip / [q]uit", default="s")
 
         if action == "a":
             client.update_memory(item["id"], {"status": "active"})
-            console.print("  [green]✓ Approved[/green]")
+            console.print("  [green]✓ Activated[/green]")
         elif action == "r":
             client.delete_memory(item["id"])
-            console.print("  [yellow]✗ Rejected[/yellow]")
+            console.print("  [yellow]✗ Archived[/yellow]")
         elif action == "q":
             break

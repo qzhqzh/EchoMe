@@ -29,6 +29,7 @@ class MemoryLayer(str, Enum):
 
 class MemoryStatus(str, Enum):
     active = "active"
+    ai_review = "ai_review"
     pending = "pending"
     deprecated = "deprecated"
     archived = "archived"

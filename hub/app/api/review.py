@@ -24,15 +24,22 @@ class ApproveRequest(BaseModel):
 
 @router.get("/pending", response_model=MemoryListResponse)
 async def list_pending(
+    review_status: str = Query("ai_review", alias="status"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> MemoryListResponse:
-    """List all pending (AI-suggested) memories awaiting review."""
+    """List AI-written memories for review. Defaults to ai_review."""
+    if review_status not in {"ai_review", "pending"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Review status must be ai_review or pending",
+        )
+
     query = select(Memory).where(
         Memory.user_id == user_id,
-        Memory.status == "pending",
+        Memory.status == review_status,
     )
 
     count_query = select(func.count()).select_from(query.subquery())
@@ -57,19 +64,19 @@ async def approve_memory(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, str]:
-    """Approve a pending memory - sets status to active."""
+    """Approve an AI-written memory - sets status to active."""
     result = await session.execute(
         select(Memory).where(
             Memory.id == memory_id,
             Memory.user_id == user_id,
-            Memory.status == "pending",
+            Memory.status.in_(["ai_review", "pending"]),
         )
     )
     memory = result.scalar_one_or_none()
     if not memory:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pending memory not found",
+            detail="Review memory not found",
         )
 
     memory.status = "active"
@@ -88,19 +95,19 @@ async def reject_memory(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, str]:
-    """Reject a pending memory - sets status to archived."""
+    """Reject an AI-written memory - sets status to archived."""
     result = await session.execute(
         select(Memory).where(
             Memory.id == memory_id,
             Memory.user_id == user_id,
-            Memory.status == "pending",
+            Memory.status.in_(["ai_review", "pending"]),
         )
     )
     memory = result.scalar_one_or_none()
     if not memory:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pending memory not found",
+            detail="Review memory not found",
         )
 
     memory.status = "archived"

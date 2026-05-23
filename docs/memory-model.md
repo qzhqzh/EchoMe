@@ -103,7 +103,7 @@ CREATE TABLE memories (
     -- 元数据
     priority        SMALLINT NOT NULL DEFAULT 5,  -- 1-10, 10 最高
     tags            JSONB NOT NULL DEFAULT '[]',
-    status          VARCHAR(16) NOT NULL DEFAULT 'active',  -- active/pending/deprecated/archived
+    status          VARCHAR(16) NOT NULL DEFAULT 'active',  -- active/ai_review/pending/deprecated/archived
     source          VARCHAR(32) NOT NULL DEFAULT 'manual',  -- manual/ai_suggested/imported
     
     -- 向量
@@ -116,7 +116,7 @@ CREATE TABLE memories (
     -- 索引
     CONSTRAINT valid_type CHECK (type IN ('persona','workflow','tech','constraint','snippet','decision','knowledge','interaction','project')),
     CONSTRAINT valid_layer CHECK (layer IN ('L0','L1','L2')),
-    CONSTRAINT valid_status CHECK (status IN ('active','pending','deprecated','archived')),
+    CONSTRAINT valid_status CHECK (status IN ('active','ai_review','pending','deprecated','archived')),
     CONSTRAINT valid_priority CHECK (priority BETWEEN 1 AND 10)
 );
 

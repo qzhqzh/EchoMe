@@ -18,9 +18,12 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 规则：
 1. 收到用户第一条消息后，根据关键词调用 echome_search
 2. 涉及 git/PR/commit/deploy 操作前，必须查 echome_search
-3. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
-4. 不确定项目约定时，调用 echome_search 而不是假设
-5. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project"""
+3. 当用户明确说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
+4. 即使用户没有明确要求，只要你观察到稳定偏好、项目决策、工作流约定、反复纠正、可复用上下文，也可以主动调用 `echome_remember` 写入 ai_review 记忆
+5. 不要写入密码/密钥/隐私敏感内容、一次性临时事实、低置信度猜测；拿不准时不要写
+6. 所有 AI 主动写入默认 ai_review，会立即参与后续检索；用户可运行 `echome review` 将其提升为 active 或归档
+7. 不确定项目约定时，调用 echome_search 而不是假设
+8. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project"""
 
 # Type rendering priority (lower number = higher priority = rendered first)
 TYPE_PRIORITY: dict[str, int] = {
