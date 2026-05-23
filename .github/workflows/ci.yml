@@ -29,6 +29,23 @@ jobs:
       - run: echome --help
       - run: python -c "from echome.main import app; print('CLI import OK')"
 
+  test-hub:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hub
+    env:
+      ECHOME_JWT_SECRET: "ci-test-secret-at-least-32-characters-long"
+      ECHOME_DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test"
+      ECHOME_DEBUG: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/test_auth.py tests/test_memories.py -x -q
+
   build:
     runs-on: ubuntu-latest
     needs: [lint, test-cli]
