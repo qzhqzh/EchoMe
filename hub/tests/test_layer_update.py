@@ -1,5 +1,6 @@
 """Test to reproduce the layer update bug: PUT returns L1 but DB still has L0."""
 
+import os
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,26 +15,27 @@ def _make_real_orm_memory(
     title: str = "Test Memory",
     layer: str = "L0",
 ):
-    """Create a real-enough ORM Memory object (not MagicMock) to test attribute mutation."""
+    """Create a real SQLAlchemy ORM Memory object."""
     from app.models.memory import Memory
 
-    mem = Memory.__new__(Memory)
+    mem = Memory(
+        user_id=user_id,
+        title=title,
+        content="test content",
+        type="context",
+        layer=layer,
+        priority=5,
+        tags=["test"],
+        status="active",
+        source="manual",
+        token_count=10,
+        visibility="private",
+        scope_global=True,
+        scope_projects=[],
+        scope_exclude=[],
+    )
     mem.id = uuid.uuid4()
-    mem.user_id = user_id
-    mem.title = title
-    mem.content = "test content"
-    mem.type = "context"
-    mem.layer = layer
-    mem.priority = 5
-    mem.tags = ["test"]
-    mem.status = "active"
-    mem.source = "manual"
-    mem.token_count = 10
-    mem.visibility = "private"
     mem.forked_from = None
-    mem.scope_global = True
-    mem.scope_projects = []
-    mem.scope_exclude = []
     mem.embedding = None
     mem.created_at = datetime.now(timezone.utc)
     mem.updated_at = datetime.now(timezone.utc)
@@ -188,6 +190,10 @@ class TestEndToEndLayerUpdate:
     Tests the complete flow: create -> update layer -> verify persistence.
     """
 
+    @pytest.mark.skipif(
+        os.getenv("ECHOME_RUN_INTEGRATION_TESTS") != "1",
+        reason="Requires external Postgres service; set ECHOME_RUN_INTEGRATION_TESTS=1 to run.",
+    )
     @pytest.mark.asyncio
     async def test_layer_update_persists(self, sample_memory_data):
         """

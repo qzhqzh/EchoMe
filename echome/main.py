@@ -9,12 +9,12 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
+from echome.commands.clean import clean
 from echome.commands.init import init
 from echome.commands.login import login, logout, whoami
 from echome.commands.market import market_app
 from echome.commands.memories import add_memory, list_memories, search_memories
 from echome.commands.review import review
-from echome.commands.clean import clean
 from echome.commands.sync import detect, eject, pull, push, sync
 from echome.commands.update import update
 
