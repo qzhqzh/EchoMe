@@ -1,7 +1,6 @@
 """Sync commands: sync, push, pull, detect, status, eject."""
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -34,8 +33,8 @@ def detect() -> None:
 
 
 def sync(
-    target: Optional[str] = typer.Option(None, "--target", "-t", help="Target: claude, codex"),
-    project_id: Optional[str] = typer.Option(None, "--project", "-p", help="Project ID"),
+    target: str | None = typer.Option(None, "--target", "-t", help="Target: claude, codex"),
+    project_id: str | None = typer.Option(None, "--project", "-p", help="Project ID"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be changed"),
 ) -> None:
     """Render and inject memories into AI CLI configuration files.
@@ -133,7 +132,7 @@ def push() -> None:
     # TODO: Read local vault files and push to Hub
     # For now, placeholder
     try:
-        result = client.push([], client_info=f"echome/0.1.0")
+        result = client.push([], client_info="echome/0.1.0")
         console.print(
             f"  Created: {result.get('created', 0)} | "
             f"Updated: {result.get('updated', 0)} | "
@@ -142,7 +141,7 @@ def push() -> None:
         console.print("[green]Push complete![/green]")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def pull() -> None:
@@ -165,7 +164,7 @@ def pull() -> None:
         console.print("[green]Pull complete![/green]")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def status() -> None:

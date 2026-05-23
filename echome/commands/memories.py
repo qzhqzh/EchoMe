@@ -1,7 +1,5 @@
 """Memory management commands: list, add, edit, search."""
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
@@ -14,10 +12,10 @@ console = Console()
 
 
 def list_memories(
-    type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by type"),
-    layer: Optional[str] = typer.Option(None, "--layer", "-l", help="Filter by layer (L0/L1/L2)"),
-    tags: Optional[str] = typer.Option(None, "--tags", help="Filter by tags (comma-separated)"),
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
+    type: str | None = typer.Option(None, "--type", "-t", help="Filter by type"),
+    layer: str | None = typer.Option(None, "--layer", "-l", help="Filter by layer (L0/L1/L2)"),
+    tags: str | None = typer.Option(None, "--tags", help="Filter by tags (comma-separated)"),
+    status: str | None = typer.Option(None, "--status", "-s", help="Filter by status"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
     """List memories from Hub."""
@@ -38,7 +36,7 @@ def list_memories(
         result = client.list_memories(**params)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     items = result.get("items", [])
     total = result.get("total", 0)
@@ -69,12 +67,12 @@ def list_memories(
 
 
 def add_memory(
-    title: Optional[str] = typer.Argument(None, help="Memory title (quick mode)"),
-    content: Optional[str] = typer.Option(None, "--content", "-c", help="Memory content"),
-    type: Optional[str] = typer.Option(None, "--type", "-t", help="Memory type"),
-    layer: Optional[str] = typer.Option(None, "--layer", "-l", help="Layer (L0/L1/L2)"),
-    priority: Optional[int] = typer.Option(None, "--priority", "-p", help="Priority (1-10)"),
-    tags: Optional[str] = typer.Option(None, "--tags", help="Tags (comma-separated)"),
+    title: str | None = typer.Argument(None, help="Memory title (quick mode)"),
+    content: str | None = typer.Option(None, "--content", "-c", help="Memory content"),
+    type: str | None = typer.Option(None, "--type", "-t", help="Memory type"),
+    layer: str | None = typer.Option(None, "--layer", "-l", help="Layer (L0/L1/L2)"),
+    priority: int | None = typer.Option(None, "--priority", "-p", help="Priority (1-10)"),
+    tags: str | None = typer.Option(None, "--tags", help="Tags (comma-separated)"),
 ) -> None:
     """Add a new memory. Supports quick mode (with args) or interactive mode."""
     config = Config.load()
@@ -154,7 +152,7 @@ def add_memory(
         console.print(f"\n[green]✓ Memory created![/green] ID: {result['id']}")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 VALID_TYPES = {
@@ -219,7 +217,7 @@ def _build_memory_data(
 
 def search_memories(
     query: str = typer.Argument(..., help="Search query"),
-    type: Optional[str] = typer.Option(None, "--type", "-t"),
+    type: str | None = typer.Option(None, "--type", "-t"),
     top_k: int = typer.Option(5, "--top-k", "-k"),
 ) -> None:
     """Search memories by keyword/semantic query."""
@@ -234,7 +232,7 @@ def search_memories(
         result = client.search(query, **kwargs)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     results = result.get("results", [])
     if not results:

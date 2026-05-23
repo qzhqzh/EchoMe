@@ -69,7 +69,7 @@ def update(
                     timeout=60,
                 )
                 if result.returncode == 0:
-                    console.print(f"  [green]✓ Git pull done[/green]")
+                    console.print("  [green]✓ Git pull done[/green]")
                     # Reinstall
                     pip_result = subprocess.run(
                         [sys.executable, "-m", "pip", "install", "-e", ".[mcp]"],
@@ -81,7 +81,7 @@ def update(
                     if pip_result.returncode == 0:
                         console.print("  [green]✓ Reinstalled[/green]")
                     else:
-                        console.print(f"  [red]pip install failed[/red]")
+                        console.print("  [red]pip install failed[/red]")
                 else:
                     console.print(f"  [yellow]git pull failed: {result.stderr.strip()}[/yellow]")
         except Exception:
@@ -128,10 +128,10 @@ def update(
                 console.print("\n[bold]Don't forget:[/bold]")
                 console.print("  [cyan]echome sync[/cyan]  — Re-sync your memories to CLAUDE.md")
         else:
-            console.print(f"[red]Update failed:[/red]")
+            console.print("[red]Update failed:[/red]")
             console.print(f"[dim]{result.stderr[-500:]}[/dim]")
             raise typer.Exit(1)
 
     except subprocess.TimeoutExpired:
         console.print("[red]Update timed out. Check your network.[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
