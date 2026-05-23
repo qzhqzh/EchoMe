@@ -10,6 +10,7 @@ from mcp.types import TextContent, Tool
 from echome_mcp.tools.get import echome_get
 from echome_mcp.tools.list_by_type import echome_list_by_type
 from echome_mcp.tools.project_context import echome_get_project_context
+from echome_mcp.tools.project import echome_create_project, echome_list_projects
 from echome_mcp.tools.remember import echome_remember
 from echome_mcp.tools.search import echome_search
 
@@ -160,9 +161,9 @@ async def list_tools() -> list[Tool]:
                         "default": "L2",
                         "description": "Suggested loading layer",
                     },
-                    "project_id": {
+                    "project": {
                         "type": "string",
-                        "description": "If project-specific, the project ID",
+                        "description": "项目名称（仅 project 类型需要）",
                     },
                 },
                 "required": ["title", "content", "type", "tags"],
@@ -189,7 +190,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "suggested_layer": {"type": "string", "enum": ["L0", "L1", "L2"], "default": "L2"},
-                    "project_id": {"type": "string"},
+                    "project": {"type": "string"},
                 },
                 "required": ["title", "content", "type", "tags"],
             },
@@ -209,6 +210,43 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": [],
+            },
+        ),
+        Tool(
+            name="echome_list_projects",
+            description=(
+                "列出当前用户的所有项目。"
+                "用于查看已有项目，帮助确定 project_id。"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="echome_create_project",
+            description=(
+                "创建新项目。项目名称(name)同时作为唯一标识。"
+                "创建 project 类型记忆前，如果项目不存在，需先创建项目。"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "项目名称（唯一标识）",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "项目描述（可选）",
+                    },
+                    "git_remote": {
+                        "type": "string",
+                        "description": "Git 远程仓库地址（可选）",
+                    },
+                },
+                "required": ["name"],
             },
         ),
     ]
@@ -239,11 +277,19 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 type=arguments["type"],
                 tags=arguments.get("tags", []),
                 suggested_layer=arguments.get("suggested_layer", "L2"),
-                project_id=arguments.get("project_id"),
+                project=arguments.get("project"),
             )
         elif name == "echome_get_project_context":
             result = await echome_get_project_context(
                 project_id=arguments.get("project_id"),
+            )
+        elif name == "echome_list_projects":
+            result = await echome_list_projects()
+        elif name == "echome_create_project":
+            result = await echome_create_project(
+                name=arguments["name"],
+                description=arguments.get("description"),
+                git_remote=arguments.get("git_remote"),
             )
         else:
             result = f"Unknown tool: {name}"

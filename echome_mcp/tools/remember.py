@@ -62,7 +62,7 @@ async def echome_remember(
     type: str,  # noqa: A002
     tags: list[str],
     suggested_layer: str = "L2",
-    project_id: str | None = None,
+    project: str | None = None,
 ) -> str:
     """Write a proposed memory to the user's vault in ai_review state.
 
@@ -79,7 +79,7 @@ async def echome_remember(
               style, decision, context, template, project.
         tags: List of relevant tags.
         suggested_layer: Suggested loading layer (L0/L1/L2, default L2).
-        project_id: If project-specific, the project ID.
+        project: Only for 'project' type - the project name.
 
     Returns:
         Confirmation message.
@@ -89,9 +89,47 @@ async def echome_remember(
     # Normalize type to avoid 422 errors
     normalized_type = _normalize_type(type)
 
-    scope = {"global": True, "projects": [], "exclude_projects": []}
-    if project_id:
-        scope = {"global": False, "projects": [project_id], "exclude_projects": []}
+    # 非 project 类型不允许关联项目
+    if normalized_type != "project" and project:
+        return (
+            f"'{normalized_type}' 类型记忆不需要关联项目。\n"
+            f"只有 'project' 类型记忆才需要提供 project 参数。\n"
+            f"请移除 project 参数，或将类型改为 'project'。"
+        )
+
+    # 当 type 为 project 时，检查项目是否存在
+    if normalized_type == "project":
+        if not project:
+            return (
+                "创建 project 类型记忆需要提供项目名称(project)。\n\n"
+                "请先调用 echome_create_project 创建项目，只需提供：\n"
+                "- name: 项目名称（作为唯一标识）\n"
+                "- description: 项目描述（可选）\n"
+                "- git_remote: Git 仓库地址（可选）\n\n"
+                "创建项目后，再调用 echome_remember 创建项目记忆。"
+            )
+
+        # 检查项目是否存在（project 就是项目名称，也是 id）
+        try:
+            existing_project = await client.get_project(project)
+            if not existing_project:
+                return (
+                    f"项目 '{project}' 不存在。\n\n"
+                    "请先调用 echome_create_project 创建项目，只需提供：\n"
+                    "- name: 项目名称\n"
+                    "- description: 项目描述（可选）\n"
+                    "- git_remote: Git 仓库地址（可选）\n\n"
+                    "创建项目后，再调用 echome_remember 创建项目记忆。"
+                )
+        except Exception as e:
+            return f"检查项目 '{project}' 时出错: {e}"
+
+    # 非 project 类型：全局 scope
+    # project 类型：关联到指定项目
+    if normalized_type == "project":
+        scope = {"global": False, "projects": [project], "exclude_projects": []}
+    else:
+        scope = {"global": True, "projects": [], "exclude_projects": []}
 
     data = {
         "title": title,

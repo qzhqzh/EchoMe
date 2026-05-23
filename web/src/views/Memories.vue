@@ -6,7 +6,7 @@ import { api } from '@/api/client'
 import SearchBar from '@/components/SearchBar.vue'
 import MemoryCard from '@/components/MemoryCard.vue'
 import { MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
-import type { MemoryListItem, MemoryType, Project } from '@/types'
+import type { MemoryListItem, MemoryType } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -24,8 +24,6 @@ const filterTags = ref((route.query.tags as string) || '')
 const filterProject = ref((route.query.project_id as string) || '')
 const offset = ref(Number(route.query.offset) || 0)
 const searchQuery = ref('')
-const projects = ref<Project[]>([])
-const projectTagNames = ref<Record<string, string>>({})
 
 const typeTabs: { key: MemoryType | ''; label: string; icon: string; color: string }[] = [
   { key: '', label: 'All', icon: '📋', color: 'text-slate-300' },
@@ -42,7 +40,7 @@ const typeTabs: { key: MemoryType | ''; label: string; icon: string; color: stri
 ]
 
 onMounted(() => {
-  void Promise.all([loadProjects(), loadProjectLabels(), loadMemories()])
+  void loadMemories()
 })
 
 function updateUrlQuery(): void {
@@ -51,7 +49,8 @@ function updateUrlQuery(): void {
   if (filterLayer.value) query.layer = filterLayer.value
   if (filterStatus.value && filterStatus.value !== 'active') query.status = filterStatus.value
   if (filterTags.value) query.tags = filterTags.value
-  if (filterProject.value) query.project_id = filterProject.value
+  // 只有 project 类型才写入 URL
+  if (activeType.value === 'project' && filterProject.value) query.project_id = filterProject.value
   if (offset.value > 0) query.offset = String(offset.value)
   router.replace({ query })
 }
@@ -62,36 +61,22 @@ watch([activeType, filterLayer, filterStatus, filterTags, filterProject], () => 
   void loadMemories()
 })
 
-async function loadProjects(): Promise<void> {
-  try {
-    projects.value = await api.listProjects()
-  } catch {
-    // handled
-  }
-}
-
-async function loadProjectLabels(): Promise<void> {
-  try {
-    const res = await api.listMemories({ limit: 200 })
-    const labels: Record<string, string> = {}
-    for (const item of res.items) {
-      for (const projectId of item.scope.projects) {
-        if (!labels[projectId] && item.tags.length > 0) {
-          labels[projectId] = item.tags[0]
-        }
+const projectOptions = computed(() => {
+  // 从当前记忆列表中提取项目 ID 和对应的 tag 名（去重）
+  const seen = new Set<string>()
+  const options: { id: string; label: string }[] = []
+  for (const memory of memories.value) {
+    for (const projectId of memory.scope.projects) {
+      if (!seen.has(projectId)) {
+        seen.add(projectId)
+        options.push({
+          id: projectId,
+          label: memory.tags[0] || projectId,
+        })
       }
     }
-    projectTagNames.value = labels
-  } catch {
-    // handled
   }
-}
-
-const projectOptions = computed(() => {
-  return projects.value.map(project => ({
-    id: project.id,
-    label: projectTagNames.value[project.id] || project.name || project.id,
-  }))
+  return options
 })
 
 async function loadMemories(): Promise<void> {
@@ -102,7 +87,8 @@ async function loadMemories(): Promise<void> {
       layer: filterLayer.value || undefined,
       status: filterStatus.value || undefined,
       tags: filterTags.value || undefined,
-      project_id: filterProject.value || undefined,
+      // 只有 project 类型才传 project_id
+      project_id: activeType.value === 'project' ? filterProject.value || undefined : undefined,
       offset: offset.value,
       limit,
     })
@@ -219,7 +205,7 @@ const activeProjectName = computed(() => {
     />
 
     <div class="flex flex-wrap gap-3">
-      <select v-model="filterProject" class="input-field w-auto min-w-[180px]">
+      <select v-if="activeType === 'project'" v-model="filterProject" class="input-field w-auto min-w-[180px]">
         <option value="">All Projects</option>
         <option v-for="project in projectOptions" :key="project.id" :value="project.id">
           {{ project.label }}

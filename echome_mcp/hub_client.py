@@ -90,3 +90,39 @@ class MCPHubClient:
             resp = await client.get("/health")
             resp.raise_for_status()
             return resp.json()
+
+    async def list_projects(self) -> list[dict[str, Any]]:
+        """List all projects for the current user."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get("/api/v1/projects")
+            resp.raise_for_status()
+            return resp.json()
+
+    async def get_project(self, project_id: str) -> dict[str, Any] | None:
+        """Get a project by ID. Returns None if not found."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(f"/api/v1/projects/{project_id}")
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_project(
+        self,
+        id: str,
+        name: str,
+        description: str | None = None,
+        git_remote: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a new project."""
+        data = {
+            "id": id,
+            "name": name,
+            "description": description,
+            "git_remote": git_remote,
+            "path_patterns": [],
+        }
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/projects", json=data)
+            resp.raise_for_status()
+            return resp.json()
