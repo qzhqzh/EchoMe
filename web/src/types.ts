@@ -12,7 +12,7 @@ export type MemoryType =
 
 export type MemoryLayer = 'L0' | 'L1' | 'L2'
 
-export type MemoryStatus = 'active' | 'pending' | 'deprecated' | 'archived'
+export type MemoryStatus = 'active' | 'ai_review' | 'pending' | 'deprecated' | 'archived'
 
 export type MemorySource = 'manual' | 'ai_suggested' | 'imported'
 
@@ -151,6 +151,7 @@ export const LAYER_COLORS: Record<MemoryLayer, string> = {
 
 export const STATUS_COLORS: Record<MemoryStatus, string> = {
   active: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  ai_review: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
   pending: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
   deprecated: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
   archived: 'bg-slate-600/20 text-slate-500 border-slate-600/30',
@@ -163,4 +164,4 @@ export const MEMORY_TYPES: MemoryType[] = [
 
 export const MEMORY_LAYERS: MemoryLayer[] = ['L0', 'L1', 'L2']
 
-export const MEMORY_STATUSES: MemoryStatus[] = ['active', 'pending', 'deprecated', 'archived']
+export const MEMORY_STATUSES: MemoryStatus[] = ['active', 'ai_review', 'pending', 'deprecated', 'archived']

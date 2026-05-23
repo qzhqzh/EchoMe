@@ -1,23 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { useToast } from '@/stores/toast'
 import Modal from '@/components/Modal.vue'
-import type { Project, ProjectCreate } from '@/types'
+import type { MemoryListItem, Project, ProjectCreate } from '@/types'
 
 const { t } = useI18n()
 const { success } = useToast()
+const router = useRouter()
 
 const projects = ref<Project[]>([])
+const scopedMemories = ref<MemoryListItem[]>([])
 const loading = ref(true)
 const showForm = ref(false)
 const editingProject = ref<Project | null>(null)
 const saving = ref(false)
 const showDeleteModal = ref(false)
 const deleteTarget = ref<Project | null>(null)
+const projectSearch = ref('')
 
-// Form fields
 const formId = ref('')
 const formName = ref('')
 const formDescription = ref('')
@@ -25,7 +28,7 @@ const formGitRemote = ref('')
 const formPathPatterns = ref('')
 
 onMounted(async () => {
-  await loadProjects()
+  await Promise.all([loadProjects(), loadScopedMemories()])
 })
 
 async function loadProjects(): Promise<void> {
@@ -38,6 +41,41 @@ async function loadProjects(): Promise<void> {
     loading.value = false
   }
 }
+
+async function loadScopedMemories(): Promise<void> {
+  try {
+    const res = await api.listMemories({ limit: 200 })
+    scopedMemories.value = res.items.filter(item => item.scope.projects.length > 0)
+  } catch {
+    // handled
+  }
+}
+
+const projectMeta = computed(() => {
+  const meta: Record<string, { alias: string; count: number }> = {}
+  for (const memory of scopedMemories.value) {
+    const alias = memory.tags[0] || memory.scope.projects[0]
+    for (const projectId of memory.scope.projects) {
+      if (!meta[projectId]) {
+        meta[projectId] = { alias, count: 0 }
+      }
+      meta[projectId].count += 1
+    }
+  }
+  return meta
+})
+
+const filteredProjects = computed(() => {
+  const q = projectSearch.value.trim().toLowerCase()
+  return projects.value.filter(project => {
+    const alias = projectMeta.value[project.id]?.alias || project.name || project.id
+    if (!q) return true
+    return [alias, project.name, project.id, project.description || '']
+      .join(' ')
+      .toLowerCase()
+      .includes(q)
+  })
+})
 
 function openCreate(): void {
   editingProject.value = null
@@ -83,7 +121,7 @@ async function handleSubmit(): Promise<void> {
       success('Project created')
     }
     showForm.value = false
-    await loadProjects()
+    await Promise.all([loadProjects(), loadScopedMemories()])
   } catch {
     // handled
   } finally {
@@ -102,16 +140,19 @@ async function handleDelete(): Promise<void> {
     await api.deleteProject(deleteTarget.value.id)
     success('Project deleted')
     showDeleteModal.value = false
-    await loadProjects()
+    await Promise.all([loadProjects(), loadScopedMemories()])
   } catch {
     // handled
   }
+}
+
+function openProjectMemories(projectId: string): void {
+  router.push({ path: '/memories', query: { project_id: projectId } })
 }
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-slate-100">{{ t('projects_title') }}</h1>
@@ -125,7 +166,15 @@ async function handleDelete(): Promise<void> {
       </button>
     </div>
 
-    <!-- Loading -->
+    <div class="flex flex-wrap gap-3">
+      <input
+        v-model="projectSearch"
+        type="text"
+        class="input-field min-w-[220px] flex-1"
+        placeholder="Search by project name or ID"
+      />
+    </div>
+
     <div v-if="loading" class="grid gap-4 sm:grid-cols-2">
       <div v-for="i in 4" :key="i" class="card animate-pulse">
         <div class="h-5 w-1/2 rounded bg-slate-700" />
@@ -133,7 +182,6 @@ async function handleDelete(): Promise<void> {
       </div>
     </div>
 
-    <!-- Empty state -->
     <div v-else-if="projects.length === 0" class="card py-12 text-center">
       <svg class="mx-auto h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -142,17 +190,19 @@ async function handleDelete(): Promise<void> {
       <button class="btn-primary mt-4" @click="openCreate">{{ t('projects_add_first') }}</button>
     </div>
 
-    <!-- Projects grid -->
     <div v-else class="grid gap-4 sm:grid-cols-2">
       <div
-        v-for="project in projects"
+        v-for="project in filteredProjects"
         :key="project.id"
         class="card group"
       >
         <div class="flex items-start justify-between">
           <div class="min-w-0 flex-1">
-            <h3 class="text-sm font-medium text-slate-100">{{ project.name }}</h3>
+            <h3 class="text-sm font-medium text-slate-100">{{ projectMeta[project.id]?.alias || project.name }}</h3>
             <p class="mt-0.5 text-xs text-slate-500 font-mono">{{ project.id }}</p>
+            <p v-if="projectMeta[project.id]?.alias && projectMeta[project.id]?.alias !== project.name" class="mt-1 text-xs text-slate-400">
+              {{ project.name }}
+            </p>
           </div>
           <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
@@ -177,6 +227,17 @@ async function handleDelete(): Promise<void> {
           {{ project.description }}
         </p>
         <div class="mt-3 space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-400">
+              {{ projectMeta[project.id]?.count || 0 }} scoped memories
+            </span>
+            <button
+              class="rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
+              @click="openProjectMemories(project.id)"
+            >
+              View memories
+            </button>
+          </div>
           <p v-if="project.git_remote" class="text-xs text-slate-500 font-mono truncate">
             {{ project.git_remote }}
           </p>
@@ -193,7 +254,6 @@ async function handleDelete(): Promise<void> {
       </div>
     </div>
 
-    <!-- Create/Edit Form Modal -->
     <Modal
       :open="showForm"
       :title="editingProject ? t('projects_edit') : t('projects_new')"
@@ -260,7 +320,6 @@ async function handleDelete(): Promise<void> {
       </template>
     </Modal>
 
-    <!-- Delete confirmation -->
     <Modal :open="showDeleteModal" :title="t('projects_delete_title')" @close="showDeleteModal = false">
       <p class="text-sm text-slate-300">
         {{ t('projects_delete_confirm').replace('{name}', deleteTarget?.name || '') }}

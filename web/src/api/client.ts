@@ -121,7 +121,7 @@ class ApiClient {
 
   // --- Review ---
 
-  async listPending(params?: { offset?: number; limit?: number }): Promise<MemoryListResponse> {
+  async listPending(params?: { offset?: number; limit?: number; status?: string }): Promise<MemoryListResponse> {
     return this.request<MemoryListResponse>('GET', '/review/pending', undefined, params)
   }
 

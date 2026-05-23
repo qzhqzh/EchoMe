@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import SearchBar from '@/components/SearchBar.vue'
 import MemoryCard from '@/components/MemoryCard.vue'
 import { MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
-import type { MemoryListItem, MemoryType } from '@/types'
+import type { MemoryListItem, MemoryType, Project } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -17,15 +17,16 @@ const total = ref(0)
 const loading = ref(false)
 const limit = 20
 
-// Restore filters from URL query params (preserves state on back navigation)
 const activeType = ref<MemoryType | ''>((route.query.type as MemoryType) || '')
 const filterLayer = ref((route.query.layer as string) || '')
 const filterStatus = ref((route.query.status as string) || 'active')
 const filterTags = ref((route.query.tags as string) || '')
+const filterProject = ref((route.query.project_id as string) || '')
 const offset = ref(Number(route.query.offset) || 0)
 const searchQuery = ref('')
+const projects = ref<Project[]>([])
+const projectTagNames = ref<Record<string, string>>({})
 
-// Type tab config with priority order and display info
 const typeTabs: { key: MemoryType | ''; label: string; icon: string; color: string }[] = [
   { key: '', label: 'All', icon: '📋', color: 'text-slate-300' },
   { key: 'identity', label: 'Identity', icon: '🧠', color: 'text-purple-300' },
@@ -41,24 +42,56 @@ const typeTabs: { key: MemoryType | ''; label: string; icon: string; color: stri
 ]
 
 onMounted(() => {
-  loadMemories()
+  void Promise.all([loadProjects(), loadProjectLabels(), loadMemories()])
 })
 
-// Sync filters to URL query params so back navigation restores state
 function updateUrlQuery(): void {
   const query: Record<string, string> = {}
   if (activeType.value) query.type = activeType.value
   if (filterLayer.value) query.layer = filterLayer.value
   if (filterStatus.value && filterStatus.value !== 'active') query.status = filterStatus.value
   if (filterTags.value) query.tags = filterTags.value
+  if (filterProject.value) query.project_id = filterProject.value
   if (offset.value > 0) query.offset = String(offset.value)
   router.replace({ query })
 }
 
-watch([activeType, filterLayer, filterStatus, filterTags], () => {
+watch([activeType, filterLayer, filterStatus, filterTags, filterProject], () => {
   offset.value = 0
   updateUrlQuery()
-  loadMemories()
+  void loadMemories()
+})
+
+async function loadProjects(): Promise<void> {
+  try {
+    projects.value = await api.listProjects()
+  } catch {
+    // handled
+  }
+}
+
+async function loadProjectLabels(): Promise<void> {
+  try {
+    const res = await api.listMemories({ limit: 200 })
+    const labels: Record<string, string> = {}
+    for (const item of res.items) {
+      for (const projectId of item.scope.projects) {
+        if (!labels[projectId] && item.tags.length > 0) {
+          labels[projectId] = item.tags[0]
+        }
+      }
+    }
+    projectTagNames.value = labels
+  } catch {
+    // handled
+  }
+}
+
+const projectOptions = computed(() => {
+  return projects.value.map(project => ({
+    id: project.id,
+    label: projectTagNames.value[project.id] || project.name || project.id,
+  }))
 })
 
 async function loadMemories(): Promise<void> {
@@ -69,6 +102,7 @@ async function loadMemories(): Promise<void> {
       layer: filterLayer.value || undefined,
       status: filterStatus.value || undefined,
       tags: filterTags.value || undefined,
+      project_id: filterProject.value || undefined,
       offset: offset.value,
       limit,
     })
@@ -83,7 +117,7 @@ async function loadMemories(): Promise<void> {
 
 async function handleSearch(query: string): Promise<void> {
   if (!query.trim()) {
-    loadMemories()
+    void loadMemories()
     return
   }
   loading.value = true
@@ -92,6 +126,7 @@ async function handleSearch(query: string): Promise<void> {
       query,
       type: activeType.value as never || undefined,
       layer: filterLayer.value as never || undefined,
+      project_id: filterProject.value || undefined,
       top_k: 20,
       min_score: 0.2,
     })
@@ -121,7 +156,7 @@ function nextPage(): void {
   if (offset.value + limit < total.value) {
     offset.value += limit
     updateUrlQuery()
-    loadMemories()
+    void loadMemories()
   }
 }
 
@@ -129,21 +164,28 @@ function prevPage(): void {
   if (offset.value > 0) {
     offset.value = Math.max(0, offset.value - limit)
     updateUrlQuery()
-    loadMemories()
+    void loadMemories()
   }
 }
 
 const currentPage = () => Math.floor(offset.value / limit) + 1
 const totalPages = () => Math.ceil(total.value / limit)
+
+const activeProjectName = computed(() => {
+  if (!filterProject.value) return ''
+  const project = projectOptions.value.find(item => item.id === filterProject.value)
+  return project?.label || filterProject.value
+})
 </script>
 
 <template>
   <div class="space-y-5">
-    <!-- Header -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-slate-100">{{ t('memories_title') }}</h1>
-        <p class="text-sm text-slate-400">{{ total }} memories{{ activeType ? ` in ${activeType}` : '' }}</p>
+        <p class="text-sm text-slate-400">
+          {{ total }} memories{{ activeType ? ` in ${activeType}` : '' }}{{ activeProjectName ? ` for ${activeProjectName}` : '' }}
+        </p>
       </div>
       <button class="btn-primary" @click="router.push({ path: '/memories/new', query: activeType ? { type: activeType } : {} })">
         <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -153,7 +195,6 @@ const totalPages = () => Math.ceil(total.value / limit)
       </button>
     </div>
 
-    <!-- Type Tabs -->
     <div class="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
       <button
         v-for="tab in typeTabs"
@@ -171,15 +212,19 @@ const totalPages = () => Math.ceil(total.value / limit)
       </button>
     </div>
 
-    <!-- Search -->
     <SearchBar
       v-model="searchQuery"
       :placeholder="t('memories_search_placeholder')"
       @search="handleSearch"
     />
 
-    <!-- Secondary Filters -->
     <div class="flex flex-wrap gap-3">
+      <select v-model="filterProject" class="input-field w-auto min-w-[180px]">
+        <option value="">All Projects</option>
+        <option v-for="project in projectOptions" :key="project.id" :value="project.id">
+          {{ project.label }}
+        </option>
+      </select>
       <select v-model="filterLayer" class="input-field w-auto min-w-[100px]">
         <option value="">{{ t('memories_all_layers') }}</option>
         <option v-for="l in MEMORY_LAYERS" :key="l" :value="l">{{ l }}</option>
@@ -192,11 +237,10 @@ const totalPages = () => Math.ceil(total.value / limit)
         type="text"
         class="input-field w-auto min-w-[160px]"
         :placeholder="t('memories_filter_tags')"
-        @change="loadMemories()"
+        @change="loadMemories"
       />
     </div>
 
-    <!-- Loading state -->
     <div v-if="loading" class="grid gap-3">
       <div v-for="i in 5" :key="i" class="card animate-pulse">
         <div class="h-4 w-2/3 rounded bg-slate-700" />
@@ -207,7 +251,6 @@ const totalPages = () => Math.ceil(total.value / limit)
       </div>
     </div>
 
-    <!-- Memory list -->
     <div v-else-if="memories.length === 0" class="card text-center py-12">
       <svg class="mx-auto h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -226,7 +269,6 @@ const totalPages = () => Math.ceil(total.value / limit)
       />
     </div>
 
-    <!-- Pagination -->
     <div v-if="total > limit" class="flex items-center justify-between pt-2">
       <p class="text-sm text-slate-400">
         {{ t('showing') }} {{ offset + 1 }}-{{ Math.min(offset + limit, total) }} {{ t('of') }} {{ total }}

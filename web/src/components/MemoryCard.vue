@@ -28,6 +28,11 @@ function formatDate(dateStr: string): string {
   if (days < 7) return `${days}d ago`
   return date.toLocaleDateString()
 }
+
+function projectLabel(memory: MemoryListItem): string | null {
+  if (memory.scope.global || memory.scope.projects.length === 0) return null
+  return memory.tags[0] || memory.scope.projects[0]
+}
 </script>
 
 <template>
@@ -56,6 +61,12 @@ function formatDate(dateStr: string): string {
           </span>
           <span v-if="memory.tags.length > 3" class="text-xs text-slate-500">
             +{{ memory.tags.length - 3 }}
+          </span>
+          <span
+            v-if="projectLabel(memory)"
+            class="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-300"
+          >
+            {{ projectLabel(memory) }}
           </span>
         </div>
       </div>
