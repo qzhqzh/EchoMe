@@ -1,0 +1,116 @@
+name: Auto Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(grep -Po '(?<=version = ")[^"]+' pyproject.toml | head -1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Bump version
+        id: bump
+        run: |
+          IFS='.' read -r major minor patch <<< "${{ steps.current.outputs.version }}"
+          case "${{ inputs.bump }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          NEW_VERSION="${major}.${minor}.${patch}"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Update version in pyproject.toml
+        run: |
+          sed -i "s/version = \"${{ steps.current.outputs.version }}\"/version = \"${{ steps.bump.outputs.version }}\"/" pyproject.toml
+
+      - name: Update version in __init__.py
+        run: |
+          echo '__version__ = "${{ steps.bump.outputs.version }}"' > echome/__init__.py
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline --no-merges | head -50)
+          else
+            COMMITS=$(git log --oneline --no-merges "${PREV_TAG}..HEAD")
+          fi
+
+          # Generate changelog
+          echo "## v${{ steps.bump.outputs.version }}" > /tmp/changelog_entry.md
+          echo "" >> /tmp/changelog_entry.md
+          echo "$COMMITS" | while read -r line; do
+            echo "- $line" >> /tmp/changelog_entry.md
+          done
+          echo "" >> /tmp/changelog_entry.md
+
+          # Prepend to CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            cat /tmp/changelog_entry.md CHANGELOG.md > /tmp/new_changelog.md
+            mv /tmp/new_changelog.md CHANGELOG.md
+          else
+            mv /tmp/changelog_entry.md CHANGELOG.md
+          fi
+
+          # Save for release notes
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/changelog_entry.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump + changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml echome/__init__.py CHANGELOG.md
+          git commit -m "release: v${{ steps.bump.outputs.version }}"
+
+      - name: Create tag
+        run: |
+          git tag "v${{ steps.bump.outputs.version }}"
+
+      - name: Push commit and tag
+        run: |
+          git push origin main
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.bump.outputs.version }}"
+          name: "v${{ steps.bump.outputs.version }}"
+          body: ${{ steps.changelog.outputs.notes }}
+          draft: false
+          prerelease: false
