@@ -247,7 +247,7 @@ CLI 批量上传本地 vault 到 Hub。
       "updated_at": "2026-05-21T10:00:00Z"
     }
   ],
-  "client_info": "echome-cli/0.1.0 linux"
+  "client_info": "echome/0.1.0 linux"
 }
 ```
 

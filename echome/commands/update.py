@@ -17,7 +17,7 @@ def _detect_install_source() -> str:
     """Detect how echome was installed: 'editable', 'github', or 'pypi'."""
     try:
         import importlib.metadata
-        dist = importlib.metadata.distribution("echome-cli")
+        dist = importlib.metadata.distribution("echome")
         # Check if it's an editable install (has direct_url.json pointing to local path)
         direct_url = dist.read_text("direct_url.json")
         if direct_url and '"dir_info"' in direct_url:
@@ -93,7 +93,7 @@ def update(
         console.print("  Install source: [cyan]GitHub[/cyan]")
         pip_cmd = [
             sys.executable, "-m", "pip", "install", "--upgrade",
-            f"echome-cli[mcp] @ {GITHUB_REPO}",
+            f"echome[mcp] @ {GITHUB_REPO}",
         ]
 
     elif source == "pypi":
@@ -101,7 +101,7 @@ def update(
         console.print("  Install source: [cyan]PyPI[/cyan]")
         pip_cmd = [
             sys.executable, "-m", "pip", "install", "--upgrade",
-            "echome-cli[mcp]",
+            "echome[mcp]",
         ]
     else:
         console.print(f"[red]Unknown source: {source}. Use 'github' or 'pypi'.[/red]")

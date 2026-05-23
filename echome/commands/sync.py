@@ -133,7 +133,7 @@ def push() -> None:
     # TODO: Read local vault files and push to Hub
     # For now, placeholder
     try:
-        result = client.push([], client_info=f"echome-cli/0.1.0")
+        result = client.push([], client_info=f"echome/0.1.0")
         console.print(
             f"  Created: {result.get('created', 0)} | "
             f"Updated: {result.get('updated', 0)} | "

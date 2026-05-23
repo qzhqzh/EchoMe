@@ -114,7 +114,7 @@ EchoMe 是一个 **跨 AI 的个人上下文同步层**，让用户的习惯、�
 **技术栈**：
 - Python 3.11+ / Typer + Rich（美观 CLI 输出）
 - httpx（异步 HTTP 调 Hub API）
-- PyPI 发布为 `echome-cli`
+- PyPI 发布为 `echome`
 
 ### 3.3 EchoMe MCP Server（本地 MCP 进程）
 

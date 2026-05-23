@@ -135,10 +135,10 @@ AI CLI 能通过 MCP 协议查询和写入记忆。
 - [ ] `echome project link <id>` — 绑定当前目录到项目
 - [ ] 配置文件支持 token 限制自定义
 - [ ] CLI 补全 (bash/zsh/fish)
-- [ ] PyPI 发布 `echome-cli`
+- [ ] PyPI 发布 `echome`
 
 ### 验收标准
-- 新机器：`pip install echome-cli && echome install --from https://hub.example.com` → 3 分钟内完全恢复
+- 新机器：`pip install echome && echome install --from https://hub.example.com` → 3 分钟内完全恢复
 - 每天正常使用无 bug
 
 ---

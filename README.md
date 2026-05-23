@@ -60,10 +60,10 @@ docker compose up -d       # 启动 Postgres + Redis + App
 
 ```bash
 # 完整安装（CLI + MCP Server）
-pip install echome-cli[mcp]
+pip install echome[mcp]
 
 # 或仅安装 CLI（不需要 MCP）
-pip install echome-cli
+pip install echome
 
 # 初始化：连接 Hub + 注册 MCP（交互式）
 echome init

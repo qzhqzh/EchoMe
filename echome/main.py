@@ -241,7 +241,7 @@ def mcp_serve(
         run_server(use_sse=sse)
     except ImportError:
         console.print("[red]MCP 未安装。[/red]")
-        console.print("安装: [cyan]pip install echome-cli\\[mcp][/cyan]")
+        console.print("安装: [cyan]pip install echome\\[mcp][/cyan]")
         raise typer.Exit(1)
 
 
@@ -252,7 +252,7 @@ def mcp_install() -> None:
         import echome_mcp  # noqa: F401
     except ImportError:
         console.print("[red]MCP 未安装。[/red]")
-        console.print("先安装: [cyan]pip install echome-cli\\[mcp][/cyan]")
+        console.print("先安装: [cyan]pip install echome\\[mcp][/cyan]")
         raise typer.Exit(1)
 
     from echome.commands.init import _setup_mcp

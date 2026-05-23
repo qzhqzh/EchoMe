@@ -107,7 +107,7 @@ def init(
             console.print("   [dim]Skipped. Run `echome mcp install` later if needed.[/dim]\n")
     else:
         console.print("   [yellow]⚠ MCP 未安装[/yellow]")
-        console.print("   [dim]安装 MCP 支持: pip install echome-cli[mcp][/dim]")
+        console.print("   [dim]安装 MCP 支持: pip install echome[mcp][/dim]")
         console.print("   [dim]安装后运行 `echome mcp install` 即可注册[/dim]\n")
 
     # ─── Done ───
