@@ -58,3 +58,4 @@ jobs:
         with:
           name: dist
           path: dist/
+# CI verification after merging PRs #36, #37, #38

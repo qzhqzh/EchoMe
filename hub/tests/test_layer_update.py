@@ -168,21 +168,34 @@ class TestBackgroundEmbeddingRaceCondition:
         it should NOT propagate to the main request's session.
         """
         from app.api.memories import _compute_and_store_embedding
-        from app.core.database import async_session_factory
 
         # Mock embedding to return a 1024-dim vector (wrong dimension)
         fake_embedding = [0.1] * 1024
 
+        # Mock the session factory to simulate a DB error during execute
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=Exception("expected 1536 dimensions, not 1024")
+        )
+        mock_session.commit = AsyncMock()
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+
         with patch("app.api.memories.get_embedding", return_value=fake_embedding):
-            # The background task should fail (dimension mismatch)
-            # but it should NOT raise to the caller
-            try:
-                await _compute_and_store_embedding(uuid.uuid4(), "test text")
-            except Exception as e:
-                pytest.fail(
-                    f"Background embedding task should not raise to caller, "
-                    f"but got: {e}"
-                )
+            with patch(
+                "app.core.database.async_session_factory",
+                return_value=mock_session_ctx,
+            ):
+                # The background task should NOT raise to the caller
+                try:
+                    await _compute_and_store_embedding(uuid.uuid4(), "test text")
+                except Exception as e:
+                    pytest.fail(
+                        f"Background embedding task should not raise to caller, "
+                        f"but got: {e}"
+                    )
 
 
 class TestEndToEndLayerUpdate:
