@@ -1,3 +1,56 @@
+## v0.2.0
+
+- 03eddd5 feat(ci): auto release with changelog + tag + fix Node.js 20 warning
+- 1faf1dc remove test-hub
+- 64d3962 ci: remove test-hub job (requires PostgreSQL not available in CI)
+- e342a91 fix(ci): skip DB-dependent tests, set env vars for hub tests
+- 1fc6f81 fix(ci): skip DB-dependent tests, set env vars for hub tests
+- 1e8f1b1 fix(ci): set test env vars in conftest + remove unused app.main import
+- 4075eb8 fix(test): mock async_session_factory in embedding DB error test
+- 6655609 ci: trigger actions to verify merged state
+- 9a22f41 chore: apply minimal Ruff fixes
+- 1fff68a test: initialize Memory fixture via ORM constructor in layer update tests
+- acb000b Fix current CI blockers in lint and hub layer tests
+- 15c7dee Initial plan
+- 850e4c2 Initial plan
+- 27ef955 test: initialize Memory fixture via ORM constructor in layer update tests
+- 10ce4e7 Initial plan
+- d50cc41 Initial plan
+- 1072c92 Fix Ruff lint failures in CLI files
+- b118e61 Initial plan
+- 94ced95 feat: rename package to echome + add CI/CD workflows
+- c26c5b3 fix: move dependencies out of [project.urls] section (build error)
+- d2214c7 fix: rename PyPI package from echome-cli to echome
+- 60f15b7 fix: add PyPI metadata (readme, authors, classifiers, urls)
+- 5b584f2 feat: switch from Docker volumes to disk mount + migration script
+- 10089fa chore: add uv.lock to gitignore
+- 06b4855 fix: add session commit logging + layer update persistence tests
+- f38c8dd fix(web): pass type to create-first-memory button too
+- d3b17c1 fix(web): pre-select type when creating memory from filtered view
+- 3a85030 fix: background embedding task exception rollbacks main request
+- 90af167 fix: remove _claim_default_data and migration 004 - use manual SQL instead
+- ece802e fix: claim orphaned default user_id data on first admin login
+- 75fa478 fix: embedding background task race condition overwrites field updates
+- abfa11c fix: add flush before return in PUT/PATCH to persist changes
+- 8d78514 fix: separate L0 global from L1 project in sync/render
+- 3b3b7b7 fix: Windows compatibility for chmod and pgrep
+- ae17986 feat(web): add permanent delete option for memories
+- a9bcc48 docs: add tech stack steering (soft preferences, non-binding)
+- 0fae3aa feat(web): add i18n support with zh/en language switching
+- 37f3130 feat: code cleanup, hub API unit tests, and /help page
+- 0cc819f feat: rename memory types + add reasoning
+- dfefa27 fix: back button uses router.back() to preserve filter state
+- 96c21ad fix: seed memories deduplication by title (idempotent)
+- e820de4 fix: preserve filter state when navigating back from memory detail
+- 95cd194 feat: show user_id on Settings page
+- c56e3cb fix: remove unused imports in Memories.vue (TS6133)
+- 6dc7174 feat: memory type priority system, seed memories, tab UI
+- df3a97e feat: add API rate limiting (slowapi)
+- d773abc fix: security hardening, bug fixes, and open-source essentials
+- 8382485 fix: check login before sync/push/pull, show friendly error when logged out
+- 92b8e2e feat: make token-paste the default login flow, browser is --browser
+- be4aa93 fix: CLI login retry on bad token + Settings copy UX improvements
+
 # Changelog
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
