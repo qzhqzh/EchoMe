@@ -14,26 +14,27 @@ def _make_real_orm_memory(
     title: str = "Test Memory",
     layer: str = "L0",
 ):
-    """Create a real-enough ORM Memory object (not MagicMock) to test attribute mutation."""
+    """Create a real ORM Memory object with proper SQLAlchemy instrumentation."""
     from app.models.memory import Memory
 
-    mem = Memory.__new__(Memory)
+    mem = Memory(
+        user_id=user_id,
+        title=title,
+        content="test content",
+        type="context",
+        layer=layer,
+        priority=5,
+        tags=["test"],
+        status="active",
+        source="manual",
+        token_count=10,
+        visibility="private",
+        scope_global=True,
+        scope_projects=[],
+        scope_exclude=[],
+    )
     mem.id = uuid.uuid4()
-    mem.user_id = user_id
-    mem.title = title
-    mem.content = "test content"
-    mem.type = "context"
-    mem.layer = layer
-    mem.priority = 5
-    mem.tags = ["test"]
-    mem.status = "active"
-    mem.source = "manual"
-    mem.token_count = 10
-    mem.visibility = "private"
     mem.forked_from = None
-    mem.scope_global = True
-    mem.scope_projects = []
-    mem.scope_exclude = []
     mem.embedding = None
     mem.created_at = datetime.now(timezone.utc)
     mem.updated_at = datetime.now(timezone.utc)
