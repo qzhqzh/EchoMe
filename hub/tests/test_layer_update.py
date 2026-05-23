@@ -16,6 +16,7 @@ def _make_real_orm_memory(
     layer: str = "L0",
 ):
     """Create a real SQLAlchemy ORM Memory object."""
+    """Create a real ORM Memory object with proper SQLAlchemy instrumentation."""
     from app.models.memory import Memory
 
     mem = Memory(

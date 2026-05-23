@@ -59,7 +59,7 @@ def _normalize_type(raw_type: str) -> str:
 async def echome_remember(
     title: str,
     content: str,
-    type: str,
+    type: str,  # noqa: A002
     tags: list[str],
     suggested_layer: str = "L2",
     project_id: str | None = None,

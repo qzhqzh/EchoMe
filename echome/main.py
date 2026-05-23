@@ -150,16 +150,26 @@ def status_cmd() -> None:
             if "echome" in result.stdout.lower():
                 console.print("  [bold]MCP Proc:[/bold]  [green]✓ Running[/green]")
             else:
-                console.print("  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
+                console.print(
+                    "  [bold]MCP Proc:[/bold]  "
+                    "[dim]not running (starts on-demand by AI CLI)[/dim]"
+                )
         else:
             result = subprocess.run(
                 ["pgrep", "-f", "echome mcp serve"],
                 capture_output=True, text=True, timeout=5,
             )
             if result.returncode == 0:
-                console.print(f"  [bold]MCP Proc:[/bold]  [green]✓ Running[/green] (PID {result.stdout.strip().split()[0]})")
+                pid = result.stdout.strip().split()[0]
+                console.print(
+                    "  [bold]MCP Proc:[/bold]  "
+                    f"[green]✓ Running[/green] (PID {pid})"
+                )
             else:
-                console.print("  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
+                console.print(
+                    "  [bold]MCP Proc:[/bold]  "
+                    "[dim]not running (starts on-demand by AI CLI)[/dim]"
+                )
     except Exception:
         console.print("  [bold]MCP Proc:[/bold]  [dim]unknown[/dim]")
 

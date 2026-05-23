@@ -12,7 +12,7 @@ console = Console()
 
 
 def list_memories(
-    type: str | None = typer.Option(None, "--type", "-t", help="Filter by type"),
+    type: str | None = typer.Option(None, "--type", "-t", help="Filter by type"),  # noqa: A002
     layer: str | None = typer.Option(None, "--layer", "-l", help="Filter by layer (L0/L1/L2)"),
     tags: str | None = typer.Option(None, "--tags", help="Filter by tags (comma-separated)"),
     status: str | None = typer.Option(None, "--status", "-s", help="Filter by status"),
@@ -69,7 +69,7 @@ def list_memories(
 def add_memory(
     title: str | None = typer.Argument(None, help="Memory title (quick mode)"),
     content: str | None = typer.Option(None, "--content", "-c", help="Memory content"),
-    type: str | None = typer.Option(None, "--type", "-t", help="Memory type"),
+    type: str | None = typer.Option(None, "--type", "-t", help="Memory type"),  # noqa: A002
     layer: str | None = typer.Option(None, "--layer", "-l", help="Layer (L0/L1/L2)"),
     priority: int | None = typer.Option(None, "--priority", "-p", help="Priority (1-10)"),
     tags: str | None = typer.Option(None, "--tags", help="Tags (comma-separated)"),
@@ -100,8 +100,9 @@ def add_memory(
             "identity", "guardrail", "reasoning", "method", "stack",
             "style", "decision", "context", "template", "project",
         ]
-        if not type:
-            type = Prompt.ask("Type", choices=type_choices, default="context")
+        memory_type = type
+        if not memory_type:
+            memory_type = Prompt.ask("Type", choices=type_choices, default="context")
         if not layer:
             layer = Prompt.ask("Layer", choices=["L0", "L1", "L2"], default="L2")
         if priority is None:
@@ -114,7 +115,7 @@ def add_memory(
         data = _build_memory_data(
             title=title,
             content=content,
-            mem_type=type,
+            mem_type=memory_type,
             layer=layer,
             priority=priority,
             tags=tags,
@@ -217,7 +218,7 @@ def _build_memory_data(
 
 def search_memories(
     query: str = typer.Argument(..., help="Search query"),
-    type: str | None = typer.Option(None, "--type", "-t"),
+    type: str | None = typer.Option(None, "--type", "-t"),  # noqa: A002
     top_k: int = typer.Option(5, "--top-k", "-k"),
 ) -> None:
     """Search memories by keyword/semantic query."""
@@ -239,7 +240,10 @@ def search_memories(
         console.print("[dim]No matching memories found.[/dim]")
         return
 
-    console.print(f"\n[bold]Found {len(results)} results[/bold] (searched {result.get('total_searched', '?')} memories)\n")
+    console.print(
+        f"\n[bold]Found {len(results)} results[/bold] "
+        f"(searched {result.get('total_searched', '?')} memories)\n"
+    )
 
     for i, item in enumerate(results, 1):
         score = item.get("score", 0)

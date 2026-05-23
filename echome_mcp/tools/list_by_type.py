@@ -3,7 +3,7 @@
 from echome_mcp.hub_client import MCPHubClient
 
 
-async def echome_list_by_type(type: str, status: str = "active") -> str:
+async def echome_list_by_type(type: str, status: str = "active") -> str:  # noqa: A002
     """List all memories of a given type.
 
     Args:
@@ -17,7 +17,7 @@ async def echome_list_by_type(type: str, status: str = "active") -> str:
     client = MCPHubClient()
 
     try:
-        result = await client.list_by_type(type=type, status=status)
+        result = await client.list_by_type(memory_type=type, status=status)
     except Exception as e:
         return f"Error listing memories: {e}"
 
