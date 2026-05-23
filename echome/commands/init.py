@@ -1,5 +1,7 @@
 """echome init - Initialize local vault, configure Hub, and optionally set up MCP."""
 
+import re
+
 import typer
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
@@ -41,7 +43,8 @@ def _setup_mcp() -> None:
     claude_mcp.write_text(json.dumps(data, indent=2))
     registered.append(f"Claude Code ({claude_mcp})")
 
-    # Codex CLI
+    # Codex CLI legacy JSON config. Keep writing it for older clients and humans
+    # who inspect the config, but modern Codex reads ~/.codex/config.toml.
     codex_mcp = Path.home() / ".codex" / "mcp.json"
     codex_mcp.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -50,10 +53,40 @@ def _setup_mcp() -> None:
         data = {}
     data.setdefault("mcpServers", {})["echome"] = mcp_config
     codex_mcp.write_text(json.dumps(data, indent=2))
-    registered.append(f"Codex CLI ({codex_mcp})")
+    registered.append(f"Codex CLI legacy ({codex_mcp})")
+
+    codex_toml = Path.home() / ".codex" / "config.toml"
+    _upsert_codex_config(codex_toml)
+    registered.append(f"Codex CLI ({codex_toml})")
 
     for r in registered:
         console.print(f"    [green]✓[/green] {r}")
+
+
+def _upsert_codex_config(path) -> None:
+    """Add/update EchoMe in Codex TOML MCP configuration."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        content = path.read_text()
+    except OSError:
+        content = ""
+
+    block = (
+        "\n[mcp_servers.echome]\n"
+        "command = \"echome\"\n"
+        "args = [\"mcp\", \"serve\"]\n"
+        "enabled = true\n"
+    )
+    pattern = re.compile(r"(?ms)^\[mcp_servers\.echome\]\n.*?(?=^\[|\Z)")
+
+    if pattern.search(content):
+        content = pattern.sub(block.lstrip(), content)
+    else:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += block
+
+    path.write_text(content)
 
 
 def init(

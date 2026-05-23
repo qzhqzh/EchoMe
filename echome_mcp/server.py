@@ -58,6 +58,29 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="memory_search",
+            description=(
+                "Alias for echome_search. Search user memories and knowledge. "
+                "Use this when an agent expects a generic memory_search tool name."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "identity", "guardrail", "reasoning", "method", "stack",
+                            "style", "decision", "context", "template", "project",
+                        ],
+                    },
+                    "project_id": {"type": "string"},
+                    "top_k": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
             name="echome_get",
             description="Get a single memory's full content by its UUID.",
             inputSchema={
@@ -145,6 +168,31 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="memory_remember",
+            description=(
+                "Alias for echome_remember. Save a new memory as pending when the user "
+                "explicitly asks the agent to remember something."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "content": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "identity", "guardrail", "reasoning", "method", "stack",
+                            "style", "decision", "context", "template", "project",
+                        ],
+                    },
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "suggested_layer": {"type": "string", "enum": ["L0", "L1", "L2"], "default": "L2"},
+                    "project_id": {"type": "string"},
+                },
+                "required": ["title", "content", "type", "tags"],
+            },
+        ),
+        Tool(
             name="echome_get_project_context",
             description=(
                 "Get the full context for a specific project, "
@@ -168,7 +216,7 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to the appropriate handler."""
     try:
-        if name == "echome_search":
+        if name in {"echome_search", "memory_search"}:
             result = await echome_search(
                 query=arguments["query"],
                 type=arguments.get("type"),
@@ -182,7 +230,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 type=arguments["type"],
                 status=arguments.get("status", "active"),
             )
-        elif name == "echome_remember":
+        elif name in {"echome_remember", "memory_remember"}:
             result = await echome_remember(
                 title=arguments["title"],
                 content=arguments["content"],

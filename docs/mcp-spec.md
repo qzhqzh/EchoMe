@@ -27,17 +27,16 @@ echome mcp serve --sse     # SSE 模式（适合远程/多客户端）
 
 **注册方式（Codex CLI）**：
 
-`~/.codex/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "echome": {
-      "command": "echome",
-      "args": ["mcp", "serve"]
-    }
-  }
-}
+现代 Codex CLI 使用 `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.echome]
+command = "echome"
+args = ["mcp", "serve"]
+enabled = true
 ```
+
+EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决于客户端版本。
 
 ## 2. MCP 协议版本
 
@@ -56,7 +55,7 @@ echome mcp serve --sse     # SSE 模式（适合远程/多客户端）
 
 ## 4. Tools
 
-### 4.1 echome_search
+### 4.1 echome_search / memory_search
 
 **描述**: 搜索用户的记忆和知识。当需要了解用户的工作流规范、技术偏好、项目背景、过往决策时调用此工具。
 
@@ -165,7 +164,7 @@ echome mcp serve --sse     # SSE 模式（适合远程/多客户端）
 
 ---
 
-### 4.4 echome_remember
+### 4.4 echome_remember / memory_remember
 
 **描述**: 将新知识写入用户的记忆库。当用户明确表示"以后都这样做"、"记住这个规则"、"这是我的偏好"时调用。写入的记忆需要用户确认后才会正式生效。
 
