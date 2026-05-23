@@ -19,7 +19,7 @@ const limit = 20
 
 const activeType = ref<MemoryType | ''>((route.query.type as MemoryType) || '')
 const filterLayer = ref((route.query.layer as string) || '')
-const filterStatus = ref((route.query.status as string) || 'active')
+const filterStatus = ref((route.query.status as string) || '')
 const filterTags = ref((route.query.tags as string) || '')
 const filterProject = ref((route.query.project_id as string) || '')
 const offset = ref(Number(route.query.offset) || 0)
@@ -47,7 +47,7 @@ function updateUrlQuery(): void {
   const query: Record<string, string> = {}
   if (activeType.value) query.type = activeType.value
   if (filterLayer.value) query.layer = filterLayer.value
-  if (filterStatus.value && filterStatus.value !== 'active') query.status = filterStatus.value
+  if (filterStatus.value) query.status = filterStatus.value
   if (filterTags.value) query.tags = filterTags.value
   // 只有 project 类型才写入 URL
   if (activeType.value === 'project' && filterProject.value) query.project_id = filterProject.value
@@ -216,6 +216,7 @@ const activeProjectName = computed(() => {
         <option v-for="l in MEMORY_LAYERS" :key="l" :value="l">{{ l }}</option>
       </select>
       <select v-model="filterStatus" class="input-field w-auto min-w-[120px]">
+        <option value="">All</option>
         <option v-for="s in MEMORY_STATUSES" :key="s" :value="s">{{ s }}</option>
       </select>
       <input
