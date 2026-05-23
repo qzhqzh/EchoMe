@@ -1,14 +1,17 @@
-name: Publish to PyPI
+name: Release & Publish
 
 on:
   push:
     tags: ["v*"]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # Required for trusted publishing
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -22,14 +25,10 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Smoke test - install and run
+      - name: Smoke test
         run: |
           pip install dist/*.whl
           echome --help
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Uses trusted publishing (no token needed if configured on PyPI)
-        # Fallback: set PYPI_TOKEN secret and uncomment below:
-        # with:
-        #   password: ${{ secrets.PYPI_TOKEN }}
