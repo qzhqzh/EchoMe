@@ -77,10 +77,10 @@ def login(
     # Direct user to the CLI-friendly login page
     cli_login_url = f"{hub_url}/login?source=cli"
 
-    console.print(f"  1. Open this URL in your browser:\n")
+    console.print("  1. Open this URL in your browser:\n")
     console.print(f"     [cyan]{cli_login_url}[/cyan]\n")
-    console.print(f"  2. Click [bold]Login with GitHub[/bold] and authorize")
-    console.print(f"  3. Copy the token shown on the page\n")
+    console.print("  2. Click [bold]Login with GitHub[/bold] and authorize")
+    console.print("  3. Copy the token shown on the page\n")
 
     # Allow retrying if token is wrong
     while True:
@@ -127,8 +127,8 @@ def _login_browser(config: Config, hub_url: str) -> None:
     try:
         webbrowser.open(auth_url)
     except Exception:
-        console.print(f"[yellow]Could not open browser.[/yellow]")
-        console.print(f"Try: [cyan]echome login[/cyan] (default token-paste flow)\n")
+        console.print("[yellow]Could not open browser.[/yellow]")
+        console.print("Try: [cyan]echome login[/cyan] (default token-paste flow)\n")
 
     if _server_event.wait(timeout=120):
         server.shutdown()
@@ -185,4 +185,4 @@ def _verify_and_show_user(config: Config) -> None:
         raise
     except Exception as e:
         console.print(f"[red]✗ Verification failed:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e

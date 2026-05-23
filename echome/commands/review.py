@@ -22,7 +22,7 @@ def review(
         result = client.list_memories(status="pending")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     items = result.get("items", [])
     if not items:

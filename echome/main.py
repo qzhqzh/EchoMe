@@ -148,9 +148,9 @@ def status_cmd() -> None:
                 capture_output=True, text=True, timeout=5,
             )
             if "echome" in result.stdout.lower():
-                console.print(f"  [bold]MCP Proc:[/bold]  [green]✓ Running[/green]")
+                console.print("  [bold]MCP Proc:[/bold]  [green]✓ Running[/green]")
             else:
-                console.print(f"  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
+                console.print("  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
         else:
             result = subprocess.run(
                 ["pgrep", "-f", "echome mcp serve"],
@@ -159,9 +159,9 @@ def status_cmd() -> None:
             if result.returncode == 0:
                 console.print(f"  [bold]MCP Proc:[/bold]  [green]✓ Running[/green] (PID {result.stdout.strip().split()[0]})")
             else:
-                console.print(f"  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
+                console.print("  [bold]MCP Proc:[/bold]  [dim]not running (starts on-demand by AI CLI)[/dim]")
     except Exception:
-        console.print(f"  [bold]MCP Proc:[/bold]  [dim]unknown[/dim]")
+        console.print("  [bold]MCP Proc:[/bold]  [dim]unknown[/dim]")
 
     # Sync status
     last_sync = _get_last_sync()
@@ -171,7 +171,7 @@ def status_cmd() -> None:
     marker = "<!-- echome:begin -->"
     targets = [ClaudeCodeTarget(), CodexTarget()]
 
-    console.print(f"\n[bold]Injection Status:[/bold]")
+    console.print("\n[bold]Injection Status:[/bold]")
     for t in targets:
         gf = t.global_file
         if gf.exists() and marker in gf.read_text():
@@ -186,9 +186,9 @@ def status_cmd() -> None:
             console.print(f"  [dim]✗[/dim] {t.name} project: not injected")
 
     # Config
-    console.print(f"\n[bold]Config:[/bold]")
-    console.print(f"  Vault:  ~/.echome/")
-    console.print(f"  Config: ~/.echome/config.yaml")
+    console.print("\n[bold]Config:[/bold]")
+    console.print("  Vault:  ~/.echome/")
+    console.print("  Config: ~/.echome/config.yaml")
     console.print(f"  Hub:    {config.hub_url}")
     console.print()
 
@@ -239,10 +239,10 @@ def mcp_serve(
     try:
         from echome_mcp.server import run_server
         run_server(use_sse=sse)
-    except ImportError:
+    except ImportError as err:
         console.print("[red]MCP 未安装。[/red]")
         console.print("安装: [cyan]pip install echome\\[mcp][/cyan]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from err
 
 
 @mcp_app.command("install")
@@ -250,10 +250,10 @@ def mcp_install() -> None:
     """Register MCP server in Claude Code and Codex CLI."""
     try:
         import echome_mcp  # noqa: F401
-    except ImportError:
+    except ImportError as err:
         console.print("[red]MCP 未安装。[/red]")
         console.print("先安装: [cyan]pip install echome\\[mcp][/cyan]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from err
 
     from echome.commands.init import _setup_mcp
     console.print("\n[bold]Registering EchoMe MCP Server...[/bold]\n")
