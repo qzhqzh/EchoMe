@@ -1,15 +1,18 @@
 """Shared test fixtures for hub API tests."""
 
+import os
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-from httpx import AsyncClient
+
+# Set test environment variables BEFORE importing app modules
+os.environ.setdefault("ECHOME_JWT_SECRET", "test-secret-for-ci-at-least-32-chars-long")
+os.environ.setdefault("ECHOME_DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
+os.environ.setdefault("ECHOME_DEBUG", "true")
 
 from app.core.jwt import create_access_token
-from app.main import app
 
 
 @pytest.fixture
