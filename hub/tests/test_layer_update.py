@@ -1,5 +1,6 @@
 """Test to reproduce the layer update bug: PUT returns L1 but DB still has L0."""
 
+import os
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,6 +15,7 @@ def _make_real_orm_memory(
     title: str = "Test Memory",
     layer: str = "L0",
 ):
+    """Create a real SQLAlchemy ORM Memory object."""
     """Create a real ORM Memory object with proper SQLAlchemy instrumentation."""
     from app.models.memory import Memory
 
@@ -189,6 +191,10 @@ class TestEndToEndLayerUpdate:
     Tests the complete flow: create -> update layer -> verify persistence.
     """
 
+    @pytest.mark.skipif(
+        os.getenv("ECHOME_RUN_INTEGRATION_TESTS") != "1",
+        reason="Requires external Postgres service; set ECHOME_RUN_INTEGRATION_TESTS=1 to run.",
+    )
     @pytest.mark.asyncio
     async def test_layer_update_persists(self, sample_memory_data):
         """
