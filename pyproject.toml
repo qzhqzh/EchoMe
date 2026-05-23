@@ -1,5 +1,5 @@
 [project]
-name = "echome-cli"
+name = "echome"
 version = "0.1.0"
 description = "EchoMe - Personal memory sync for AI CLI tools (CLI + optional MCP Server)"
 requires-python = ">=3.11"
