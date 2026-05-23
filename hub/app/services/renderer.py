@@ -18,12 +18,15 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 规则：
 1. 收到用户第一条消息后，根据关键词调用 echome_search
 2. 涉及 git/PR/commit/deploy 操作前，必须查 echome_search
-3. 当用户明确说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
-4. 即使用户没有明确要求，只要你观察到稳定偏好、项目决策、工作流约定、反复纠正、可复用上下文，也可以主动调用 `echome_remember` 写入 ai_review 记忆
-5. 不要写入密码/密钥/隐私敏感内容、一次性临时事实、低置信度猜测；拿不准时不要写
-6. 所有 AI 主动写入默认 ai_review，会立即参与后续检索；用户可运行 `echome review` 将其提升为 active 或归档
-7. 不确定项目约定时，调用 echome_search 而不是假设
-8. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project"""
+3. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
+4. 不确定项目约定时，调用 echome_search 而不是假设
+5. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project
+6. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 `echome_remember` 写入记忆。判断标准：
+   - 发现了可复用的模式、踩坑经验、最佳实践
+   - 用户纠正了你的做法（存为 style 类型）
+   - 做了技术决策（存为 decision 类型）
+   - 学到了项目特有的知识（存为 context 或 project 类型）
+   不要写：密码/密钥/隐私、一次性临时信息、会快速过时的内容"""
 
 # Type rendering priority (lower number = higher priority = rendered first)
 TYPE_PRIORITY: dict[str, int] = {
