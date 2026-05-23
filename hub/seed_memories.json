@@ -94,5 +94,65 @@
     "scope": {"global": true, "projects": [], "exclude_projects": []},
     "source": "imported",
     "visibility": "private"
+  },
+  {
+    "title": "编码前先思考，不要隐藏困惑",
+    "content": "- 明确说出你的假设。如果不确定，先问。\n- 如果存在多种理解方式，列出来让我选——不要默默选一个。\n- 如果有更简单的方案，说出来。该 push back 时 push back。\n- 如果有不明确的地方，停下来，说清楚哪里困惑，然后提问。",
+    "type": "guardrail",
+    "layer": "L0",
+    "priority": 9,
+    "tags": ["coding", "communication"],
+    "status": "active",
+    "scope": {"global": true, "projects": [], "exclude_projects": []},
+    "source": "imported",
+    "visibility": "private"
+  },
+  {
+    "title": "只改必须改的，不要顺手改善",
+    "content": "编辑现有代码时：\n- 不要\"顺便改进\"相邻的代码、注释或格式\n- 不要重构没坏的东西\n- 匹配现有代码风格，即使你会写得不一样\n- 如果发现无关的死代码，提一句就行——不要删\n\n当你的改动导致孤儿代码时：\n- 清理你的改动导致的未使用 import/变量/函数\n- 不要清理之前就存在的死代码（除非明确要求）\n\n检验标准：diff 中每一行改动都应该能直接追溯到用户的请求。",
+    "type": "guardrail",
+    "layer": "L0",
+    "priority": 9,
+    "tags": ["coding", "diff", "discipline"],
+    "status": "active",
+    "scope": {"global": true, "projects": [], "exclude_projects": []},
+    "source": "imported",
+    "visibility": "private"
+  },
+  {
+    "title": "最小代码原则——只写需要的",
+    "content": "- 不写超出请求范围的功能\n- 单次使用的代码不做抽象\n- 没被要求的\"灵活性\"和\"可配置性\"不加\n- 不为不可能发生的场景写错误处理\n- 如果写了 200 行但 50 行能搞定，重写\n\n问自己：\"一个资深工程师会觉得这太复杂了吗？\" 如果是，简化。",
+    "type": "method",
+    "layer": "L0",
+    "priority": 8,
+    "tags": ["coding", "simplicity"],
+    "status": "active",
+    "scope": {"global": true, "projects": [], "exclude_projects": []},
+    "source": "imported",
+    "visibility": "private"
+  },
+  {
+    "title": "目标驱动执行——定义验证标准再动手",
+    "content": "把任务转化为可验证的目标：\n- \"加个校验\" → \"先写无效输入的测试，再让它通过\"\n- \"修 bug\" → \"先写复现测试，再修复\"\n- \"重构 X\" → \"确保重构前后测试都通过\"\n\n多步骤任务，先列计划：\n1. [步骤] → 验证方式: [检查点]\n2. [步骤] → 验证方式: [检查点]\n3. [步骤] → 验证方式: [检查点]\n\n强验证标准让你能独立循环。弱标准（\"让它能用\"）需要不断确认。",
+    "type": "method",
+    "layer": "L1",
+    "priority": 7,
+    "tags": ["coding", "workflow", "verification"],
+    "status": "active",
+    "scope": {"global": true, "projects": [], "exclude_projects": []},
+    "source": "imported",
+    "visibility": "private"
+  },
+  {
+    "title": "权衡取舍偏向谨慎而非速度",
+    "content": "这些规则偏向谨慎而非速度。对于琐碎任务，可以自行判断放宽。\n判断是否生效的标准：\n- diff 中不必要的改动更少\n- 因过度复杂导致的重写更少\n- 澄清性提问出现在实现之前，而不是犯错之后",
+    "type": "style",
+    "layer": "L1",
+    "priority": 6,
+    "tags": ["coding", "tradeoff"],
+    "status": "active",
+    "scope": {"global": true, "projects": [], "exclude_projects": []},
+    "source": "imported",
+    "visibility": "private"
   }
 ]
