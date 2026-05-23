@@ -35,14 +35,14 @@ class MCPHubClient:
     async def search(
         self,
         query: str,
-        type: str | None = None,
+        memory_type: str | None = None,
         project_id: str | None = None,
         top_k: int = 5,
     ) -> dict[str, Any]:
         """Search memories."""
         payload: dict[str, Any] = {"query": query, "top_k": top_k}
-        if type:
-            payload["type"] = type
+        if memory_type:
+            payload["type"] = memory_type
         if project_id:
             payload["project_id"] = project_id
 
@@ -58,10 +58,13 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def list_by_type(self, type: str, status: str = "active") -> dict[str, Any]:
+    async def list_by_type(self, memory_type: str, status: str = "active") -> dict[str, Any]:
         """List memories by type."""
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
-            resp = await client.get("/api/v1/memories", params={"type": type, "status": status})
+            resp = await client.get(
+                "/api/v1/memories",
+                params={"type": memory_type, "status": status},
+            )
             resp.raise_for_status()
             return resp.json()
 

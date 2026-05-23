@@ -99,7 +99,10 @@ def init(
     if skip_mcp:
         console.print("   [dim]Skipped (--skip-mcp)[/dim]\n")
     elif _mcp_available():
-        install_mcp = Confirm.ask("   Register MCP server to Claude Code / Codex CLI?", default=True)
+        install_mcp = Confirm.ask(
+            "   Register MCP server to Claude Code / Codex CLI?",
+            default=True,
+        )
         if install_mcp:
             _setup_mcp()
             console.print("   [green]✓[/green] MCP registered. Restart AI CLI to activate.\n")

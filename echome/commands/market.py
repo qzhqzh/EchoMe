@@ -38,12 +38,15 @@ def market_default(ctx: typer.Context) -> None:
         for t, count in sorted(stats["by_type"].items(), key=lambda x: -x[1]):
             console.print(f"    {t:<16} {count}")
 
-    console.print("\n[dim]Commands: echome market search <query> | echome market browse | echome market fork <id>[/dim]\n")
+    console.print(
+        "\n[dim]Commands: echome market search <query> | "
+        "echome market browse | echome market fork <id>[/dim]\n"
+    )
 
 
 @market_app.command("browse")
 def browse(
-    type: str = typer.Option(None, "--type", "-t", help="Filter by memory type"),
+    type: str = typer.Option(None, "--type", "-t", help="Filter by memory type"),  # noqa: A002
     layer: str = typer.Option(None, "--layer", "-l", help="Filter by layer (L0/L1/L2)"),
     tags: str = typer.Option(None, "--tags", help="Comma-separated tags to filter"),
     limit: int = typer.Option(20, "--limit", "-n", help="Number of results"),
@@ -89,13 +92,16 @@ def browse(
         )
 
     console.print(table)
-    console.print(f"\n[dim]Showing {data['offset'] + 1}-{data['offset'] + len(data['items'])} of {data['total']}[/dim]\n")
+    console.print(
+        f"\n[dim]Showing {data['offset'] + 1}-"
+        f"{data['offset'] + len(data['items'])} of {data['total']}[/dim]\n"
+    )
 
 
 @market_app.command("search")
 def search(
     query: str = typer.Argument(..., help="Search keywords"),
-    type: str = typer.Option(None, "--type", "-t", help="Filter by memory type"),
+    type: str = typer.Option(None, "--type", "-t", help="Filter by memory type"),  # noqa: A002
     limit: int = typer.Option(20, "--limit", "-n", help="Number of results"),
 ) -> None:
     """Search public memories by keyword."""

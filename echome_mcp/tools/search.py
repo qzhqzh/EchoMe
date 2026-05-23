@@ -5,7 +5,7 @@ from echome_mcp.hub_client import MCPHubClient
 
 async def echome_search(
     query: str,
-    type: str | None = None,
+    type: str | None = None,  # noqa: A002
     project_id: str | None = None,
     top_k: int = 5,
 ) -> str:
@@ -23,7 +23,12 @@ async def echome_search(
     client = MCPHubClient()
 
     try:
-        result = await client.search(query=query, type=type, project_id=project_id, top_k=top_k)
+        result = await client.search(
+            query=query,
+            memory_type=type,
+            project_id=project_id,
+            top_k=top_k,
+        )
     except Exception as e:
         return f"Error searching memories: {e}"
 

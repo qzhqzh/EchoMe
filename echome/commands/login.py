@@ -43,15 +43,29 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"<html><body><h2>Missing token</h2></body></html>")
 
-    def log_message(self, format, *args) -> None:
+    def log_message(self, message_format, *args) -> None:
         """Suppress server logs."""
         pass
 
 
 def login(
-    browser: bool = typer.Option(False, "--browser", "-b", help="Use browser flow (requires GUI desktop)"),
-    manual: bool = typer.Option(False, "--manual", "-m", help="(deprecated, now default) Paste token manually"),
-    hub: str = typer.Option("", "--hub", help="Hub URL (default: from config or https://echome.qzhqzh.com)"),
+    browser: bool = typer.Option(
+        False,
+        "--browser",
+        "-b",
+        help="Use browser flow (requires GUI desktop)",
+    ),
+    manual: bool = typer.Option(
+        False,
+        "--manual",
+        "-m",
+        help="(deprecated, now default) Paste token manually",
+    ),
+    hub: str = typer.Option(
+        "",
+        "--hub",
+        help="Hub URL (default: from config or https://echome.qzhqzh.com)",
+    ),
 ) -> None:
     """Login via GitHub OAuth. Default: open URL, copy token, paste back."""
     global _received_token
@@ -104,7 +118,10 @@ def login(
             return
         except SystemExit:
             # _verify_and_show_user calls typer.Exit on failure
-            console.print("[yellow]Token invalid or expired. Try again (Ctrl+C to quit).[/yellow]\n")
+            console.print(
+                "[yellow]Token invalid or expired. "
+                "Try again (Ctrl+C to quit).[/yellow]\n"
+            )
             config.token = ""
             config.save()
             continue

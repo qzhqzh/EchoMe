@@ -81,14 +81,26 @@ def sync(
         token_count = result.get("token_count", 0)
 
         if dry_run:
-            console.print(f"  [dim]Would inject {included} L0 memories ({token_count} tokens) into {t.global_file}[/dim]")
+            console.print(
+                f"  [dim]Would inject {included} L0 memories "
+                f"({token_count} tokens) into {t.global_file}[/dim]"
+            )
             if truncated:
-                console.print(f"  [yellow]  {truncated} memories would be truncated (token limit)[/yellow]")
+                console.print(
+                    f"  [yellow]  {truncated} memories "
+                    "would be truncated (token limit)[/yellow]"
+                )
         else:
             t.inject_global(content)
-            console.print(f"  [green]✓[/green] Global: {t.global_file} ({included} L0 memories, {token_count} tokens)")
+            console.print(
+                f"  [green]✓[/green] Global: {t.global_file} "
+                f"({included} L0 memories, {token_count} tokens)"
+            )
             if truncated:
-                console.print(f"  [yellow]  ⚠ {truncated} memories truncated (token limit exceeded)[/yellow]")
+                console.print(
+                    f"  [yellow]  ⚠ {truncated} memories truncated "
+                    "(token limit exceeded)[/yellow]"
+                )
 
         # ── Step 2: If --project given, sync L0+L1 → project file ──
         if project_id:
@@ -102,16 +114,29 @@ def sync(
             proj_included = proj_result.get("memories_included", 0)
             proj_truncated = proj_result.get("memories_truncated", 0)
             proj_token_count = proj_result.get("token_count", 0)
+            project_file = t.project_file(project_dir)
 
             if dry_run:
-                console.print(f"  [dim]Would inject {proj_included} memories ({proj_token_count} tokens) into {t.project_file(project_dir)}[/dim]")
+                console.print(
+                    f"  [dim]Would inject {proj_included} memories "
+                    f"({proj_token_count} tokens) into {project_file}[/dim]"
+                )
                 if proj_truncated:
-                    console.print(f"  [yellow]  {proj_truncated} memories would be truncated[/yellow]")
+                    console.print(
+                        f"  [yellow]  {proj_truncated} memories "
+                        "would be truncated[/yellow]"
+                    )
             else:
                 t.inject_project(proj_content, project_dir)
-                console.print(f"  [green]✓[/green] Project: {t.project_file(project_dir)} ({proj_included} memories, {proj_token_count} tokens)")
+                console.print(
+                    f"  [green]✓[/green] Project: {project_file} "
+                    f"({proj_included} memories, {proj_token_count} tokens)"
+                )
                 if proj_truncated:
-                    console.print(f"  [yellow]  ⚠ {proj_truncated} memories truncated (token limit exceeded)[/yellow]")
+                    console.print(
+                        f"  [yellow]  ⚠ {proj_truncated} memories truncated "
+                        "(token limit exceeded)[/yellow]"
+                    )
 
     if not dry_run:
         console.print("\n[green]Sync complete![/green]")
@@ -211,6 +236,9 @@ def eject(
     if scope in ("project", "all"):
         for t in ALL_TARGETS:
             t.eject_project(project_dir)
-            console.print(f"  [green]✓[/green] Cleaned {t.name} project: {t.project_file(project_dir)}")
+            console.print(
+                f"  [green]✓[/green] Cleaned {t.name} project: "
+                f"{t.project_file(project_dir)}"
+            )
 
     console.print("\n[green]Eject complete.[/green] Run `echome sync` to re-inject.")
