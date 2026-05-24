@@ -1,3 +1,26 @@
+## v0.2.1
+
+- 6722d52 fix: decision project association and type tabs order (#60)
+- 4eb4ed8 feat: project association for all memory types (#59)
+- b36e587 fix(web): redirect to type list after memory delete (#57)
+- 2541867 fix(web): redirect to home after memory delete (#56)
+- 046d8d7 fix(hub): resolve ruff lint error in main.py
+- 34ee7ab fix(mcp): resolve ruff lint errors (#55)
+- eabe9da feat(hub): add memory format standardization rule to MCP_INSTRUCTION (#53)
+- 3620279 fix(hub): change memory list sort to updated_at only
+- cc317e8 docs(hub): optimize MCP_INSTRUCTION for clarity and tool triggers (#50)
+- 22241f4 fix(hub): commit before background task to prevent lock contention #47
+- beaf8dd fix(web): resolve duplicate requests and add JWT auto-refresh
+- afd852c feat(mcp): add task completion memory rule to MCP_INSTRUCTION
+- dd514d6 feat(web): add 'All' option to status filter dropdown
+- aadb900 feat(mcp): add project creation validation for AI memories
+- 036cab3 feat(web): enhance memory/project views and review page
+- 6f23c50 fix: add __main__.py for python -m echome_mcp
+- 4b5871c feat: AI记忆写入 + 向量维度修复
+- f619ff4 refactor(cli): extract update helpers for cleaner code organization
+- 50f9953 Add Codex MCP config and memory_search alias
+- 946b6e8 feat: add coding behavior guidelines to seed memories
+
 ## v0.2.0
 
 - 03eddd5 feat(ci): auto release with changelog + tag + fix Node.js 20 warning
