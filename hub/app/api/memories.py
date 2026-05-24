@@ -144,6 +144,14 @@ async def create_memory(
     user_id: str = Depends(verify_token),
 ) -> Memory:
     """Create a new memory."""
+    # Validate: project and decision types must have project association
+    memory_type = body.type.value
+    if memory_type in ("project", "decision") and not body.scope.projects:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{memory_type} type memory must be associated with a project",
+        )
+
     token_count = count_tokens(body.content)
 
     memory = Memory(
@@ -188,6 +196,14 @@ async def update_memory(
     memory = result.scalar_one_or_none()
     if not memory:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
+
+    # Validate: project and decision types must have project association
+    memory_type = body.type.value
+    if memory_type in ("project", "decision") and not body.scope.projects:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{memory_type} type memory must be associated with a project",
+        )
 
     memory.title = body.title
     memory.content = body.content

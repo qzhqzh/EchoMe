@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
+import { api } from '@/api/client'
 import { MEMORY_TYPES, MEMORY_LAYERS } from '@/types'
-import type { MemoryCreateRequest, Memory, MemoryType, MemoryLayer, MemorySource } from '@/types'
+import type { MemoryCreateRequest, Memory, MemoryType, MemoryLayer, MemorySource, Project } from '@/types'
 
 const { t } = useI18n()
 
@@ -24,10 +25,26 @@ const layer = ref<MemoryLayer>(props.initial?.layer || 'L2')
 const priority = ref(props.initial?.priority || 5)
 const tagsInput = ref(props.initial?.tags.join(', ') || '')
 const scopeGlobal = ref(props.initial?.scope.global ?? true)
-const scopeProjects = ref(props.initial?.scope.projects.join(', ') || '')
+const selectedProject = ref(props.initial?.scope.projects[0] || '')
 const source = ref<MemorySource>(props.initial?.source || 'manual')
+const projects = ref<Project[]>([])
 
-const isValid = computed(() => title.value.trim() && content.value.trim())
+// 需要 project/decision 强制关联项目
+const requiresProject = computed(() => type.value === 'project' || type.value === 'decision')
+
+const isValid = computed(() => {
+  if (!title.value.trim() || !content.value.trim()) return false
+  if (requiresProject.value && !selectedProject.value) return false
+  return true
+})
+
+onMounted(async () => {
+  try {
+    projects.value = await api.listProjects()
+  } catch {
+    // handled
+  }
+})
 
 function handleSubmit(): void {
   if (!isValid.value) return
@@ -37,10 +54,9 @@ function handleSubmit(): void {
     .map(t => t.trim())
     .filter(Boolean)
 
-  const projects = scopeProjects.value
-    .split(',')
-    .map(p => p.trim())
-    .filter(Boolean)
+  const projectsList = requiresProject.value || !scopeGlobal.value
+    ? selectedProject.value ? [selectedProject.value] : []
+    : []
 
   const data: MemoryCreateRequest = {
     title: title.value.trim(),
@@ -51,8 +67,8 @@ function handleSubmit(): void {
     tags,
     status: 'active',
     scope: {
-      global: scopeGlobal.value,
-      projects,
+      global: !requiresProject.value && scopeGlobal.value,
+      projects: projectsList,
       exclude_projects: [],
     },
     source: source.value,
@@ -134,26 +150,27 @@ function handleSubmit(): void {
       />
     </div>
 
-    <!-- Scope -->
+    <!-- Project association -->
     <div>
-      <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('form_scope') }}</label>
-      <div class="space-y-3">
-        <label class="flex items-center gap-2 text-sm text-slate-300">
-          <input
-            v-model="scopeGlobal"
-            type="checkbox"
-            class="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
-          />
-          {{ t('form_scope_global') }}
-        </label>
+      <label class="mb-1.5 block text-sm font-medium text-slate-300">
+        {{ t('form_project') }}
+        <span v-if="requiresProject" class="text-red-400">*</span>
+      </label>
+      <select v-model="selectedProject" class="input-field">
+        <option value="">-- {{ requiresProject ? t('form_project_required') : t('form_project_optional') }} --</option>
+        <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+      </select>
+      <p v-if="requiresProject && !selectedProject" class="mt-1 text-xs text-red-400">
+        {{ t('form_project_required_hint') }}
+      </p>
+      <label v-if="!requiresProject" class="mt-2 flex items-center gap-2 text-sm text-slate-300">
         <input
-          v-if="!scopeGlobal"
-          v-model="scopeProjects"
-          type="text"
-          class="input-field"
-          :placeholder="t('form_scope_projects_placeholder')"
+          v-model="scopeGlobal"
+          type="checkbox"
+          class="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
         />
-      </div>
+        {{ t('form_scope_global') }}
+      </label>
     </div>
 
     <!-- Actions -->

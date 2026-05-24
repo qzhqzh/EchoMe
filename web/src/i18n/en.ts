@@ -79,6 +79,10 @@ export default {
   form_scope: 'Scope',
   form_scope_global: 'Global (applies to all projects)',
   form_scope_projects_placeholder: 'Project IDs (comma separated)',
+  form_project: 'Project',
+  form_project_required: 'Required',
+  form_project_optional: 'Optional',
+  form_project_required_hint: 'project and decision types must be associated with a project',
   form_create_memory: 'Create Memory',
   form_update_memory: 'Update Memory',
 
