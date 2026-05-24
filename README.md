@@ -46,48 +46,61 @@ EchoMe 是一个**跨 AI 的个人上下文同步层**。它把你的工作流�
 | **CLI** | `echome` 命令行工具，管理和同步 | `echome/` |
 | **MCP Server** | 向 AI 暴露查询/写入能力 | `echome_mcp/` |
 
-## 快速开始
+## 安装
 
-### 1. 部署 Hub
-
-```bash
-cd hub
-cp .env.example .env       # 配置数据库和 token
-docker compose up -d       # 启动 Postgres + Redis + App
-```
-
-### 2. 安装 CLI + MCP（一条命令）
+### 方式一：PyPI 安装（推荐）
 
 ```bash
 # 完整安装（CLI + MCP Server）
 pip install echome[mcp]
 
-# 或仅安装 CLI（不需要 MCP）
+# 或仅安装 CLI
 pip install echome
 
-# 初始化：连接 Hub + 注册 MCP（交互式）
-echome init
+# 升级到最新版本
+pip install echome[mcp] --upgrade
+```
+
+### 方式二：GitHub 安装
+
+```bash
+# 完整安装
+pip install git+https://github.com/qzhqzh/EchoMe.git#egg=echome[mcp]
+
+# 或仅安装 CLI
+pip install git+https://github.com/qzhqzh/EchoMe.git#egg=echome
+```
+
+## 快速开始
+
+### 1. 部署 Hub
+
+```bash
+git clone https://github.com/qzhqzh/EchoMe.git
+cd EchoMe
+cp hub/.env.example hub/.env    # 配置数据库和 token
+docker compose up -d            # 启动 Postgres + Redis + Hub
+```
+
+### 2. 初始化 CLI
+
+```bash
+echome init                     # 连接 Hub + 注册 MCP（交互式）
 ```
 
 ### 3. 添加记忆
 
 ```bash
-echome add                  # 交互式添加
-echome list                 # 查看所有记忆
-echome search "PR 规范"     # 搜索
+echome add                      # 交互式添加
+echome list                     # 查看所有记忆
+echome search "PR 规范"         # 搜索
 ```
 
 ### 4. 注入到 AI CLI
 
 ```bash
 cd your-project
-echome sync                 # 自动检测 + 渲染到 CLAUDE.md / AGENTS.md
-```
-
-### 5. 更新
-
-```bash
-echome update               # 自更新到最新版本
+echome sync                     # 自动检测 + 渲染到 CLAUDE.md / AGENTS.md
 ```
 
 之后 AI 就能通过 MCP 随时查询你的记忆了。
@@ -96,7 +109,7 @@ echome update               # 自更新到最新版本
 
 每条记忆有三个核心维度：
 
-- **Type**：persona / workflow / tech / constraint / snippet / decision / knowledge / interaction / project
+- **Type**：identity / guardrail / reasoning / method / stack / style / decision / context / template / project
 - **Scope**：global（跟人走）或 project-specific（跟项目走）
 - **Layer**：L0（必须加载）/ L1（项目级加载）/ L2（按需搜索）
 
@@ -109,7 +122,7 @@ echome update               # 自更新到最新版本
 - [Hub API 规范](docs/api-spec.md)
 - [MCP Server 规范](docs/mcp-spec.md)
 - [开发路线图](docs/roadmap.md)
-- [早期讨论](discuss.md)
+- [用户指南](docs/user-guide.md)
 
 ## 技术栈
 
