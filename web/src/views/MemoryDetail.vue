@@ -56,7 +56,7 @@ async function handleArchive(): Promise<void> {
   try {
     await api.deleteMemory(memoryId)
     success(t('memory_detail_archived_success'))
-    router.push('/memories')
+    router.push('/')
   } catch {
     // handled
   }
@@ -66,7 +66,7 @@ async function handleHardDelete(): Promise<void> {
   try {
     await api.deleteMemory(memoryId, true)
     success(t('memory_detail_deleted_success'))
-    router.push('/memories')
+    router.push('/')
   } catch {
     // handled
   }
