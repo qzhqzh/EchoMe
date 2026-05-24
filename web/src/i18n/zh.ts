@@ -82,7 +82,7 @@ export default {
   form_project: '关联项目',
   form_project_required: '必选',
   form_project_optional: '可选',
-  form_project_required_hint: 'project 和 decision 类型必须关联项目',
+  form_project_required_hint: 'project 类型必须关联项目',
   form_create_memory: '创建记忆',
   form_update_memory: '更新记忆',
 

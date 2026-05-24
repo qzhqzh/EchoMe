@@ -29,8 +29,8 @@ const selectedProject = ref(props.initial?.scope.projects[0] || '')
 const source = ref<MemorySource>(props.initial?.source || 'manual')
 const projects = ref<Project[]>([])
 
-// 需要 project/decision 强制关联项目
-const requiresProject = computed(() => type.value === 'project' || type.value === 'decision')
+// 需要 project 强制关联项目
+const requiresProject = computed(() => type.value === 'project')
 
 const isValid = computed(() => {
   if (!title.value.trim() || !content.value.trim()) return false

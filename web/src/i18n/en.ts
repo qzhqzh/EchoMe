@@ -82,7 +82,7 @@ export default {
   form_project: 'Project',
   form_project_required: 'Required',
   form_project_optional: 'Optional',
-  form_project_required_hint: 'project and decision types must be associated with a project',
+  form_project_required_hint: 'project type must be associated with a project',
   form_create_memory: 'Create Memory',
   form_update_memory: 'Update Memory',
 
