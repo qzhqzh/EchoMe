@@ -12,21 +12,21 @@ MARKER_END = "<!-- echome:end -->"
 
 # Mandatory MCP instruction — tells AI to always check memories
 MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
-在每次对话开始时，你必须先调用 `echome_search` 查询与当前任务相关的记忆。
+在每次对话开始时，你必须先调用 MCP tool `echome_search` 查询与当前任务相关的记忆。
 这不是可选的——我的工作流规范、技术偏好和约束都存储在 EchoMe 中。
 
 规则：
-1. 收到用户第一条消息后，根据关键词调用 echome_search
-2. 涉及 git/PR/commit/deploy 操作前，必须查 echome_search
-3. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`（不要用 bash 命令 `echome add`）
-4. 不确定项目约定时，调用 echome_search 而不是假设
-5. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project
-6. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 `echome_remember` 写入记忆。判断标准：
+1. 收到用户第一条消息后，根据关键词调用 MCP tool `echome_search`
+2. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`
+3. 不确定项目约定时，调用 MCP tool `echome_search` 而不是假设
+4. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project
+5. **project 类型记忆需要关联项目**：写入 project 类型记忆前，先调用 MCP tool `echome_list_projects` 查看已有项目；若目标项目不存在，调用 MCP tool `echome_create_project` 创建。提交时必须带上 `project` 参数（项目名称），`suggested_layer="L1"`，状态默认为 ai_review。
+6. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 MCP tool `echome_remember` 写入记忆。判断标准：
    - 发现了可复用的模式、踩坑经验、最佳实践
    - 用户纠正了你的做法（存为 style 类型）
    - 做了技术决策（存为 decision 类型）
    - 学到了项目特有的知识（存为 context 或 project 类型）
-   不要写：密码/密钥/隐私、一次性临时信息、会快速过时的内容"""
+   不要写：临时状态、一次性信息、会快速过时的内容"""
 
 # Type rendering priority (lower number = higher priority = rendered first)
 TYPE_PRIORITY: dict[str, int] = {
