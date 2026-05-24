@@ -21,7 +21,11 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 3. 不确定项目约定时，调用 MCP tool `echome_search` 而不是假设
 4. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project
 5. **project 类型记忆需要关联项目**：写入 project 类型记忆前，先调用 MCP tool `echome_list_projects` 查看已有项目；若目标项目不存在，调用 MCP tool `echome_create_project` 创建。提交时必须带上 `project` 参数（项目名称），`suggested_layer="L1"`，状态默认为 ai_review。
-6. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 MCP tool `echome_remember` 写入记忆。判断标准：
+6. **记忆格式规范**：写入记忆时使用 Markdown 格式，内容必须结构化：
+   - 核心规则/要点放在开头，用 `**bold**` 标记关键词
+   - 多段落内容用 `##` 分节（如：核心规则、Why、How to apply）
+   - 列表用 `-` 或 `1.`，不要写成一大段纯文本
+7. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 MCP tool `echome_remember` 写入记忆。判断标准：
    - 发现了可复用的模式、踩坑经验、最佳实践
    - 用户纠正了你的做法（存为 style 类型）
    - 做了技术决策（存为 decision 类型）
