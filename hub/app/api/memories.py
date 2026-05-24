@@ -105,7 +105,7 @@ async def list_memories(
     total = (await session.execute(count_query)).scalar_one()
 
     # Fetch page
-    query = query.order_by(Memory.priority.desc(), Memory.updated_at.desc())
+    query = query.order_by(Memory.updated_at.desc())
     query = query.offset(offset).limit(limit)
     result = await session.execute(query)
     memories = result.scalars().all()
