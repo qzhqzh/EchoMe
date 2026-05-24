@@ -19,7 +19,7 @@ MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
 1. 收到用户第一条消息后，根据关键词调用 MCP tool `echome_search`
 2. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`
 3. 不确定项目约定时，调用 MCP tool `echome_search` 而不是假设
-4. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project
+4. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project。写入前判断记忆范围：如果是通用型（适用于所有项目）则不传 project；如果是项目相关（仅适用于特定项目），则必须指定有效项目（project 参数）
 5. **project 类型记忆需要关联项目**：写入 project 类型记忆前，先调用 MCP tool `echome_list_projects` 查看已有项目；若目标项目不存在，调用 MCP tool `echome_create_project` 创建。提交时必须带上 `project` 参数（项目名称），`suggested_layer="L1"`，状态默认为 ai_review。
 6. **记忆格式规范**：写入记忆时使用 Markdown 格式，内容必须结构化：
    - 核心规则/要点放在开头，用 `**bold**` 标记关键词

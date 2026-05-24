@@ -8,7 +8,7 @@ import Badge from '@/components/Badge.vue'
 import MemoryForm from '@/components/MemoryForm.vue'
 import Modal from '@/components/Modal.vue'
 import { MEMORY_TYPE_COLORS, LAYER_COLORS, STATUS_COLORS } from '@/types'
-import type { Memory, MemoryCreateRequest } from '@/types'
+import type { Memory, MemoryCreateRequest, Project } from '@/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -21,11 +21,16 @@ const saving = ref(false)
 const editing = ref(false)
 const showDeleteModal = ref(false)
 const showHardDeleteModal = ref(false)
+const projects = ref<Project[]>([])
 
 const memoryId = route.params.id as string
 
+// 获取关联项目的详情
+const linkedProject = ref<Project | null>(null)
+
 onMounted(async () => {
   await loadMemory()
+  await loadProjects()
 })
 
 async function loadMemory(): Promise<void> {
@@ -36,6 +41,19 @@ async function loadMemory(): Promise<void> {
     router.push('/memories')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadProjects(): Promise<void> {
+  try {
+    projects.value = await api.listProjects()
+    // 如果记忆有关联项目，找到对应的项目详情
+    if (memory.value && memory.value.scope.projects.length > 0) {
+      const projectId = memory.value.scope.projects[0]
+      linkedProject.value = projects.value.find(p => p.id === projectId) || null
+    }
+  } catch {
+    // handled
   }
 }
 
@@ -178,9 +196,24 @@ function formatDate(dateStr: string): string {
           <div class="space-y-3">
             <div>
               <span class="text-xs text-slate-500">{{ t('memory_detail_scope') }}</span>
-              <p class="text-sm text-slate-200">
-                {{ memory.scope.global ? t('memory_detail_global') : `Projects: ${memory.scope.projects.join(', ')}` }}
-              </p>
+              <div v-if="memory.scope.global" class="text-sm text-slate-200">
+                {{ t('memory_detail_global') }}
+              </div>
+              <div v-else-if="linkedProject" class="space-y-2">
+                <p class="text-sm text-slate-200">
+                  <span class="font-medium">{{ linkedProject.name }}</span>
+                  <span class="text-slate-500 ml-2">({{ linkedProject.id }})</span>
+                </p>
+                <p v-if="linkedProject.description" class="text-xs text-slate-400">
+                  {{ linkedProject.description }}
+                </p>
+                <a v-if="linkedProject.git_remote" :href="linkedProject.git_remote" target="_blank" class="text-xs text-blue-400 hover:text-blue-300">
+                  {{ linkedProject.git_remote }}
+                </a>
+              </div>
+              <div v-else class="text-sm text-slate-200">
+                {{ memory.scope.projects.join(', ') }}
+              </div>
             </div>
             <div v-if="memory.tags.length > 0">
               <span class="text-xs text-slate-500">{{ t('memory_detail_tags') }}</span>
