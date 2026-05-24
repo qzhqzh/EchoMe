@@ -191,17 +191,20 @@ class TestCreateMemory:
     @pytest.mark.asyncio
     async def test_create_memory_success(self, test_user_id: str, sample_memory_data: dict):
         """Successfully creates a memory and returns it."""
+        from starlette.requests import Request
+
         from app.api.memories import create_memory
         from app.schemas.memory import MemoryCreate
 
         body = MemoryCreate(**sample_memory_data)
         mock_session = AsyncMock()
-        mock_request = MagicMock()
+        mock_request = MagicMock(spec=Request)
         mock_background = MagicMock()
 
         # The function calls session.add() and session.flush()
         mock_session.add = MagicMock()
         mock_session.flush = AsyncMock()
+        mock_session.commit = AsyncMock()
 
         with patch("app.api.memories.count_tokens", return_value=15):
             result = await create_memory(
@@ -224,6 +227,8 @@ class TestCreateMemory:
     @pytest.mark.asyncio
     async def test_create_memory_triggers_embedding(self, test_user_id: str, sample_memory_data: dict):
         """Creating a memory should schedule background embedding computation."""
+        from starlette.requests import Request
+
         from app.api.memories import create_memory
         from app.schemas.memory import MemoryCreate
 
@@ -231,7 +236,8 @@ class TestCreateMemory:
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.flush = AsyncMock()
-        mock_request = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_request = MagicMock(spec=Request)
         mock_background = MagicMock()
 
         with patch("app.api.memories.count_tokens", return_value=10):
@@ -280,6 +286,41 @@ class TestUpdateMemory:
         assert result.type == "method"
         assert result.layer == "L1"
         assert result.priority == 8
+
+    @pytest.mark.asyncio
+    async def test_update_commits_before_scheduling_embedding(self, test_user_id: str, sample_memory_update_data: dict):
+        """PUT should release the row lock before the embedding task can update it."""
+        from app.api.memories import update_memory
+        from app.schemas.memory import MemoryUpdate
+
+        body = MemoryUpdate(**sample_memory_update_data)
+        existing_mem = _make_memory(user_id=test_user_id)
+        events = []
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing_mem
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.flush = AsyncMock()
+
+        async def mark_commit():
+            events.append("commit")
+
+        mock_session.commit = AsyncMock(side_effect=mark_commit)
+
+        mock_background = MagicMock()
+        mock_background.add_task = MagicMock(side_effect=lambda *args: events.append("add_task"))
+
+        with patch("app.api.memories.count_tokens", return_value=20):
+            await update_memory(
+                memory_id=existing_mem.id,
+                body=body,
+                background_tasks=mock_background,
+                session=mock_session,
+                user_id=test_user_id,
+            )
+
+        assert events == ["commit", "add_task"]
 
     @pytest.mark.asyncio
     async def test_update_memory_not_found(self, test_user_id: str, sample_memory_update_data: dict):
@@ -465,6 +506,8 @@ class TestSearchMemories:
     @pytest.mark.asyncio
     async def test_search_keyword_match(self, test_user_id: str):
         """Keyword search should return matching memories."""
+        from starlette.requests import Request
+
         from app.api.memories import search_memories
         from app.schemas.memory import MemorySearchRequest
 
@@ -479,15 +522,12 @@ class TestSearchMemories:
         )
 
         mock_session = AsyncMock()
-        # First call: vector search (returns empty - embedding service not available)
-        vector_result = MagicMock()
-        vector_result.__iter__ = MagicMock(return_value=iter([]))
-        # Second call: keyword search (all active memories)
+        # Only keyword query is executed when get_embedding returns None
         keyword_result = MagicMock()
         keyword_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[mem1]))
 
-        mock_session.execute = AsyncMock(side_effect=[vector_result, keyword_result])
-        mock_request = MagicMock()
+        mock_session.execute = AsyncMock(return_value=keyword_result)
+        mock_request = MagicMock(spec=Request)
 
         with patch("app.api.memories.get_embedding", return_value=None):
             result = await search_memories(
@@ -498,11 +538,14 @@ class TestSearchMemories:
             )
 
         assert result.total_searched == 1
-        assert len(result.results) >= 0  # May or may not match depending on scoring
+        # Result should contain the matching memory (keyword "python" matches title)
+        assert len(result.results) >= 1
 
     @pytest.mark.asyncio
     async def test_search_no_results(self, test_user_id: str):
         """Search with no matches should return empty results."""
+        from starlette.requests import Request
+
         from app.api.memories import search_memories
         from app.schemas.memory import MemorySearchRequest
 
@@ -515,7 +558,7 @@ class TestSearchMemories:
         keyword_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[]))
 
         mock_session.execute = AsyncMock(side_effect=[vector_result, keyword_result])
-        mock_request = MagicMock()
+        mock_request = MagicMock(spec=Request)
 
         with patch("app.api.memories.get_embedding", return_value=None):
             result = await search_memories(
@@ -624,10 +667,12 @@ class TestComputeAndStoreEmbedding:
         from app.api.memories import _compute_and_store_embedding
 
         memory_id = uuid.uuid4()
-        fake_embedding = [0.1] * 1536
+        fake_embedding = [0.1] * 1024  # bge-m3 outputs 1024 dimensions
 
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.commit = AsyncMock()
 
         # Mock the context manager
@@ -667,7 +712,7 @@ class TestComputeAndStoreEmbedding:
         from app.api.memories import _compute_and_store_embedding
 
         memory_id = uuid.uuid4()
-        fake_embedding = [0.1] * 1536
+        fake_embedding = [0.1] * 1024  # bge-m3 outputs 1024 dimensions
 
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock(side_effect=Exception("dimension mismatch"))

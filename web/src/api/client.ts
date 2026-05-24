@@ -14,6 +14,9 @@ import type {
 } from '@/types'
 
 class ApiClient {
+  private refreshing = false
+  private refreshPromise: Promise<boolean> | null = null
+
   private getBaseUrl(): string {
     const { getApiBase } = useAuth()
     const base = getApiBase()
@@ -32,11 +35,55 @@ class ApiClient {
     return headers
   }
 
+  /**
+   * Try to refresh the JWT token. Returns true if successful.
+   * Deduplicates concurrent refresh attempts.
+   */
+  private async tryRefresh(): Promise<boolean> {
+    if (this.refreshing && this.refreshPromise) {
+      return this.refreshPromise
+    }
+    this.refreshing = true
+    this.refreshPromise = this._doRefresh()
+    try {
+      return await this.refreshPromise
+    } finally {
+      this.refreshing = false
+      this.refreshPromise = null
+    }
+  }
+
+  private async _doRefresh(): Promise<boolean> {
+    const { getToken, setToken } = useAuth()
+    const token = getToken()
+    if (!token) return false
+    try {
+      const url = `${this.getBaseUrl().replace(/\/api\/v1$/, '')}/api/v1/auth/refresh`
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (!response.ok) return false
+      const data = await response.json()
+      if (data.access_token) {
+        setToken(data.access_token)
+        return true
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
   private async request<T>(
     method: string,
     path: string,
     body?: unknown,
-    params?: Record<string, string | number | boolean | undefined | null>
+    params?: Record<string, string | number | boolean | undefined | null>,
+    _retried = false,
   ): Promise<T> {
     const url = new URL(`${this.getBaseUrl()}${path}`, window.location.origin)
 
@@ -59,7 +106,21 @@ class ApiClient {
 
     const response = await fetch(url.toString(), options)
 
-    if (response.status === 401) {
+    if (response.status === 401 && !_retried) {
+      // Skip refresh for auth endpoints themselves
+      const isAuthEndpoint = path.includes('/auth/')
+      if (isAuthEndpoint) {
+        const { clearToken } = useAuth()
+        clearToken()
+        router.push('/login')
+        throw new Error('Unauthorized')
+      }
+      // Try refresh token
+      const refreshed = await this.tryRefresh()
+      if (refreshed) {
+        return this.request<T>(method, path, body, params, true)
+      }
+      // Refresh failed — clear and redirect
       const { clearToken } = useAuth()
       clearToken()
       router.push('/login')

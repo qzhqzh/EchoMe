@@ -37,6 +37,9 @@ async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
     IMPORTANT: This function MUST NOT raise exceptions — background task errors
     must never propagate to the ASGI handler, as that would cause the main
     request's session commit to be rolled back.
+
+    The route handlers commit before scheduling this task, so the task never
+    waits on a row lock held by the request transaction.
     """
     import logging
 
@@ -46,18 +49,22 @@ async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
 
     logger = logging.getLogger("embedding_task")
 
+    logger.info(f"Background task started for memory {memory_id}")
+
     try:
         embedding = await get_embedding(text)
         if embedding is None:
             return
 
         async with async_session_factory() as session:
-            await session.execute(
-                sql_update(Memory)
-                .where(Memory.id == memory_id)
-                .values(embedding=embedding)
+            result = await session.execute(
+                sql_update(Memory).where(Memory.id == memory_id).values(embedding=embedding)
             )
-            await session.commit()
+            if result.rowcount > 0:
+                await session.commit()
+                logger.info(f"Stored embedding for memory {memory_id}")
+            else:
+                logger.info(f"Memory not found while storing embedding: {memory_id}")
     except Exception as e:
         # Log but never raise — background task failures must not affect the main request
         logger.warning(f"Failed to compute/store embedding for {memory_id}: {e}")
@@ -157,6 +164,7 @@ async def create_memory(
     )
     session.add(memory)
     await session.flush()
+    await session.commit()
 
     # Compute embedding in background (non-blocking)
     embed_text = f"{body.title}\n{body.content}"
@@ -195,12 +203,14 @@ async def update_memory(
     memory.token_count = count_tokens(body.content)
     memory.visibility = body.visibility.value
 
-    # Recompute embedding on content change
+    # Recompute embedding after the request transaction has committed.
     embed_text = f"{body.title}\n{body.content}"
-    background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
     # Flush to ensure changes are persisted before response serialization
     await session.flush()
+    await session.commit()
+
+    background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
     return memory
 
@@ -238,13 +248,16 @@ async def patch_memory(
     if "content" in update_data and update_data["content"]:
         memory.token_count = count_tokens(memory.content)
 
-    # Recompute embedding if title or content changed
+    embed_text = None
     if "title" in update_data or "content" in update_data:
         embed_text = f"{memory.title}\n{memory.content}"
-        background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
     # Flush to ensure changes are persisted before response serialization
     await session.flush()
+    await session.commit()
+
+    if embed_text is not None:
+        background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
     return memory
 

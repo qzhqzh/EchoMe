@@ -224,7 +224,6 @@ const activeProjectName = computed(() => {
         type="text"
         class="input-field w-auto min-w-[160px]"
         :placeholder="t('memories_filter_tags')"
-        @change="loadMemories"
       />
     </div>
 
