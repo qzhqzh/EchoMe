@@ -33,10 +33,10 @@ const typeTabs: { key: MemoryType | ''; label: string; icon: string; color: stri
   { key: 'method', label: 'Methods', icon: '⚡', color: 'text-blue-300' },
   { key: 'stack', label: 'Stack', icon: '🔧', color: 'text-emerald-300' },
   { key: 'style', label: 'Style', icon: '💬', color: 'text-pink-300' },
-  { key: 'decision', label: 'Decisions', icon: '📋', color: 'text-indigo-300' },
   { key: 'context', label: 'Context', icon: '📚', color: 'text-cyan-300' },
   { key: 'template', label: 'Templates', icon: '📝', color: 'text-amber-300' },
   { key: 'project', label: 'Project', icon: '📁', color: 'text-teal-300' },
+  { key: 'decision', label: 'Decisions', icon: '📋', color: 'text-indigo-300' },
 ]
 
 onMounted(() => {
