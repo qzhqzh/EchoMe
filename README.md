@@ -65,10 +65,10 @@ pip install echome[mcp] --upgrade
 
 ```bash
 # 完整安装
-pip install git+https://github.com/qzhqzh/EchoMe.git#egg=echome[mcp]
+pip install "echome[mcp] @ git+https://github.com/qzhqzh/EchoMe.git"
 
 # 或仅安装 CLI
-pip install git+https://github.com/qzhqzh/EchoMe.git#egg=echome
+pip install "echome @ git+https://github.com/qzhqzh/EchoMe.git"
 ```
 
 ## 快速开始
