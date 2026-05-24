@@ -9,8 +9,8 @@ from mcp.types import TextContent, Tool
 
 from echome_mcp.tools.get import echome_get
 from echome_mcp.tools.list_by_type import echome_list_by_type
-from echome_mcp.tools.project_context import echome_get_project_context
 from echome_mcp.tools.project import echome_create_project, echome_list_projects
+from echome_mcp.tools.project_context import echome_get_project_context
 from echome_mcp.tools.remember import echome_remember
 from echome_mcp.tools.search import echome_search
 
