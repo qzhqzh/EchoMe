@@ -54,7 +54,7 @@ class ApiClient {
   }
 
   private async _doRefresh(): Promise<boolean> {
-    const { getToken, setToken, clearToken } = useAuth()
+    const { getToken, setToken } = useAuth()
     const token = getToken()
     if (!token) return false
     try {

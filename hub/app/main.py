@@ -1,5 +1,7 @@
 """EchoMe Hub - FastAPI application entry point."""
 
+import logging
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -12,6 +14,12 @@ from slowapi.errors import RateLimitExceeded
 from app.api import admin, auth, health, market, memories, projects, review, sync
 from app.core.config import settings, validate_settings
 from app.core.ratelimit import limiter
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO if not settings.debug else logging.DEBUG,
+    format="%(levelname)s:%(name)s:%(message)s",
+)
 
 
 @asynccontextmanager
