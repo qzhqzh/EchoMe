@@ -54,9 +54,10 @@ async function handleUpdate(data: MemoryCreateRequest): Promise<void> {
 
 async function handleArchive(): Promise<void> {
   try {
+    const memoryType = memory.value?.type
     await api.deleteMemory(memoryId)
     success(t('memory_detail_archived_success'))
-    router.push('/')
+    router.push(`/memories?type=${memoryType}`)
   } catch {
     // handled
   }
@@ -64,9 +65,10 @@ async function handleArchive(): Promise<void> {
 
 async function handleHardDelete(): Promise<void> {
   try {
+    const memoryType = memory.value?.type
     await api.deleteMemory(memoryId, true)
     success(t('memory_detail_deleted_success'))
-    router.push('/')
+    router.push(`/memories?type=${memoryType}`)
   } catch {
     // handled
   }
