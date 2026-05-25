@@ -38,5 +38,8 @@ uv.lock
 # Docker
 docker-compose.override.yaml
 
+# MCP config (project-level, user-specific)
+.mcp.json
+
 # Persistent data (mounted volumes)
 data/
