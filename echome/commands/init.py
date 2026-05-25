@@ -154,7 +154,7 @@ def init(
     else:
         # No existing config or CLI params provided
         if not hub_url:
-            hub_url = Prompt.ask("   Hub URL", default="http://localhost:20000")
+            hub_url = Prompt.ask("   Hub URL", default="https://echome.qzhqzh.com")
         if not token:
             token = Prompt.ask("   Auth Token", password=True, default="")
 
