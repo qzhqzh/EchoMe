@@ -29,7 +29,7 @@ async def echome_list_by_type(type: str, status: str = "active") -> str:  # noqa
 
     for item in items:
         title = item.get("title", "Untitled")
-        mem_id = str(item.get("id", ""))[:8]
+        mem_id = str(item.get("id", ""))
         priority = item.get("priority", 0)
         tags = ", ".join(item.get("tags", []))
         output_parts.append(f"- [{mem_id}] **{title}** (P{priority}) {tags}")
