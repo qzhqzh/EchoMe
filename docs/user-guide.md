@@ -27,16 +27,10 @@
 - Python 3.11+
 - EchoMe Hub 已在服务器上运行（`docker compose up -d`）
 
-### 安装 CLI + MCP（推荐）
+### 安装（推荐）
 
 ```bash
 cd ~/path/to/EchoMe
-pip install -e ".[mcp]"
-```
-
-### 仅安装 CLI（不需要 MCP）
-
-```bash
 pip install -e .
 ```
 
@@ -396,7 +390,7 @@ echome mcp serve
 echome update
 
 # 如果是 editable 安装（开发模式），等同于：
-cd ~/path/to/EchoMe && git pull && pip install -e ".[mcp]"
+cd ~/path/to/EchoMe && git pull && pip install -e .
 ```
 
 更新后记得重新 sync：
@@ -469,7 +463,7 @@ echome sync --project user/another-project
 ### 新机器/新环境恢复
 
 ```bash
-pip install -e ".[mcp]"
+pip install -e .
 echome init --hub-url http://你的服务器:20000 --token YOUR_TOKEN
 echome sync
 # 完成！记忆自动从 Hub 恢复
@@ -508,7 +502,7 @@ echome list --layer L0
 
 确保用最新代码：
 ```bash
-git pull origin main && pip install -e ".[mcp]"
+git pull origin main && pip install -e .
 ```
 
 ### Q: 怎么删除一条记忆？

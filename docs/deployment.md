@@ -183,11 +183,11 @@ docker compose exec -T postgres pg_dump -U echome echome > backup.sql
 #### 1. 安装 CLI
 
 ```bash
-# 推荐：完整安装（CLI + MCP Server）
-pip install echome[mcp]
+# 安装完整版（CLI + MCP Server）
+pip install echome
 
 # 或用 uv
-uv tool install echome[mcp]
+uv tool install echome
 ```
 
 #### 2. 登录

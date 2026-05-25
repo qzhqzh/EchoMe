@@ -22,7 +22,7 @@ const { t } = useI18n()
           <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">1</span>
           <div>
             <p class="font-medium text-slate-100">{{ t('help_step1_title') }}</p>
-            <code class="mt-1 block rounded bg-slate-900 px-3 py-1.5 text-sm text-emerald-400">pip install echome[mcp]</code>
+            <code class="mt-1 block rounded bg-slate-900 px-3 py-1.5 text-sm text-emerald-400">pip install echome</code>
           </div>
         </li>
         <li class="flex gap-3">
