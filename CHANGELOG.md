@@ -1,3 +1,19 @@
+## v1.0.1
+
+- e22d508 fix: add trailing newline to doctor.py
+- b9f0b8a fix: sync remote main before push in release action (#71)
+- 4ec1198 release: v1.0.0
+- a03e70c feat: add echome version command (#70)
+- 8a7771c feat: add echome doctor command (#69)
+- 2b90d5f fix: change default Hub URL to https://echome.qzhqzh.com (#67)
+- db61ba8 feat(init): prompt to keep existing Hub config
+- 6cde79d release: v0.2.2
+- 4392126 docs: update installation instructions for MCP as default #63
+- c79cd88 feat: MCP Server included by default #63 (#64)
+- b3741ec fix: MCP 配置写入正确位置 #61 (#62)
+- 8d91f51 fix: correct GitHub install syntax in README
+- be90d25 docs: update README with PyPI and GitHub install methods
+
 ## v1.0.0
 
 - a03e70c feat: add echome version command (#70)
