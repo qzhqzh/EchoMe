@@ -204,6 +204,12 @@ def status_cmd() -> None:
     console.print()
 
 
+def version_cmd() -> None:
+    """Show EchoMe version."""
+    from echome import __version__
+    console.print(f"EchoMe v{__version__}")
+
+
 app = typer.Typer(
     name="echome",
     help="EchoMe - Personal memory sync for AI CLI tools",
@@ -221,6 +227,7 @@ app.command("review")(review)
 app.command("clean")(clean)
 app.command("doctor")(doctor)
 app.command("status")(status_cmd)
+app.command("version")(version_cmd)
 
 # Auth commands
 app.command("login")(login)
