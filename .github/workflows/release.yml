@@ -103,6 +103,7 @@ jobs:
 
       - name: Push commit and tag
         run: |
+          git pull --rebase origin main
           git push origin main
           git push origin "v${{ steps.bump.outputs.version }}"
 
