@@ -1,6 +1,6 @@
 [project]
 name = "echome"
-version = "0.2.1"
+version = "0.2.2"
 description = "EchoMe - Personal memory sync for AI CLI tools (CLI + MCP Server)"
 requires-python = ">=3.11"
 license = "MIT"
