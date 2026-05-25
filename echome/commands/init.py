@@ -20,28 +20,62 @@ def _mcp_available() -> bool:
         return False
 
 
-def _setup_mcp() -> None:
-    """Register EchoMe MCP server in Claude Code and Codex CLI."""
+def _setup_claude_mcp_fallback() -> None:
+    """Fallback: write Claude MCP config directly to ~/.claude.json."""
     import json
     from pathlib import Path
 
+    claude_config = Path.home() / ".claude.json"
     mcp_config = {
+        "type": "stdio",
         "command": "echome",
         "args": ["mcp", "serve"],
+        "env": {},
+    }
+
+    try:
+        data = json.loads(claude_config.read_text()) if claude_config.exists() else {}
+    except (json.JSONDecodeError, OSError):
+        data = {}
+
+    # Add to user-level mcpServers (available in all projects)
+    data.setdefault("mcpServers", {})["echome"] = mcp_config
+    claude_config.write_text(json.dumps(data, indent=2))
+
+
+def _setup_mcp() -> None:
+    """Register EchoMe MCP server in Claude Code and Codex CLI."""
+    import json
+    import subprocess
+    from pathlib import Path
+
+    mcp_config = {
+        "type": "stdio",
+        "command": "echome",
+        "args": ["mcp", "serve"],
+        "env": {},
     }
 
     registered = []
 
-    # Claude Code
-    claude_mcp = Path.home() / ".claude" / "mcp.json"
-    claude_mcp.parent.mkdir(parents=True, exist_ok=True)
+    # Claude Code - use official CLI command for correct configuration
     try:
-        data = json.loads(claude_mcp.read_text()) if claude_mcp.exists() else {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-    data.setdefault("mcpServers", {})["echome"] = mcp_config
-    claude_mcp.write_text(json.dumps(data, indent=2))
-    registered.append(f"Claude Code ({claude_mcp})")
+        # User scope makes echome available across all projects
+        result = subprocess.run(
+            ["claude", "mcp", "add", "--scope", "user", "echome", "--", "echome", "mcp", "serve"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            registered.append("Claude Code (user scope)")
+        else:
+            # Fallback: write to user-level config directly
+            _setup_claude_mcp_fallback()
+            registered.append("Claude Code (fallback)")
+    except FileNotFoundError:
+        # claude CLI not available, use fallback
+        _setup_claude_mcp_fallback()
+        registered.append("Claude Code (fallback)")
 
     # Codex CLI legacy JSON config. Keep writing it for older clients and humans
     # who inspect the config, but modern Codex reads ~/.codex/config.toml.
