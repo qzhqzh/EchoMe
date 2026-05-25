@@ -51,23 +51,17 @@ EchoMe 是一个**跨 AI 的个人上下文同步层**。它把你的工作流�
 ### 方式一：PyPI 安装（推荐）
 
 ```bash
-# 完整安装（CLI + MCP Server）
-pip install echome[mcp]
-
-# 或仅安装 CLI
+# 完整安装（CLI + MCP Server）- 默认包含 MCP
 pip install echome
 
 # 升级到最新版本
-pip install echome[mcp] --upgrade
+pip install echome --upgrade
 ```
 
 ### 方式二：GitHub 安装
 
 ```bash
 # 完整安装
-pip install "echome[mcp] @ git+https://github.com/qzhqzh/EchoMe.git"
-
-# 或仅安装 CLI
 pip install "echome @ git+https://github.com/qzhqzh/EchoMe.git"
 ```
 

@@ -1,7 +1,7 @@
 [project]
 name = "echome"
 version = "0.2.1"
-description = "EchoMe - Personal memory sync for AI CLI tools (CLI + optional MCP Server)"
+description = "EchoMe - Personal memory sync for AI CLI tools (CLI + MCP Server)"
 requires-python = ">=3.11"
 license = "MIT"
 readme = "README.md"
@@ -23,6 +23,7 @@ dependencies = [
     "httpx>=0.27.0",
     "pyyaml>=6.0.0",
     "pydantic>=2.7.0",
+    "mcp>=1.0.0",  # MCP server included by default
 ]
 
 [project.urls]
@@ -35,9 +36,7 @@ echome = "echome.main:app"
 eme = "echome.main:app"
 
 [project.optional-dependencies]
-mcp = [
-    "mcp>=1.0.0",
-]
+cli = []  # Marker for CLI-only (lightweight) variant
 dev = [
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.0",
