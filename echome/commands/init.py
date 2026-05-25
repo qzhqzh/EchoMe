@@ -134,10 +134,29 @@ def init(
     # ─── Step 1: Hub Connection ───
     console.print("[bold]1. Hub Connection[/bold]")
 
-    if not hub_url:
-        hub_url = Prompt.ask("   Hub URL", default="http://localhost:20000")
-    if not token:
-        token = Prompt.ask("   Auth Token", password=True, default="")
+    # Check for existing config
+    existing_config = Config.load()
+    has_existing = existing_config.hub_url and existing_config.token
+
+    if has_existing and not hub_url and not token:
+        console.print(f"   [dim]检测到已有配置: {existing_config.hub_url}[/dim]")
+        keep_existing = Confirm.ask("   是否保持原设置？", default=True)
+        if keep_existing:
+            hub_url = existing_config.hub_url
+            token = existing_config.token
+            console.print(f"   [green]✓[/green] 使用现有配置: {hub_url}\n")
+        else:
+            # User wants to change, prompt for new values
+            if not hub_url:
+                hub_url = Prompt.ask("   Hub URL", default=existing_config.hub_url)
+            if not token:
+                token = Prompt.ask("   Auth Token", password=True, default="")
+    else:
+        # No existing config or CLI params provided
+        if not hub_url:
+            hub_url = Prompt.ask("   Hub URL", default="http://localhost:20000")
+        if not token:
+            token = Prompt.ask("   Auth Token", password=True, default="")
 
     config = Config(hub_url=hub_url, token=token)
 
