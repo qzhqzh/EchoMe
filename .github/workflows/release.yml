@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write  # Required for PyPI trusted publishing
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,3 +116,17 @@ jobs:
           body: ${{ steps.changelog.outputs.notes }}
           draft: false
           prerelease: false
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Smoke test
+        run: |
+          pip install dist/*.whl
+          echome --help
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
