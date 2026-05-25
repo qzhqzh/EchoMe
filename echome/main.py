@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from echome.commands.clean import clean
+from echome.commands.doctor import doctor
 from echome.commands.init import init
 from echome.commands.login import login, logout, whoami
 from echome.commands.market import market_app
@@ -218,6 +219,7 @@ app.command("search")(search_memories)
 app.command("update")(update)
 app.command("review")(review)
 app.command("clean")(clean)
+app.command("doctor")(doctor)
 app.command("status")(status_cmd)
 
 # Auth commands
