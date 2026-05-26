@@ -1,3 +1,7 @@
+## v1.1.2
+
+- ed91144 ci: add publish.yml for PyPI OIDC auto-publish
+
 ## v1.1.1
 
 - 
