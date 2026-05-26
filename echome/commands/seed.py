@@ -106,9 +106,11 @@ def seed(
                 "priority": item["priority"],
                 "tags": item["tags"],
                 "status": item["status"],
-                "scope_global": item["scope"]["global"],
-                "scope_projects": item["scope"].get("projects", []),
-                "scope_exclude": item["scope"].get("exclude_projects", []),
+                "scope": {
+                    "global": item["scope"]["global"],
+                    "projects": item["scope"].get("projects", []),
+                    "exclude_projects": item["scope"].get("exclude_projects", []),
+                },
                 "source": item["source"],
                 "visibility": item.get("visibility", "private"),
             }
