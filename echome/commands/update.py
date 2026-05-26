@@ -26,7 +26,7 @@ def _detect_install_source() -> str:
             return "github"
     except Exception:
         pass
-    return "pypi"
+    return "github"
 
 
 def _refresh_mcp_registration() -> None:
@@ -101,10 +101,10 @@ def update(
         "",
         "--source",
         "-s",
-        help="Install source: 'pypi' (default) or 'github'",
+        help="Install source: 'github' (default) or 'pypi'",
     ),
 ) -> None:
-    """Update EchoMe CLI to the latest version from PyPI."""
+    """Update EchoMe CLI to the latest version from GitHub."""
     console.print("\n[bold]EchoMe Update[/bold]\n")
 
     from echome import __version__
@@ -128,7 +128,7 @@ def update(
             "--upgrade",
             f"echome[mcp] @ {GITHUB_REPO}",
         ]
-    elif source == "pypi" or not source:
+    elif source == "pypi":
         console.print("  Install source: [cyan]PyPI[/cyan]")
         pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "echome[mcp]"]
     else:
