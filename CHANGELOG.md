@@ -1,3 +1,10 @@
+## v1.1.0
+
+- 52ed3be feat: add echome seed command for loading seed memories (#74)
+- c9c708f feat: add echome seed command for loading seed memories
+- 1759636 fix: show full UUID in echome_list_by_type instead of truncated 8-char (#73)
+- b3120a7 fix: merge publish workflow into release workflow (#72)
+
 ## v1.0.1
 
 - e22d508 fix: add trailing newline to doctor.py
