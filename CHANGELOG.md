@@ -1,3 +1,7 @@
+## v1.1.3
+
+- a20961c fix: remove PyPI publish from release.yml
+
 ## v1.1.2
 
 - ed91144 ci: add publish.yml for PyPI OIDC auto-publish
