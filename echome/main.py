@@ -16,6 +16,7 @@ from echome.commands.login import login, logout, whoami
 from echome.commands.market import market_app
 from echome.commands.memories import add_memory, list_memories, search_memories
 from echome.commands.review import review
+from echome.commands.seed import seed
 from echome.commands.sync import detect, eject, pull, push, sync
 from echome.commands.update import update
 
@@ -226,6 +227,7 @@ app.command("update")(update)
 app.command("review")(review)
 app.command("clean")(clean)
 app.command("doctor")(doctor)
+app.command("seed")(seed)
 app.command("status")(status_cmd)
 app.command("version")(version_cmd)
 
