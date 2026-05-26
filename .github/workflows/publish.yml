@@ -1,9 +1,10 @@
 name: Publish to PyPI
 
 on:
+  workflow_call:  # Can be called by other workflows
   push:
     tags:
-      - "v*"
+      - "v*"     # Also triggered by tag push (requires PAT)
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
