@@ -1,3 +1,8 @@
+## v1.1.4
+
+- 2605496 fix: add permissions for reusable workflow call
+- d5bf131 fix: call publish.yml from release.yml via reusable workflow
+
 ## v1.1.3
 
 - a20961c fix: remove PyPI publish from release.yml
