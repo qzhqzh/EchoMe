@@ -130,4 +130,7 @@ jobs:
 
   publish:
     needs: release
+    permissions:
+      id-token: write
+      contents: read
     uses: qzhqzh/EchoMe/.github/workflows/publish.yml@main
