@@ -1,3 +1,8 @@
+## v1.1.5
+
+- 5ffa17f chore: remove old release.yml (merged into publish.yml)
+- 49e84dd refactor: merge workflows into single publish.yml
+
 ## v1.1.4
 
 - 2605496 fix: add permissions for reusable workflow call
