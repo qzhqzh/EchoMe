@@ -1,3 +1,7 @@
+## v1.1.7
+
+- 6191a44 fix: use valid MemorySource enum value in seed_memories.json
+
 ## v1.1.6
 
 - 27cfcf7 fix: use nested scope format in seed command
