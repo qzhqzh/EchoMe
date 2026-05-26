@@ -1,3 +1,7 @@
+## v1.1.6
+
+- 27cfcf7 fix: use nested scope format in seed command
+
 ## v1.1.5
 
 - 5ffa17f chore: remove old release.yml (merged into publish.yml)
