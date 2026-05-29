@@ -8,9 +8,9 @@
 - **当前版本**：`echome v1.1.7`
 - **Hub**：已实现认证、多用户、memories CRUD/search、projects、sync/render、review、market、admin、embedding 接入和 rate limit
 - **CLI**：已实现 `init/login/add/list/search/sync/push/pull/review/market/doctor/seed/update/status/version`
-- **MCP Server**：已实现 search/get/list_by_type/remember/project context/project list/create project，并提供 `memory_search` alias
+- **MCP Server**：已实现 summary-first 检索（`echome_search_summary` + `echome_get_memories`）、search/get/list_by_type/remember/project context/project list/create project，并提供 `memory_search` alias
 - **Web Console**：已实现 Dashboard、Memories、Review、Projects、Market、Admin、Settings、Login、Help 等页面
-- **验证状态**：根目录和 Hub 子项目 `ruff check .` 通过；Hub 测试 `48 passed, 1 skipped`
+- **验证状态**：`make lint` 通过；Hub 测试 `49 passed, 1 skipped`
 
 下面的 Phase 计划保留为原始路线图参考，不代表当前完成度。
 

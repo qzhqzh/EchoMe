@@ -38,6 +38,13 @@ EchoMe 是一个**跨 AI 的个人上下文同步层**。它把你的工作流�
 | **L1** | 进入项目 | 项目级文件 | ≤ 2000 tokens |
 | **L2** | AI 按需查 | MCP search | 无限制 |
 
+
+## 检索思想
+
+EchoMe 不把所有记忆一次性塞进上下文，而是采用 **summary-first**：AI 先通过 `echome_search_summary` 获取候选记忆摘要，再用 `echome_get_memories` 按 UUID 精读取少量相关全文。这样在项目记忆变多后，仍能先看全局索引，再精准加载需要的记忆，避免 `top_k` 搜索长期只命中早期记忆或把上下文弄乱。
+
+详见 [记忆检索设计](docs/memory-retrieval.md)。
+
 ## 组件
 
 | 组件 | 说明 | 位置 |
@@ -113,6 +120,7 @@ echome sync                     # 自动检测 + 渲染到 CLAUDE.md / AGENTS.md
 
 - [系统架构](docs/architecture.md)
 - [记忆模型](docs/memory-model.md)
+- [记忆检索设计](docs/memory-retrieval.md)
 - [Hub API 规范](docs/api-spec.md)
 - [MCP Server 规范](docs/mcp-spec.md)
 - [开发路线图](docs/roadmap.md)
