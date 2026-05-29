@@ -124,7 +124,9 @@ EchoMe 是一个 **跨 AI 的个人上下文同步层**，让用户的习惯、�
 
 | Tool 名 | 描述 |
 |---|---|
-| `echome_search` | 按关键词/语义搜索用户记忆 |
+| `echome_search_summary` | 返回紧凑记忆摘要索引，用于先选候选记忆 |
+| `echome_get_memories` | 按 UUID 批量获取选中记忆全文 |
+| `echome_search` | 按关键词/语义搜索用户记忆全文结果 |
 | `echome_get` | 按 id 获取单条记忆全文 |
 | `echome_list_by_type` | 按 type 列出记忆标题 |
 | `echome_remember` | AI 主动写入新记忆（进审核队列） |
@@ -146,7 +148,7 @@ EchoMe 是一个 **跨 AI 的个人上下文同步层**，让用户的习惯、�
 ### 4.2 AI 查询记忆（MCP）
 
 ```
-AI 判断需要上下文 → 调 echome_search tool → MCP Server → Hub /api/v1/search → 返回 top-K 记忆
+AI 判断需要上下文 → 调 echome_search_summary → 选择相关 UUID → 调 echome_get_memories → 返回选中记忆全文
 ```
 
 ### 4.3 AI 主动写记忆

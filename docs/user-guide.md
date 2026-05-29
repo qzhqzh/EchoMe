@@ -194,7 +194,7 @@ echome sync
 - **Python 用 ruff 格式化**: 所有 Python 项目统一使用 ruff...
 
 ### EchoMe Memory System (MANDATORY)
-在每次对话开始时，你必须先调用 `echome_search` 查询与当前任务相关的记忆。
+在每次对话开始时，你必须先调用 `echome_search_summary` 查询与当前任务相关的记忆摘要，再按需用 `echome_get_memories` 读取全文。
 ...
 <!-- echome:end -->
 

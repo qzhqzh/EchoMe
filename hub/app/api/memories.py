@@ -77,6 +77,7 @@ async def list_memories(
     status_filter: str | None = Query(None, alias="status"),
     tags: str | None = None,
     project_id: str | None = None,
+    search_query: str | None = Query(None, alias="query"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
@@ -99,6 +100,13 @@ async def list_memories(
             query = query.where(Memory.tags.contains([tag]))
     if project_id:
         query = query.where(Memory.scope_projects.contains([project_id]))
+    if isinstance(search_query, str) and search_query:
+        pattern = f"%{search_query.lower()}%"
+        query = query.where(
+            func.lower(Memory.title).like(pattern)
+            | func.lower(Memory.content).like(pattern)
+            | func.lower(func.array_to_string(Memory.tags, " ")).like(pattern)
+        )
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())

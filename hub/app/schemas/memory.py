@@ -175,10 +175,11 @@ class MemoryResponse(_OrmScopeMixin, BaseModel):
 
 
 class MemoryListItem(_OrmScopeMixin, BaseModel):
-    """Memory item in list responses (without full content)."""
+    """Memory item in list responses."""
 
     id: uuid.UUID
     title: str
+    content: str
     type: MemoryType
     layer: MemoryLayer
     priority: int

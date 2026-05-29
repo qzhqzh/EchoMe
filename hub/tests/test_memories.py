@@ -114,6 +114,36 @@ class TestListMemories:
         assert len(result.items) == 2
 
     @pytest.mark.asyncio
+    async def test_list_memories_with_query_filter(self, test_user_id: str):
+        """Filtering by query should still return the matched page."""
+        from app.api.memories import list_memories
+
+        mock_session = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 1
+        items_result = MagicMock()
+        mem = _make_memory(user_id=test_user_id, title="Searchable Memory")
+        items_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[mem]))
+
+        mock_session.execute = AsyncMock(side_effect=[count_result, items_result])
+
+        result = await list_memories(
+            type=None,
+            layer=None,
+            status_filter=None,
+            tags=None,
+            project_id=None,
+            search_query="searchable",
+            offset=0,
+            limit=50,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        assert result.total == 1
+        assert len(result.items) == 1
+
+    @pytest.mark.asyncio
     async def test_list_memories_with_type_filter(self, test_user_id: str):
         """Filtering by type should pass the filter through."""
         from app.api.memories import list_memories

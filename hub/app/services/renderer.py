@@ -12,20 +12,22 @@ MARKER_END = "<!-- echome:end -->"
 
 # Mandatory MCP instruction — tells AI to always check memories
 MCP_INSTRUCTION = """### EchoMe Memory System (MANDATORY)
-在每次对话开始时，你必须先调用 MCP tool `echome_search` 查询与当前任务相关的记忆。
+在每次对话开始时，你必须先调用 MCP tool `echome_search_summary` 查询与当前任务相关的记忆摘要。
 这不是可选的——我的工作流规范、技术偏好和约束都存储在 EchoMe 中。
 
 规则：
-1. 收到用户第一条消息后，根据关键词调用 MCP tool `echome_search`
-2. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`
-3. 不确定项目约定时，调用 MCP tool `echome_search` 而不是假设
-4. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project。写入前判断记忆范围：如果是通用型（适用于所有项目）则不传 project；如果是项目相关（仅适用于特定项目），则必须指定有效项目（project 参数）
-5. **project 类型记忆需要关联项目**：写入 project 类型记忆前，先调用 MCP tool `echome_list_projects` 查看已有项目；若目标项目不存在，调用 MCP tool `echome_create_project` 创建。提交时必须带上 `project` 参数（项目名称），`suggested_layer="L1"`，状态默认为 ai_review。
-6. **记忆格式规范**：写入记忆时使用 Markdown 格式，内容必须结构化：
+1. 收到用户第一条消息后，根据关键词调用 MCP tool `echome_search_summary` 获取候选记忆摘要
+2. 只对当前任务相关的摘要条目调用 MCP tool `echome_get_memories` 读取全文；调用时必须传摘要里的 UUID，不要只传编号
+3. 如果摘要中没有相关记忆，不要为了凑结果继续扩大搜索；直接说明未找到相关记忆
+4. 对非常明确的小范围问题，可以直接调用 MCP tool `echome_search`；不确定项目约定时优先用 `echome_search_summary` 而不是假设
+5. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`
+6. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project。写入前判断记忆范围：如果是通用型（适用于所有项目）则不传 project；如果是项目相关（仅适用于特定项目），则必须指定有效项目（project 参数）
+7. **project 类型记忆需要关联项目**：写入 project 类型记忆前，先调用 MCP tool `echome_list_projects` 查看已有项目；若目标项目不存在，调用 MCP tool `echome_create_project` 创建。提交时必须带上 `project` 参数（项目名称），`suggested_layer="L1"`，状态默认为 ai_review。
+8. **记忆格式规范**：写入记忆时使用 Markdown 格式，内容必须结构化：
    - 核心规则/要点放在开头，用 `**bold**` 标记关键词
    - 多段落内容用 `##` 分节（如：核心规则、Why、How to apply）
    - 列表用 `-` 或 `1.`，不要写成一大段纯文本
-7. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 MCP tool `echome_remember` 写入记忆。判断标准：
+9. **完成任务时写入记忆**：完成一个有价值的任务后，主动判断是否需要用 MCP tool `echome_remember` 写入记忆。判断标准：
    - 发现了可复用的模式、踩坑经验、最佳实践
    - 用户纠正了你的做法（存为 style 类型）
    - 做了技术决策（存为 decision 类型）
