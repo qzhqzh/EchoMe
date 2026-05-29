@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---- Helper ----
 
 def _make_real_orm_memory(
@@ -120,7 +119,7 @@ class TestUpdateMemoryLayer:
         mock_background = MagicMock()
 
         with patch("app.api.memories.count_tokens", return_value=10):
-            result = await update_memory(
+            await update_memory(
                 memory_id=existing.id,
                 body=body,
                 background_tasks=mock_background,
@@ -183,19 +182,21 @@ class TestBackgroundEmbeddingRaceCondition:
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
-            with patch(
+        with (
+            patch("app.api.memories.get_embedding", return_value=fake_embedding),
+            patch(
                 "app.core.database.async_session_factory",
                 return_value=mock_session_ctx,
-            ):
-                # The background task should NOT raise to the caller
-                try:
-                    await _compute_and_store_embedding(uuid.uuid4(), "test text")
-                except Exception as e:
-                    pytest.fail(
-                        f"Background embedding task should not raise to caller, "
-                        f"but got: {e}"
-                    )
+            ),
+        ):
+            # The background task should NOT raise to the caller
+            try:
+                await _compute_and_store_embedding(uuid.uuid4(), "test text")
+            except Exception as e:
+                pytest.fail(
+                    f"Background embedding task should not raise to caller, "
+                    f"but got: {e}"
+                )
 
 
 class TestEndToEndLayerUpdate:

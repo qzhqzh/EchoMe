@@ -207,7 +207,7 @@ class TestCreateMemory:
         mock_session.commit = AsyncMock()
 
         with patch("app.api.memories.count_tokens", return_value=15):
-            result = await create_memory(
+            await create_memory(
                 request=mock_request,
                 body=body,
                 background_tasks=mock_background,
@@ -680,9 +680,11 @@ class TestComputeAndStoreEmbedding:
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
-            with patch("app.core.database.async_session_factory", return_value=mock_session_ctx):
-                await _compute_and_store_embedding(memory_id, "test text")
+        with (
+            patch("app.api.memories.get_embedding", return_value=fake_embedding),
+            patch("app.core.database.async_session_factory", return_value=mock_session_ctx),
+        ):
+            await _compute_and_store_embedding(memory_id, "test text")
 
         # Verify session.execute was called (the UPDATE statement)
         mock_session.execute.assert_called_once()
@@ -696,9 +698,11 @@ class TestComputeAndStoreEmbedding:
 
         memory_id = uuid.uuid4()
 
-        with patch("app.api.memories.get_embedding", return_value=None):
-            with patch("app.core.database.async_session_factory") as mock_factory:
-                await _compute_and_store_embedding(memory_id, "test text")
+        with (
+            patch("app.api.memories.get_embedding", return_value=None),
+            patch("app.core.database.async_session_factory") as mock_factory,
+        ):
+            await _compute_and_store_embedding(memory_id, "test text")
 
         # async_session_factory should never be called if embedding is None
         mock_factory.assert_not_called()
@@ -722,10 +726,12 @@ class TestComputeAndStoreEmbedding:
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
-            with patch("app.core.database.async_session_factory", return_value=mock_session_ctx):
-                # This MUST NOT raise
-                await _compute_and_store_embedding(memory_id, "test text")
+        with (
+            patch("app.api.memories.get_embedding", return_value=fake_embedding),
+            patch("app.core.database.async_session_factory", return_value=mock_session_ctx),
+        ):
+            # This MUST NOT raise
+            await _compute_and_store_embedding(memory_id, "test text")
 
         # If we get here without exception, the test passes
 

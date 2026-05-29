@@ -1,5 +1,19 @@
 # EchoMe 开发路线图
 
+
+## 当前实际进度（2026-05-29）
+
+代码实现已经超过原始 Phase 0/1 计划，当前仓库处于早期可用发布态：
+
+- **当前版本**：`echome v1.1.7`
+- **Hub**：已实现认证、多用户、memories CRUD/search、projects、sync/render、review、market、admin、embedding 接入和 rate limit
+- **CLI**：已实现 `init/login/add/list/search/sync/push/pull/review/market/doctor/seed/update/status/version`
+- **MCP Server**：已实现 search/get/list_by_type/remember/project context/project list/create project，并提供 `memory_search` alias
+- **Web Console**：已实现 Dashboard、Memories、Review、Projects、Market、Admin、Settings、Login、Help 等页面
+- **验证状态**：根目录和 Hub 子项目 `ruff check .` 通过；Hub 测试 `48 passed, 1 skipped`
+
+下面的 Phase 计划保留为原始路线图参考，不代表当前完成度。
+
 ## 总体目标
 
 用最短路径实现：**一台新机器上，一条命令恢复"我的 AI 协作现场"**。
