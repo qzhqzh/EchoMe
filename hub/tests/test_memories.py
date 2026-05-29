@@ -114,6 +114,36 @@ class TestListMemories:
         assert len(result.items) == 2
 
     @pytest.mark.asyncio
+    async def test_list_memories_with_query_filter(self, test_user_id: str):
+        """Filtering by query should still return the matched page."""
+        from app.api.memories import list_memories
+
+        mock_session = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 1
+        items_result = MagicMock()
+        mem = _make_memory(user_id=test_user_id, title="Searchable Memory")
+        items_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[mem]))
+
+        mock_session.execute = AsyncMock(side_effect=[count_result, items_result])
+
+        result = await list_memories(
+            type=None,
+            layer=None,
+            status_filter=None,
+            tags=None,
+            project_id=None,
+            search_query="searchable",
+            offset=0,
+            limit=50,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        assert result.total == 1
+        assert len(result.items) == 1
+
+    @pytest.mark.asyncio
     async def test_list_memories_with_type_filter(self, test_user_id: str):
         """Filtering by type should pass the filter through."""
         from app.api.memories import list_memories
@@ -207,7 +237,7 @@ class TestCreateMemory:
         mock_session.commit = AsyncMock()
 
         with patch("app.api.memories.count_tokens", return_value=15):
-            result = await create_memory(
+            await create_memory(
                 request=mock_request,
                 body=body,
                 background_tasks=mock_background,
@@ -680,9 +710,11 @@ class TestComputeAndStoreEmbedding:
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
-            with patch("app.core.database.async_session_factory", return_value=mock_session_ctx):
-                await _compute_and_store_embedding(memory_id, "test text")
+        with (
+            patch("app.api.memories.get_embedding", return_value=fake_embedding),
+            patch("app.core.database.async_session_factory", return_value=mock_session_ctx),
+        ):
+            await _compute_and_store_embedding(memory_id, "test text")
 
         # Verify session.execute was called (the UPDATE statement)
         mock_session.execute.assert_called_once()
@@ -696,9 +728,11 @@ class TestComputeAndStoreEmbedding:
 
         memory_id = uuid.uuid4()
 
-        with patch("app.api.memories.get_embedding", return_value=None):
-            with patch("app.core.database.async_session_factory") as mock_factory:
-                await _compute_and_store_embedding(memory_id, "test text")
+        with (
+            patch("app.api.memories.get_embedding", return_value=None),
+            patch("app.core.database.async_session_factory") as mock_factory,
+        ):
+            await _compute_and_store_embedding(memory_id, "test text")
 
         # async_session_factory should never be called if embedding is None
         mock_factory.assert_not_called()
@@ -722,10 +756,12 @@ class TestComputeAndStoreEmbedding:
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.api.memories.get_embedding", return_value=fake_embedding):
-            with patch("app.core.database.async_session_factory", return_value=mock_session_ctx):
-                # This MUST NOT raise
-                await _compute_and_store_embedding(memory_id, "test text")
+        with (
+            patch("app.api.memories.get_embedding", return_value=fake_embedding),
+            patch("app.core.database.async_session_factory", return_value=mock_session_ctx),
+        ):
+            # This MUST NOT raise
+            await _compute_and_store_embedding(memory_id, "test text")
 
         # If we get here without exception, the test passes
 

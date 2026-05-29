@@ -7,7 +7,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from echome_mcp.tools.browse import echome_browse_memories, echome_search_summary
 from echome_mcp.tools.get import echome_get
+from echome_mcp.tools.get_many import echome_get_memories
 from echome_mcp.tools.list_by_type import echome_list_by_type
 from echome_mcp.tools.project import echome_create_project, echome_list_projects
 from echome_mcp.tools.project_context import echome_get_project_context
@@ -28,7 +30,8 @@ async def list_tools() -> list[Tool]:
                 "Search user's personal memories and knowledge. "
                 "Use when you need to know the user's workflow rules, technical preferences, "
                 "project background, past decisions, or any stored context. "
-                "Call this before making assumptions about the user's conventions."
+                "Call this before making assumptions about the user's conventions. "
+                "For broad or uncertain questions, prefer echome_search_summary first, then echome_get_memories with selected UUIDs for full content."
             ),
             inputSchema={
                 "type": "object",
@@ -79,6 +82,70 @@ async def list_tools() -> list[Tool]:
                     "top_k": {"type": "integer", "default": 5},
                 },
                 "required": ["query"],
+            },
+        ),
+        Tool(
+            name="echome_search_summary",
+            description=(
+                "Return a compact numbered summary index of memories instead of full content. "
+                "Use this first for broad or uncertain questions, projects with many memories, "
+                "or when you need to choose which memories to read. Then call echome_get_memories with selected UUIDs."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "identity", "guardrail", "reasoning", "method", "stack",
+                            "style", "decision", "context", "template", "project",
+                        ],
+                        "description": "Optional memory type filter",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["active", "ai_review", "pending", "deprecated", "archived"],
+                        "default": "active",
+                        "description": "Memory status filter",
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Optional project ID filter",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional lightweight title/content/tag filter",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 30,
+                        "description": "Number of index entries to return",
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Pagination offset",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="echome_get_memories",
+            description=(
+                "Get full content for multiple memories by UUID. "
+                "Use after echome_search_summary when only selected entries are relevant."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "memory_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Memory UUIDs selected from echome_search_summary",
+                    },
+                },
+                "required": ["memory_ids"],
             },
         ),
         Tool(
@@ -262,6 +329,22 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 type=arguments.get("type"),
                 project_id=arguments.get("project_id"),
                 top_k=arguments.get("top_k", 5),
+            )
+        elif name in {"echome_search_summary", "echome_browse_memories"}:
+            summary_func = (
+                echome_browse_memories if name == "echome_browse_memories" else echome_search_summary
+            )
+            result = await summary_func(
+                type=arguments.get("type"),
+                status=arguments.get("status", "active"),
+                project_id=arguments.get("project_id"),
+                query=arguments.get("query"),
+                limit=arguments.get("limit", 30),
+                offset=arguments.get("offset", 0),
+            )
+        elif name == "echome_get_memories":
+            result = await echome_get_memories(
+                memory_ids=arguments.get("memory_ids", []),
             )
         elif name == "echome_get":
             result = await echome_get(memory_id=arguments["memory_id"])

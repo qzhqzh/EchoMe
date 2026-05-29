@@ -2,9 +2,9 @@
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -112,7 +112,7 @@ async def embed(request: EmbedRequest):
             dimension=len(embeddings_list[0]),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}") from e
 
 
 if __name__ == "__main__":

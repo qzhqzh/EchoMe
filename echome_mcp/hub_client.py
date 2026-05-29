@@ -68,6 +68,33 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def browse_memories(
+        self,
+        memory_type: str | None = None,
+        status: str = "active",
+        project_id: str | None = None,
+        query: str | None = None,
+        limit: int = 30,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Browse compact memory index entries."""
+        params: dict[str, Any] = {
+            "status": status,
+            "limit": limit,
+            "offset": offset,
+        }
+        if memory_type:
+            params["type"] = memory_type
+        if project_id:
+            params["project_id"] = project_id
+        if query:
+            params["query"] = query
+
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get("/api/v1/memories", params=params)
+            resp.raise_for_status()
+            return resp.json()
+
     async def create_memory(self, data: dict[str, Any]) -> dict[str, Any]:
         """Create a new memory (for AI-suggested memories)."""
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:

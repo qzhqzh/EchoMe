@@ -48,7 +48,8 @@ hub-shell:  ## Open shell in Hub container
 # --- Testing ---
 
 test:  ## Run all tests
-	pytest
+	cd hub && uv run pytest
 
 lint:  ## Run linter
-	ruff check echome/ echome_mcp/ hub/app/
+	uv run ruff check .
+	cd hub && uv run ruff check .

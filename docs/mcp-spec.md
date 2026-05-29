@@ -55,7 +55,53 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ## 4. Tools
 
-### 4.1 echome_search / memory_search
+### 4.1 echome_search_summary
+
+**描述**: 返回紧凑的记忆摘要索引，用于先浏览候选记忆，再按 UUID 精读。适合项目记忆较多、问题范围较宽、或语义搜索 top-k 可能遗漏相关记忆的场景。
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {"type": "string", "description": "可选，按标题/内容/tag 做轻量过滤"},
+    "type": {"type": "string", "description": "可选，按记忆类型过滤"},
+    "status": {"type": "string", "default": "active", "description": "记忆状态过滤"},
+    "project_id": {"type": "string", "description": "可选，按项目过滤"},
+    "limit": {"type": "integer", "default": 30},
+    "offset": {"type": "integer", "default": 0}
+  }
+}
+```
+
+**Output**: 返回编号、UUID、title、type、layer、priority、tags、updated_at 和简短摘要。AI 应从摘要中选择相关 UUID，再调用 `echome_get_memories` 获取全文。
+
+---
+
+### 4.2 echome_get_memories
+
+**描述**: 按 UUID 列表批量获取多条记忆全文。用于 `echome_search_summary` 之后的精读阶段。
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "memory_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "从 echome_search_summary 中选择的记忆 UUID"
+    }
+  },
+  "required": ["memory_ids"]
+}
+```
+
+**Output**: 返回选中记忆的完整内容。
+
+---
+
+### 4.3 echome_search / memory_search
 
 **描述**: 搜索用户的记忆和知识。当需要了解用户的工作流规范、技术偏好、项目背景、过往决策时调用此工具。
 
@@ -118,7 +164,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ---
 
-### 4.2 echome_get
+### 4.4 echome_get
 
 **描述**: 按 ID 获取单条记忆的完整内容。
 
@@ -138,7 +184,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ---
 
-### 4.3 echome_list_by_type
+### 4.5 echome_list_by_type
 
 **描述**: 列出指定类型的所有记忆标题。用于浏览用户有哪些记忆。
 
@@ -164,7 +210,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ---
 
-### 4.4 echome_remember / memory_remember
+### 4.6 echome_remember / memory_remember
 
 **描述**: 将新知识作为 ai_review 记忆写入用户的记忆库。Agent 可以在用户明确要求时调用，也可以在观察到稳定偏好、项目决策、工作流约定、反复纠正或可复用上下文时主动调用。ai_review 记忆会立即参与后续检索；用户之后可用 `echome review` 将其提升为 active 或归档。
 
@@ -223,7 +269,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ---
 
-### 4.5 echome_get_project_context
+### 4.7 echome_get_project_context
 
 **描述**: 获取当前项目的完整上下文，包括项目描述、技术栈、注意事项等。
 
