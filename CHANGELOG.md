@@ -1,3 +1,11 @@
+## v1.2.0
+
+- 180b1c9 feat: refine memory prompt bootstrap policy (#79)
+- f720805 #76 Improve memory retrieval with summary-first workflow (#77)
+- bb0a6a0 fix: echome update 默认从 PyPI 更新而非 GitHub
+- 06a1060 Revert "fix: echome update 默认从 PyPI 更新而非 GitHub"
+- 4fad02c fix: echome update 默认从 PyPI 更新而非 GitHub
+
 ## v1.1.7
 
 - 6191a44 fix: use valid MemorySource enum value in seed_memories.json
