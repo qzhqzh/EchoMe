@@ -165,6 +165,7 @@ AI CLI 能通过 MCP 协议查询和写入记忆。
 | 更多 Target | Cursor (.cursor/rules/)、Kiro (.kiro/steering/)、Aider | P1 |
 | Web Console | 浏览器查看/编辑记忆 | P2 |
 | 自动学习 | 从对话分析中提取偏好 | P2 |
+| Memory Sleep + Observability | 手动触发记忆整理预案，用户确认后归档旧记忆，并在 Web Console 观测变更、关系图和检索调试 | P2 |
 | 多租户 | 用户注册、JWT、数据隔离 | P2 |
 | 团队空间 | 共享 workflow 记忆 | P3 |
 | 浏览器插件 | 回到 discuss.md 的原路线 | P3 |

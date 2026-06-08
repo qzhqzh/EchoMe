@@ -102,3 +102,30 @@ class HubClient:
             resp = client.post("/api/v1/sync/render", json=payload)
             resp.raise_for_status()
             return resp.json()
+
+    def sleep_candidates(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Request memory sleep candidates."""
+        with self._client() as client:
+            resp = client.post("/api/v1/memory-sleep/candidates", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    def sleep_submit_proposal(self, session_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        """Submit a memory sleep proposal."""
+        with self._client() as client:
+            resp = client.post(
+                f"/api/v1/memory-sleep/sessions/{session_id}/proposal",
+                json=data,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    def sleep_apply(self, session_id: str, approved: bool = True) -> dict[str, Any]:
+        """Apply an approved memory sleep proposal."""
+        with self._client() as client:
+            resp = client.post(
+                f"/api/v1/memory-sleep/sessions/{session_id}/apply",
+                json={"approved": approved},
+            )
+            resp.raise_for_status()
+            return resp.json()

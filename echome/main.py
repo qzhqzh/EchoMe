@@ -17,6 +17,7 @@ from echome.commands.market import market_app
 from echome.commands.memories import add_memory, list_memories, search_memories
 from echome.commands.review import review
 from echome.commands.seed import seed
+from echome.commands.sleep import sleep_app
 from echome.commands.sync import detect, eject, pull, push, sync
 from echome.commands.update import update
 
@@ -246,6 +247,9 @@ app.command("eject")(eject)
 # Market subcommand group
 app.add_typer(market_app, name="market")
 
+# Memory Sleep subcommand group
+app.add_typer(sleep_app, name="sleep")
+
 
 # MCP subcommand group
 mcp_app = typer.Typer(help="MCP Server management")
@@ -255,11 +259,17 @@ app.add_typer(mcp_app, name="mcp")
 @mcp_app.command("serve")
 def mcp_serve(
     sse: bool = typer.Option(False, "--sse", help="Use SSE transport instead of stdio"),
+    http: bool = typer.Option(False, "--http", help="Use streamable HTTP transport"),
+    transport: str = typer.Option("stdio", "--transport", help="MCP transport: stdio or streamable-http"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host for streamable HTTP transport"),
+    port: int = typer.Option(20003, "--port", help="Port for streamable HTTP transport"),
 ) -> None:
     """Start the EchoMe MCP server."""
     try:
         from echome_mcp.server import run_server
-        run_server(use_sse=sse)
+
+        selected_transport = "streamable-http" if http else transport
+        run_server(use_sse=sse, transport=selected_transport, host=host, port=port)
     except ImportError as err:
         console.print("[red]MCP 未安装。[/red]")
         console.print("安装: [cyan]pip install echome\\[mcp][/cyan]")

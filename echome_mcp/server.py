@@ -1,11 +1,17 @@
 """EchoMe MCP Server - Main server implementation."""
 
 import asyncio
+import contextlib
+from collections.abc import AsyncIterator
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import TextContent, Tool
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from echome_mcp.tools.browse import echome_browse_memories, echome_search_summary
 from echome_mcp.tools.get import echome_get
@@ -15,6 +21,11 @@ from echome_mcp.tools.project import echome_create_project, echome_list_projects
 from echome_mcp.tools.project_context import echome_get_project_context
 from echome_mcp.tools.remember import echome_remember
 from echome_mcp.tools.search import echome_search
+from echome_mcp.tools.sleep import (
+    echome_sleep_apply,
+    echome_sleep_candidates,
+    echome_sleep_submit_proposal,
+)
 
 # Create MCP server instance
 server = Server("echome")
@@ -316,6 +327,68 @@ async def list_tools() -> list[Tool]:
                 "required": ["name"],
             },
         ),
+        Tool(
+            name="echome_sleep_candidates",
+            description=(
+                "Fetch all eligible Memory Sleep candidates page by page. "
+                "Default statuses are active, ai_review, and pending; deprecated and archived are excluded unless explicitly requested. "
+                "Use this before generating a client-side text proposal and JSON sleep plan."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "session_id": {"type": "string"},
+                    "scope": {
+                        "type": "string",
+                        "enum": ["project", "global", "all"],
+                        "default": "project",
+                    },
+                    "status": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["active", "ai_review", "pending", "deprecated", "archived"],
+                        },
+                        "description": "Optional explicit statuses; omit for active, ai_review, pending.",
+                    },
+                    "page_size": {"type": "integer", "default": 100},
+                    "cursor": {"type": "integer"},
+                    "include_protected": {"type": "boolean", "default": True},
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="echome_sleep_submit_proposal",
+            description=(
+                "Submit a client-generated Memory Sleep proposal. "
+                "The JSON proposal must follow memory_sleep_plan.v1 and will be validated by Hub before apply."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string"},
+                    "json_proposal": {"type": "object"},
+                    "text_proposal": {"type": "string"},
+                },
+                "required": ["session_id", "json_proposal"],
+            },
+        ),
+        Tool(
+            name="echome_sleep_apply",
+            description=(
+                "Apply an approved Memory Sleep proposal. "
+                "Only call after the user approves the submitted JSON plan."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string"},
+                },
+                "required": ["session_id"],
+            },
+        ),
     ]
 
 
@@ -374,6 +447,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 description=arguments.get("description"),
                 git_remote=arguments.get("git_remote"),
             )
+        elif name == "echome_sleep_candidates":
+            result = await echome_sleep_candidates(
+                project_id=arguments.get("project_id"),
+                session_id=arguments.get("session_id"),
+                scope=arguments.get("scope", "project"),
+                status=arguments.get("status"),
+                page_size=arguments.get("page_size", 100),
+                cursor=arguments.get("cursor"),
+                include_protected=arguments.get("include_protected", True),
+            )
+        elif name == "echome_sleep_submit_proposal":
+            result = await echome_sleep_submit_proposal(
+                session_id=arguments["session_id"],
+                json_proposal=arguments["json_proposal"],
+                text_proposal=arguments.get("text_proposal"),
+            )
+        elif name == "echome_sleep_apply":
+            result = await echome_sleep_apply(session_id=arguments["session_id"])
         else:
             result = f"Unknown tool: {name}"
 
@@ -384,21 +475,70 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return [TextContent(type="text", text=error_msg)]
 
 
-def run_server(use_sse: bool = False) -> None:
+def run_server(
+    use_sse: bool = False,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 20003,
+) -> None:
     """Run the MCP server."""
-    if use_sse:
+    if use_sse or transport == "sse":
         # SSE mode - for remote/multi-client access
         # TODO: Implement SSE transport when needed
-        raise NotImplementedError("SSE mode not yet implemented. Use stdio mode.")
-    else:
-        # stdio mode - default for Claude Code / Codex CLI
-        asyncio.run(_run_stdio())
+        raise NotImplementedError("SSE mode not yet implemented. Use streamable-http or stdio mode.")
+    if transport == "streamable-http":
+        _run_streamable_http(host=host, port=port)
+        return
+    if transport != "stdio":
+        raise ValueError(f"Unsupported MCP transport: {transport}")
+
+    # stdio mode - default for Claude Code / Codex CLI
+    asyncio.run(_run_stdio())
 
 
 async def _run_stdio() -> None:
     """Run server in stdio mode."""
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
+
+
+def _create_streamable_http_app() -> Starlette:
+    """Create ASGI app for MCP streamable HTTP transport."""
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=True,
+        stateless=False,
+    )
+
+    class MCPHTTPApp:
+        async def __call__(self, scope, receive, send) -> None:
+            await session_manager.handle_request(scope, receive, send)
+
+    handle_mcp = MCPHTTPApp()
+
+    async def health(_request) -> JSONResponse:
+        return JSONResponse({"status": "ok", "transport": "streamable-http"})
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: Starlette) -> AsyncIterator[None]:
+        async with session_manager.run():
+            yield
+
+    return Starlette(
+        routes=[
+            Route("/health", endpoint=health, methods=["GET"]),
+            Route("/mcp", endpoint=handle_mcp, methods=["DELETE", "GET", "POST"]),
+            Route("/mcp/", endpoint=handle_mcp, methods=["DELETE", "GET", "POST"]),
+        ],
+        lifespan=lifespan,
+    )
+
+
+def _run_streamable_http(host: str, port: int) -> None:
+    """Run server with MCP streamable HTTP transport."""
+    import uvicorn
+
+    uvicorn.run(_create_streamable_http_app(), host=host, port=port)
 
 
 if __name__ == "__main__":

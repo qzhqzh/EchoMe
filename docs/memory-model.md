@@ -161,7 +161,7 @@ CREATE TABLE sync_log (
 
 ```
             ┌─────────┐
-            │ pending │ ← AI 写入（echome_remember）
+            │ pending │ ← AI 写入（旧兼容 / 严格审核）
             └────┬────┘
                  │ 用户确认 (echome review --approve)
                  ▼
@@ -267,15 +267,17 @@ limits:
 
 ```
 1. AI 提交 {title, content, type, tags, suggested_layer}
-2. Hub 创建记忆，status=pending
-3. 保存到本地 ~/.echome/pending/ 目录
-4. 用户通过 `echome review` 查看待审核列表
+2. Hub 创建记忆，status=ai_review，source=ai_suggested
+3. ai_review 记忆立即参与后续检索，但不默认参与 Memory Sleep 深度整理
+4. 用户可以通过 `echome review` 或 Web Console 审核
 5. 用户可以：
    - approve: 确认，状态变为 active
-   - edit: 修改后确认
-   - reject: 拒绝，状态变为 archived
-   - defer: 暂不处理
+   - edit: 修改内容、layer、priority、tags
+   - reject/archive: 归档为 archived
+   - mark core: 标记为核心记忆，避免被 Sleep 默认整理
 ```
+
+默认策略是 AI 建议记忆进入 `ai_review`。`ai_review` 可被搜索和渲染，保证刚写入的高置信记忆能被后续 AI 使用；审核通过后进入 `active`，拒绝后进入 `archived`。
 
 ## 9. 版本化与冲突
 
