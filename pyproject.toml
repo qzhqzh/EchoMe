@@ -24,6 +24,8 @@ dependencies = [
     "pyyaml>=6.0.0",
     "pydantic>=2.7.0",
     "mcp>=1.0.0",  # MCP server included by default
+    "starlette>=0.37.0",  # ASGI app for MCP streamable HTTP transport
+    "uvicorn>=0.30.0",  # HTTP server runtime for MCP streamable HTTP transport
 ]
 
 [project.urls]

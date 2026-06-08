@@ -10,7 +10,18 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api import admin, auth, health, market, memories, projects, review, sync
+from app.api import (
+    admin,
+    auth,
+    health,
+    market,
+    memories,
+    memory_sleep,
+    observability,
+    projects,
+    review,
+    sync,
+)
 from app.core.config import settings, validate_settings
 from app.core.ratelimit import limiter
 
@@ -61,6 +72,8 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")
+app.include_router(memory_sleep.router, prefix="/api/v1")
+app.include_router(observability.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")

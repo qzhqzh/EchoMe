@@ -102,6 +102,37 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def sleep_candidates(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Request memory sleep candidates."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/memory-sleep/candidates", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def sleep_submit_proposal(
+        self,
+        session_id: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit a memory sleep proposal."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post(
+                f"/api/v1/memory-sleep/sessions/{session_id}/proposal",
+                json=data,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def sleep_apply(self, session_id: str, approved: bool = True) -> dict[str, Any]:
+        """Apply an approved memory sleep proposal."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post(
+                f"/api/v1/memory-sleep/sessions/{session_id}/apply",
+                json={"approved": approved},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
     async def get_project_memories(self, project_id: str) -> dict[str, Any]:
         """Get all memories scoped to a project."""
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:

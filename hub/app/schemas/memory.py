@@ -39,6 +39,7 @@ class MemorySource(str, Enum):
     manual = "manual"
     ai_suggested = "ai_suggested"
     imported = "imported"
+    sleep = "sleep"
 
 
 class ScopeSchema(BaseModel):

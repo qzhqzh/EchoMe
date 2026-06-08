@@ -155,9 +155,11 @@ async def echome_remember(
             f"Memory saved (ai_review).\n\n"
             f"Title: {title}\n"
             f"Type: {normalized_type}{type_note}\n"
-            f"Status: ai_review (available to AI; user may run `echome review` to promote/archive)\n"
+            "Status: ai_review (available to AI; user may run `echome review` "
+            "to promote/archive)\n"
             f"ID: {memory_id}\n\n"
-            f"This memory is available to AI search now; the user can archive or promote it later."
+            "This memory is available to AI search now; the user can archive "
+            "or promote it later."
         )
     except Exception as e:
         return f"Error saving memory: {e}"
