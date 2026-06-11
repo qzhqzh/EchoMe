@@ -1,3 +1,8 @@
+## v1.3.0
+
+- 8b9ddf1 docs: update CLAUDE.md with complete git-flow SOP
+- 824fc64 feat: add memory sleep and observability features
+
 ## v1.2.0
 
 - 180b1c9 feat: refine memory prompt bootstrap policy (#79)
