@@ -31,6 +31,9 @@ const navItems = computed<NavItem[]>(() => [
   { name: t('nav_review'), path: '/review', icon: 'review' },
   { name: t('nav_projects'), path: '/projects', icon: 'projects' },
   { name: t('nav_market'), path: '/market', icon: 'market' },
+  { name: t('nav_observability'), path: '/observability', icon: 'observability' },
+  { name: t('nav_eval'), path: '/eval', icon: 'eval' },
+  { name: t('nav_logs'), path: '/logs', icon: 'logs' },
   { name: t('nav_help'), path: '/help', icon: 'help' },
 ])
 
@@ -105,6 +108,19 @@ function toggleLocale(): void {
         </svg>
         <svg v-else-if="item.icon === 'market'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+        </svg>
+        <svg v-else-if="item.icon === 'observability'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3v18h18M7 15l3-3 3 2 5-7" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M11 7h.01M15 7h.01" />
+        </svg>
+        <svg v-else-if="item.icon === 'eval'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 11l2 2 4-5" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 4h14v16H5z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 17h8" />
+        </svg>
+        <svg v-else-if="item.icon === 'logs'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h10M7 12h10M7 17h6" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z" />
         </svg>
         <svg v-else-if="item.icon === 'help'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

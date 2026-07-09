@@ -133,6 +133,85 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def memory_neighbors(
+        self,
+        memory_id: str,
+        depth: int = 1,
+        include_inactive: bool = True,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """Get a local memory graph around one memory."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(
+                f"/api/v1/observability/memory-graph/neighbors/{memory_id}",
+                params={
+                    "depth": depth,
+                    "include_inactive": include_inactive,
+                    "limit": limit,
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def memory_explain(
+        self,
+        memory_id: str,
+        include_inactive: bool = True,
+    ) -> dict[str, Any]:
+        """Explain one memory with graph provenance and temporal status."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(
+                f"/api/v1/observability/memory-graph/explain/{memory_id}",
+                params={"include_inactive": include_inactive},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def temporal_candidates(
+        self,
+        project_id: str | None = None,
+        include_inactive: bool = False,
+        classifications: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """List memories that may need temporal review."""
+        params: dict[str, Any] = {
+            "include_inactive": include_inactive,
+            "limit": limit,
+        }
+        if project_id:
+            params["project_id"] = project_id
+        if classifications:
+            params["classifications"] = classifications
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(
+                "/api/v1/observability/memory-graph/temporal-candidates",
+                params=params,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_memory_feedback(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Record one memory feedback signal."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/memory-feedback", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_memory_feedback_batch(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        """Record several memory feedback signals."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/memory-feedback/batch", json={"items": items})
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_retrieval_log(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Record a retrieval debug log."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/retrieval-debug/logs", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
     async def get_project_memories(self, project_id: str) -> dict[str, Any]:
         """Get all memories scoped to a project."""
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:

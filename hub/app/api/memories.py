@@ -1,9 +1,10 @@
 """Memory CRUD and search API routes."""
 
+import re
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import String, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
@@ -25,6 +26,27 @@ from app.services.embedding import get_embedding
 from app.services.token_counter import count_tokens
 
 router = APIRouter(prefix="/memories", tags=["memories"])
+
+
+def _query_tokens(query: str) -> list[str]:
+    """Split a natural-language query into lightweight searchable tokens."""
+    tokens = re.findall(r"[A-Za-z0-9_+#.-]+|[\u4e00-\u9fff]{2,}", query.lower())
+    stop_tokens = {"我的", "怎样", "怎么", "什么", "如何", "规则", "the", "and", "for"}
+    filtered = [token for token in tokens if len(token) >= 2 and token not in stop_tokens]
+    expanded = list(filtered)
+    expansions = {
+        "提交": ["commit", "pr"],
+        "提交流程": ["commit", "pr", "workflow"],
+        "流程": ["workflow"],
+        "规范": ["rule", "workflow"],
+        "家庭网络": ["网络", "edgeone", "wireguard", "nginx"],
+        "网络架构": ["网络", "edgeone", "wireguard", "nginx"],
+    }
+    query_lower = query.lower()
+    for phrase, extra_tokens in expansions.items():
+        if phrase in query_lower:
+            expanded.extend(extra_tokens)
+    return list(dict.fromkeys(expanded))[:12]
 
 
 async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
@@ -100,12 +122,28 @@ async def list_memories(
             query = query.where(Memory.tags.contains([tag]))
     if project_id:
         query = query.where(Memory.scope_projects.contains([project_id]))
+    relevance = None
     if isinstance(search_query, str) and search_query:
-        pattern = f"%{search_query.lower()}%"
+        title_field = func.lower(Memory.title)
+        content_field = func.lower(Memory.content)
+        tags_field = func.lower(Memory.tags.cast(String))
+        search_fields = (title_field, content_field, tags_field)
+        patterns = [f"%{search_query.lower()}%"]
+        patterns.extend(f"%{token}%" for token in _query_tokens(search_query))
         query = query.where(
-            func.lower(Memory.title).like(pattern)
-            | func.lower(Memory.content).like(pattern)
-            | func.lower(func.array_to_string(Memory.tags, " ")).like(pattern)
+            or_(
+                *[
+                    field.like(pattern)
+                    for pattern in patterns
+                    for field in search_fields
+                ]
+            )
+        )
+        relevance = sum(
+            case((title_field.like(pattern), 5), else_=0)
+            + case((tags_field.like(pattern), 4), else_=0)
+            + case((content_field.like(pattern), 1), else_=0)
+            for pattern in patterns
         )
 
     # Count total
@@ -113,7 +151,10 @@ async def list_memories(
     total = (await session.execute(count_query)).scalar_one()
 
     # Fetch page
-    query = query.order_by(Memory.updated_at.desc())
+    if relevance is not None:
+        query = query.order_by(relevance.desc(), Memory.priority.desc(), Memory.updated_at.desc())
+    else:
+        query = query.order_by(Memory.updated_at.desc())
     query = query.offset(offset).limit(limit)
     result = await session.execute(query)
     memories = result.scalars().all()

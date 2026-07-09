@@ -11,6 +11,9 @@ import type {
   Project,
   ProjectCreate,
   ApproveRequest,
+  MemoryGraphResponse,
+  MemoryGraphExplainResponse,
+  SleepSessionsResponse,
 } from '@/types'
 
 class ApiClient {
@@ -150,6 +153,7 @@ class ApiClient {
     status?: string
     tags?: string
     project_id?: string
+    query?: string
     offset?: number
     limit?: number
   }): Promise<MemoryListResponse> {
@@ -266,6 +270,48 @@ class ApiClient {
 
   async getMarketStats(): Promise<{ total_public: number; by_type: Record<string, number>; recent_count_7d: number }> {
     return this.request('GET', '/market/stats')
+  }
+
+  // --- Observability ---
+
+  async listSleepSessions(params?: { status?: string; project_id?: string; offset?: number; limit?: number }): Promise<SleepSessionsResponse> {
+    return this.request('GET', '/observability/sleep-sessions', undefined, params)
+  }
+
+  async getMemoryGraph(params?: { project_id?: string; include_inactive?: boolean }): Promise<MemoryGraphResponse> {
+    return this.request('GET', '/observability/memory-graph', undefined, params)
+  }
+
+  async explainMemoryGraph(memoryId: string, params?: { include_inactive?: boolean }): Promise<MemoryGraphExplainResponse> {
+    return this.request('GET', `/observability/memory-graph/explain/${memoryId}`, undefined, params)
+  }
+
+  async createMemoryFeedback(body: {
+    memory_id: string
+    rating: string
+    note?: string | null
+    task_context?: string | null
+    used_by?: string
+    confidence?: string
+    source?: string
+  }): Promise<any> {
+    return this.request('POST', '/memory-feedback', body)
+  }
+
+  async runRetrievalDebug(body: {
+    query: string
+    status?: string
+    project_id?: string | null
+    limit?: number
+    expected_ids?: string[]
+    client?: string
+    source?: string
+  }): Promise<any> {
+    return this.request('POST', '/retrieval-debug/query', body)
+  }
+
+  async listRetrievalLogs(params?: { client?: string; limit?: number }): Promise<any> {
+    return this.request('GET', '/retrieval-debug/logs', undefined, params)
   }
 
   // --- Admin ---

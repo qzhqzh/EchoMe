@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.memory import Memory, SleepSession
+from app.models.memory import Memory, MemoryEdge, SleepSession
 
 
 def _make_sleep_session(user_id: str) -> MagicMock:
@@ -30,16 +30,39 @@ def _make_memory(user_id: str, status: str = "active") -> MagicMock:
     memory.id = uuid.uuid4()
     memory.user_id = user_id
     memory.title = "Observed memory"
+    memory.content = "Observed memory content"
     memory.type = "context"
     memory.layer = "L2"
+    memory.priority = 5
     memory.status = status
+    memory.source = "manual"
+    memory.token_count = 10
+    memory.scope_global = False
+    memory.scope_projects = ["qzhqzh/EchoMe"]
+    memory.scope_exclude = []
     memory.tags = ["observability"]
     memory.is_core = False
     memory.sleep_state = "fresh"
+    memory.last_accessed_at = None
+    memory.access_count = 0
     memory.superseded_by = None
     memory.derived_from = []
+    memory.created_at = datetime.now(timezone.utc)
     memory.updated_at = datetime.now(timezone.utc)
     return memory
+
+
+def _make_edge(source_id: uuid.UUID, target_id: uuid.UUID) -> MagicMock:
+    edge = MagicMock(spec=MemoryEdge)
+    edge.id = uuid.uuid4()
+    edge.source_memory_id = source_id
+    edge.target_memory_id = target_id
+    edge.relation = "derived_from"
+    edge.reason = "test relation"
+    edge.sleep_session_id = uuid.uuid4()
+    edge.created_by = "sleep"
+    edge.created_at = datetime.now(timezone.utc)
+    return edge
 
 
 class TestObservability:
@@ -92,3 +115,63 @@ class TestObservability:
 
         assert result["nodes"][0]["status"] == "active"
         assert result["edges"] == []
+
+    @pytest.mark.asyncio
+    async def test_memory_neighbors_returns_local_graph_and_assessment(self, test_user_id: str):
+        from app.api.observability import get_memory_neighbors
+
+        center = _make_memory(test_user_id)
+        neighbor = _make_memory(test_user_id)
+        edge = _make_edge(center.id, neighbor.id)
+
+        center_result = MagicMock()
+        center_result.scalar_one_or_none.return_value = center
+        edge_result = MagicMock()
+        edge_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[edge]))
+        memories_result = MagicMock()
+        memories_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[center, neighbor]))
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[center_result, edge_result, memories_result])
+
+        result = await get_memory_neighbors(
+            memory_id=center.id,
+            depth=1,
+            include_inactive=False,
+            limit=20,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        assert result["center_memory_id"] == str(center.id)
+        assert len(result["nodes"]) == 2
+        assert len(result["edges"]) == 1
+        assert str(center.id) in result["temporal_assessments"]
+
+    def test_temporal_assessment_separates_dormant_project_from_stale(self, test_user_id: str):
+        from datetime import timedelta
+
+        from app.api.observability import _temporal_assessment
+
+        memory = _make_memory(test_user_id)
+        memory.updated_at = datetime.now(timezone.utc) - timedelta(days=400)
+        project_activity_at = datetime.now(timezone.utc) - timedelta(days=220)
+
+        assessment = _temporal_assessment(memory, project_activity_at)
+
+        assert assessment["classification"] == "dormant_project"
+        assert "project_dormant_not_stale" in assessment["signals"]
+
+    def test_temporal_assessment_flags_time_sensitive_memory(self, test_user_id: str):
+        from app.api.observability import _temporal_assessment
+
+        memory = _make_memory(test_user_id)
+        memory.title = "Temporary workaround for current routing"
+        memory.content = "This is a temporary workaround."
+        memory.layer = "L2"
+        memory.tags = []
+
+        assessment = _temporal_assessment(memory, memory.updated_at)
+
+        assert assessment["classification"] == "needs_verification"
+        assert any(signal.startswith("temporal_terms:") for signal in assessment["signals"])

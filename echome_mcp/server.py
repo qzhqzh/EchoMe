@@ -8,14 +8,33 @@ from typing import Any
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import TextContent, Tool
+from mcp.types import (
+    GetPromptResult,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    Resource,
+    TextContent,
+    Tool,
+)
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from echome_mcp.tools.browse import echome_browse_memories, echome_search_summary
+from echome_mcp.tools.capabilities import (
+    capabilities_json,
+    echome_capabilities,
+    retrieval_workflow_prompt,
+)
+from echome_mcp.tools.feedback import echome_memory_feedback, echome_memory_feedback_batch
 from echome_mcp.tools.get import echome_get
 from echome_mcp.tools.get_many import echome_get_memories
+from echome_mcp.tools.graph import (
+    echome_memory_explain,
+    echome_memory_neighbors,
+    echome_temporal_candidates,
+)
 from echome_mcp.tools.list_by_type import echome_list_by_type
 from echome_mcp.tools.project import echome_create_project, echome_list_projects
 from echome_mcp.tools.project_context import echome_get_project_context
@@ -35,6 +54,26 @@ server = Server("echome")
 async def list_tools() -> list[Tool]:
     """List all available EchoMe tools."""
     return [
+        Tool(
+            name="echome_capabilities",
+            description=(
+                "Describe all EchoMe MCP capabilities, tool groups, and recommended workflows. "
+                "Use this first when an agent or user is unsure how to use EchoMe MCP. "
+                "This is read-only and helps decide when to call search, graph explanation, write, or sleep tools."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "format": {
+                        "type": "string",
+                        "enum": ["json", "prompt"],
+                        "default": "json",
+                        "description": "Return structured JSON or a concise retrieval workflow prompt.",
+                    },
+                },
+                "required": [],
+            },
+        ),
         Tool(
             name="echome_search",
             description=(
@@ -171,6 +210,186 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["memory_id"],
+            },
+        ),
+        Tool(
+            name="echome_memory_explain",
+            description=(
+                "Explain one memory with graph provenance, supersession links, related memories, "
+                "and temporal reliability assessment. Use after echome_search/echome_search_summary "
+                "or echome_get when you need to know whether a memory is stable, time-sensitive, "
+                "superseded, or connected to archived source memories. This complements normal search; "
+                "it does not replace search."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "string",
+                        "description": "UUID of the memory to explain",
+                    },
+                    "include_inactive": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Include archived/deprecated neighbors for provenance.",
+                    },
+                },
+                "required": ["memory_id"],
+            },
+        ),
+        Tool(
+            name="echome_memory_neighbors",
+            description=(
+                "Fetch an AI-readable local memory graph around one memory. "
+                "Use this to expand context after a search result, follow derived_from/superseded_by "
+                "relationships, inspect neighboring memories, or build a stable project context. "
+                "For provenance, keep include_inactive=true so archived source memories are visible."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "string",
+                        "description": "Center memory UUID",
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "default": 1,
+                        "minimum": 1,
+                        "maximum": 3,
+                    },
+                    "include_inactive": {
+                        "type": "boolean",
+                        "default": True,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 200,
+                        "minimum": 1,
+                        "maximum": 500,
+                    },
+                },
+                "required": ["memory_id"],
+            },
+        ),
+        Tool(
+            name="echome_temporal_candidates",
+            description=(
+                "List memories that may need temporal review without changing memory state. "
+                "This is evidence-based: long inactivity alone is not treated as stale, and dormant "
+                "projects are classified separately from truly time-sensitive memories. Use this before "
+                "Memory Sleep or when auditing outdated project assumptions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Optional project ID filter",
+                    },
+                    "include_inactive": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                    "classifications": {
+                        "type": "string",
+                        "description": "Optional comma-separated classes, e.g. needs_verification,dormant_project",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 100,
+                        "minimum": 1,
+                        "maximum": 500,
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="echome_memory_feedback",
+            description=(
+                "Record a lightweight feedback signal after a memory was used. "
+                "Use when the user or agent can judge that a memory was helpful, important, "
+                "irrelevant, outdated, conflicting, or wrong. This appends feedback only; "
+                "it does not change the memory status."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "memory_id": {"type": "string", "description": "Memory UUID"},
+                    "rating": {
+                        "type": "string",
+                        "enum": ["helpful", "irrelevant", "outdated", "conflicting", "wrong", "important"],
+                    },
+                    "note": {
+                        "type": "string",
+                        "description": "Optional short explanation or user correction.",
+                    },
+                    "task_context": {
+                        "type": "string",
+                        "description": "Optional brief description of the task where the memory was used.",
+                    },
+                    "used_by": {
+                        "type": "string",
+                        "enum": ["ai", "user", "system"],
+                        "default": "ai",
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"],
+                        "default": "medium",
+                    },
+                },
+                "required": ["memory_id", "rating"],
+            },
+        ),
+        Tool(
+            name="echome_memory_feedback_batch",
+            description=(
+                "Record feedback for several memories after a task. "
+                "Use at task end when multiple retrieved memories were clearly helpful, irrelevant, "
+                "outdated, conflicting, wrong, or important. This appends feedback only."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "memory_id": {"type": "string"},
+                                "rating": {
+                                    "type": "string",
+                                    "enum": [
+                                        "helpful",
+                                        "irrelevant",
+                                        "outdated",
+                                        "conflicting",
+                                        "wrong",
+                                        "important",
+                                    ],
+                                },
+                                "note": {"type": "string"},
+                                "task_context": {"type": "string"},
+                                "used_by": {
+                                    "type": "string",
+                                    "enum": ["ai", "user", "system"],
+                                    "default": "ai",
+                                },
+                                "confidence": {
+                                    "type": "string",
+                                    "enum": ["low", "medium", "high"],
+                                    "default": "medium",
+                                },
+                            },
+                            "required": ["memory_id", "rating"],
+                        },
+                    },
+                },
+                "required": ["items"],
             },
         ),
         Tool(
@@ -392,11 +611,75 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+@server.list_prompts()
+async def list_prompts() -> list[Prompt]:
+    """List reusable EchoMe prompts for clients that support MCP prompts."""
+    return [
+        Prompt(
+            name="echome_retrieval_workflow",
+            description=(
+                "Standard workflow for using EchoMe memory retrieval, graph explanation, "
+                "and durable memory writing."
+            ),
+            arguments=[
+                PromptArgument(
+                    name="project_id",
+                    description="Optional project identifier to bias retrieval instructions.",
+                    required=False,
+                )
+            ],
+        ),
+    ]
+
+
+@server.get_prompt()
+async def get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
+    """Return reusable EchoMe prompt content."""
+    if name != "echome_retrieval_workflow":
+        raise ValueError(f"Unknown prompt: {name}")
+    project_id = (arguments or {}).get("project_id")
+    return GetPromptResult(
+        description="EchoMe summary-first retrieval workflow with graph reliability checks.",
+        messages=[
+            PromptMessage(
+                role="user",
+                content=TextContent(
+                    type="text",
+                    text=retrieval_workflow_prompt(project_id=project_id),
+                ),
+            )
+        ],
+    )
+
+
+@server.list_resources()
+async def list_resources() -> list[Resource]:
+    """List EchoMe MCP resources for clients that support MCP resources."""
+    return [
+        Resource(
+            uri="echome://capabilities",
+            name="EchoMe MCP capabilities",
+            description="Tool groups, recommended workflows, and safety rules for EchoMe MCP.",
+            mimeType="application/json",
+        )
+    ]
+
+
+@server.read_resource()
+async def read_resource(uri: Any) -> str:
+    """Read EchoMe MCP resource content."""
+    if str(uri) != "echome://capabilities":
+        raise ValueError(f"Unknown resource: {uri}")
+    return capabilities_json()
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to the appropriate handler."""
     try:
-        if name in {"echome_search", "memory_search"}:
+        if name == "echome_capabilities":
+            result = await echome_capabilities(format=arguments.get("format", "json"))
+        elif name in {"echome_search", "memory_search"}:
             result = await echome_search(
                 query=arguments["query"],
                 type=arguments.get("type"),
@@ -421,6 +704,36 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             )
         elif name == "echome_get":
             result = await echome_get(memory_id=arguments["memory_id"])
+        elif name == "echome_memory_explain":
+            result = await echome_memory_explain(
+                memory_id=arguments["memory_id"],
+                include_inactive=arguments.get("include_inactive", True),
+            )
+        elif name == "echome_memory_neighbors":
+            result = await echome_memory_neighbors(
+                memory_id=arguments["memory_id"],
+                depth=arguments.get("depth", 1),
+                include_inactive=arguments.get("include_inactive", True),
+                limit=arguments.get("limit", 200),
+            )
+        elif name == "echome_temporal_candidates":
+            result = await echome_temporal_candidates(
+                project_id=arguments.get("project_id"),
+                include_inactive=arguments.get("include_inactive", False),
+                classifications=arguments.get("classifications"),
+                limit=arguments.get("limit", 100),
+            )
+        elif name == "echome_memory_feedback":
+            result = await echome_memory_feedback(
+                memory_id=arguments["memory_id"],
+                rating=arguments["rating"],
+                note=arguments.get("note"),
+                task_context=arguments.get("task_context"),
+                used_by=arguments.get("used_by", "ai"),
+                confidence=arguments.get("confidence", "medium"),
+            )
+        elif name == "echome_memory_feedback_batch":
+            result = await echome_memory_feedback_batch(items=arguments.get("items", []))
         elif name == "echome_list_by_type":
             result = await echome_list_by_type(
                 type=arguments["type"],

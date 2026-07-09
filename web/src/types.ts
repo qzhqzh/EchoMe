@@ -130,6 +130,86 @@ export interface ApproveRequest {
   priority?: number
 }
 
+export interface SleepSessionItem {
+  id: string
+  project_id: string | null
+  status: string
+  mode: string
+  candidate_count: number
+  created_at: string
+  updated_at: string
+  applied_at: string | null
+}
+
+export interface SleepSessionsResponse {
+  total: number
+  offset: number
+  limit: number
+  items: SleepSessionItem[]
+}
+
+export interface MemoryGraphNode {
+  id: string
+  title: string
+  type: MemoryType
+  layer: MemoryLayer
+  status: MemoryStatus
+  tags: string[]
+  is_core: boolean
+  sleep_state: string
+  superseded_by: string | null
+  derived_from: unknown[]
+  updated_at: string
+}
+
+export interface MemoryGraphEdge {
+  id: string
+  source_memory_id: string
+  target_memory_id: string
+  relation: string
+  reason: string | null
+  sleep_session_id: string | null
+  created_by?: unknown
+  created_at: string
+}
+
+export interface MemoryGraphResponse {
+  nodes: MemoryGraphNode[]
+  edges: MemoryGraphEdge[]
+}
+
+export interface TemporalAssessment {
+  classification: string
+  confidence: string
+  signals: string[]
+  stable_signals: string[]
+  updated_age_days: number | null
+  accessed_age_days: number | null
+  project_activity_age_days: number | null
+  note: string
+}
+
+export interface MemoryFeedbackSummary {
+  total: number
+  ratings: Record<string, number>
+  last_feedback_at: string | null
+}
+
+export interface MemoryGraphExplainResponse {
+  memory: MemoryGraphNode & {
+    content?: string
+    created_at?: string
+    access_count?: number
+    last_accessed_at?: string | null
+  }
+  temporal_assessment: TemporalAssessment
+  incoming_edges: MemoryGraphEdge[]
+  outgoing_edges: MemoryGraphEdge[]
+  related_memories: MemoryGraphNode[]
+  feedback_summary: MemoryFeedbackSummary
+  ai_summary: Record<string, string>
+}
+
 export const MEMORY_TYPE_COLORS: Record<MemoryType, string> = {
   identity: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
   guardrail: 'bg-red-500/20 text-red-300 border-red-500/30',

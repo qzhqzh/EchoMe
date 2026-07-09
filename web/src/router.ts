@@ -44,6 +44,21 @@ const routes = [
     component: () => import('@/views/Market.vue'),
   },
   {
+    path: '/observability',
+    name: 'Observability',
+    component: () => import('@/views/Observability.vue'),
+  },
+  {
+    path: '/eval',
+    name: 'MemoryEval',
+    component: () => import('@/views/MemoryEval.vue'),
+  },
+  {
+    path: '/logs',
+    name: 'RetrievalLogs',
+    component: () => import('@/views/RetrievalLogs.vue'),
+  },
+  {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/Settings.vue'),

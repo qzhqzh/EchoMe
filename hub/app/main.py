@@ -13,12 +13,14 @@ from slowapi.errors import RateLimitExceeded
 from app.api import (
     admin,
     auth,
+    feedback,
     health,
     market,
     memories,
     memory_sleep,
     observability,
     projects,
+    retrieval_debug,
     review,
     sync,
 )
@@ -73,7 +75,9 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")
 app.include_router(memory_sleep.router, prefix="/api/v1")
+app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(observability.router, prefix="/api/v1")
+app.include_router(retrieval_debug.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")

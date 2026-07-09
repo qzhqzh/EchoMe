@@ -221,3 +221,80 @@ class MemoryEdge(Base):
         Index("idx_memory_edges_user_target", "user_id", "target_memory_id"),
         Index("idx_memory_edges_sleep_session", "sleep_session_id"),
     )
+
+
+class MemoryFeedback(Base):
+    """User/AI feedback about whether a memory was useful in a task."""
+
+    __tablename__ = "memory_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    memory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("memories.id"), nullable=False
+    )
+    rating: Mapped[str] = mapped_column(String(24), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    task_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    used_by: Mapped[str] = mapped_column(String(16), nullable=False, default="ai")
+    confidence: Mapped[str] = mapped_column(String(8), nullable=False, default="medium")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="mcp")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "rating IN ('helpful','irrelevant','outdated','conflicting','wrong','important')",
+            name="valid_memory_feedback_rating",
+        ),
+        CheckConstraint(
+            "confidence IN ('low','medium','high')",
+            name="valid_memory_feedback_confidence",
+        ),
+        CheckConstraint(
+            "used_by IN ('ai','user','system')",
+            name="valid_memory_feedback_used_by",
+        ),
+        CheckConstraint(
+            "source IN ('mcp','web','api')",
+            name="valid_memory_feedback_source",
+        ),
+        Index("idx_memory_feedback_user_memory", "user_id", "memory_id"),
+        Index("idx_memory_feedback_user_rating", "user_id", "rating"),
+        Index("idx_memory_feedback_created_at", "created_at"),
+    )
+
+
+class RetrievalLog(Base):
+    """Recorded memory retrieval run for debugging and quality evaluation."""
+
+    __tablename__ = "retrieval_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    client: Mapped[str] = mapped_column(String(32), nullable=False, default="web")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="debugger")
+    status_filter: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    limit: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    lightweight_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    semantic_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fallback_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    expected_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    expected_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    top_results: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    steps: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_retrieval_logs_user_created", "user_id", "created_at"),
+        Index("idx_retrieval_logs_user_client", "user_id", "client"),
+    )
