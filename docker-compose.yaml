@@ -1,5 +1,6 @@
 services:
   hub:
+    restart: unless-stopped
     build: ./hub
     ports:
       - "20000:20000"
@@ -18,6 +19,7 @@ services:
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 20000"
 
   web:
+    restart: unless-stopped
     build: ./web
     ports:
       - "20001:80"
@@ -25,6 +27,7 @@ services:
       - hub
 
   embedding:
+    restart: unless-stopped
     build: ./embedding
     ports:
       - "20002:20002"
@@ -47,6 +50,7 @@ services:
       start_period: 120s
 
   postgres:
+    restart: unless-stopped
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: echome
@@ -62,6 +66,7 @@ services:
       retries: 5
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     volumes:
       - ./data/redis:/data
