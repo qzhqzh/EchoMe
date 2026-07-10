@@ -1,3 +1,14 @@
+## v1.3.1
+
+- 1730bfe feat: improve retrieval relevance and update MCP instructions
+- 70e752c chore: update docker-compose and web dependencies
+- 5bd9850 docs: update memory retrieval documentation
+- 88a15ba feat(capabilities): add MCP capabilities guide
+- 53745f9 feat(graph-tools): add memory graph MCP tools
+- f769954 feat(retrieval-debug): add retrieval debug API and logs page
+- 3f0c91d feat(feedback): add memory feedback API and MCP tools
+- 7bff05d feat(observability): add web observability page and graph explain
+
 ## v1.3.0
 
 - 8b9ddf1 docs: update CLAUDE.md with complete git-flow SOP
