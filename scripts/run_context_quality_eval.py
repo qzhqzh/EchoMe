@@ -117,14 +117,13 @@ async def run_eval(
         if case_ids:
             raise ValueError("A quality snapshot must include the complete fixed dataset")
         async with httpx.AsyncClient(
-            base_url=base_url.rstrip("/"), headers=headers, timeout=90
+            base_url=base_url.rstrip("/"), headers=headers, timeout=600
         ) as client:
             report["snapshot"] = await _post(
                 client,
                 "/api/v1/project-knowledge/eval/snapshots",
                 {
                     "project_id": project_id,
-                    "results": results,
                     "k": k,
                     "trigger": snapshot_trigger,
                     "dry_run": True,

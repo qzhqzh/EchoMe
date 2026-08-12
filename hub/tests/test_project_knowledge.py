@@ -7,9 +7,11 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.project_knowledge import (
+    ACTIVE_CONSTRAINT_STATUSES,
     _context_shadow_comparison,
     _create_artifact_chunks,
     _select_impact_ids,
+    apply_revalidation_proposal,
 )
 from app.models.project_knowledge import (
     ConstraintEdge,
@@ -17,7 +19,11 @@ from app.models.project_knowledge import (
     ProjectArtifact,
     ProjectConstraint,
 )
-from app.schemas.project_knowledge import ProjectImpactRequest
+from app.schemas.project_knowledge import (
+    ConstraintPatch,
+    ProjectImpactRequest,
+    RevalidationApplyRequest,
+)
 from app.services.context_compiler import (
     _trim_to_budget,
     constraint_document,
@@ -333,3 +339,32 @@ async def test_artifact_embeddings_are_generated_in_small_batches() -> None:
     assert generated.await_count == 2
     assert len(chunks) == 10
     assert all(chunk.embedding is not None for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_revalidation_conflict_persists_expired_status() -> None:
+    proposal = MagicMock()
+    proposal.status = "pending"
+    proposal.base_version = 1
+    proposal.constraint_id = uuid.uuid4()
+    proposal.project_id = "EchoMe"
+    constraint = MagicMock(spec=ProjectConstraint)
+    constraint.status = next(iter(ACTIVE_CONSTRAINT_STATUSES))
+    constraint.version = 2
+    session = AsyncMock()
+    session.scalar = AsyncMock(side_effect=[proposal, constraint])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await apply_revalidation_proposal(
+            proposal_id=uuid.uuid4(),
+            body=RevalidationApplyRequest(
+                expected_base_version=1,
+                changes=ConstraintPatch(),
+            ),
+            session=session,
+            user_id="user",
+        )
+
+    assert exc_info.value.status_code == 409
+    assert proposal.status == "expired"
+    session.commit.assert_awaited_once()

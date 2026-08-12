@@ -220,45 +220,14 @@ async function runProjectQuality(): Promise<void> {
   projectProgress.value = 0
   projectError.value = null
   try {
-    const collected: Array<Record<string, unknown>> = []
-    for (const testCase of projectCases.value.cases) {
-      const started = performance.now()
-      const context = await api.compileProjectContext({
-        project_id: projectCases.value.project_id,
-        task: testCase.query,
-        changed_paths: testCase.changed_paths || [],
-        mode: testCase.mode === 'preflight' ? 'impact' : testCase.mode,
-        limit: 10,
-        token_budget: 6000,
-        as_of: testCase.as_of || null,
-        record_run: false,
-      })
-      const preflight = testCase.mode === 'preflight'
-        ? await api.runProjectPreflight({
-            project_id: projectCases.value.project_id,
-            task: testCase.query,
-            changed_paths: testCase.changed_paths || [],
-            planned_actions: testCase.planned_actions || [],
-            limit: 10,
-          })
-        : null
-      collected.push({
-        case_id: testCase.id,
-        context,
-        preflight,
-        latency_ms: performance.now() - started,
-        token_used: context.token_used,
-      })
-      projectProgress.value += 1
-    }
     await api.createProjectQualitySnapshot({
       project_id: projectCases.value.project_id,
-      results: collected,
       k: 10,
       trigger: 'manual',
       dry_run: true,
       idempotency_key: `web-eval-${crypto.randomUUID()}`,
     })
+    projectProgress.value = projectCases.value.cases.length
     await loadProjectQuality()
   } catch (error) {
     projectError.value = error instanceof Error ? error.message : String(error)

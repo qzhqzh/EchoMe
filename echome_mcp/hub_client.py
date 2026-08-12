@@ -7,6 +7,7 @@ import httpx
 import yaml
 
 CONFIG_FILE = Path.home() / ".echome" / "config.yaml"
+PROJECT_CONTEXT_TIMEOUT = httpx.Timeout(120.0)
 
 
 def _load_config() -> dict[str, str]:
@@ -247,7 +248,11 @@ class MCPHubClient:
             "record_run": record_run,
             "shadow": shadow,
         }
-        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers,
+            timeout=PROJECT_CONTEXT_TIMEOUT,
+        ) as client:
             resp = await client.post("/api/v1/project-knowledge/context", json=payload)
             resp.raise_for_status()
             return resp.json()

@@ -198,11 +198,14 @@ class ContextQualityEvalRequest(BaseModel):
     k: int = Field(10, ge=1, le=100)
 
 
-class ContextQualitySnapshotCreate(ContextQualityEvalRequest):
+class ContextQualitySnapshotCreate(BaseModel):
     project_id: str = Field(..., min_length=1, max_length=128)
+    k: int = Field(10, ge=1, le=100)
     trigger: Literal["manual", "background", "ci"] = "manual"
     dry_run: bool = True
     idempotency_key: str = Field(..., min_length=1, max_length=128)
+
+    model_config = {"extra": "forbid"}
 
 
 class AutomationProposalRunCreate(BaseModel):

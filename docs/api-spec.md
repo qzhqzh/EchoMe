@@ -473,3 +473,52 @@ HTTP Status: `429 Too Many Requests`
 | `title` | 最长 256 字符 | 记忆标题 |
 | `content` | 最长 100,000 字符 (~25,000 汉字) | 记忆正文 |
 | `tags` | 最多 20 个 | 标签数量 |
+
+---
+
+## 12. Project Knowledge API
+
+Project Knowledge 与个人 Memory 独立存储，并通过 Project Context Compiler 在查询时组合。
+完整的数据模型、状态语义和工作流见 `docs/project-knowledge.md`。
+
+### Project Context
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/project-knowledge/context` | 按任务编译约束、制品证据和项目记忆；默认记录一次 `ContextRun` |
+| `POST` | `/api/v1/project-knowledge/impact` | 沿约束图分析变更影响 |
+| `POST` | `/api/v1/project-knowledge/preflight` | 编辑、测试、提交或部署前的只读证据检查 |
+| `GET` | `/api/v1/project-knowledge/context-runs` | 查询检索运行与选择轨迹 |
+
+`context` 请求支持 `task`、`changed_paths`、`mode`、`token_budget`、`as_of`、`valid_at`、
+`record_run` 和 `shadow`。`shadow=true` 返回旧检索结果，只旁路记录编译器差异。
+
+### Artifacts And Constraints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/project-knowledge/artifacts/sync/check` | 比较 SHA-256 manifest，返回需要上传的制品 |
+| `POST` | `/api/v1/project-knowledge/artifacts/sync/apply` | 增量写入不可变制品 revision |
+| `POST` | `/api/v1/project-knowledge/artifacts/chunks/rebuild` | 幂等重建可派生的分块及向量索引 |
+| `GET` | `/api/v1/project-knowledge/artifacts/chunks` | 分页读取分块与向量状态 |
+| `POST` | `/api/v1/project-knowledge/constraints` | 新增 proposed constraint |
+| `PATCH` | `/api/v1/project-knowledge/constraints/{id}` | 更新元数据；事实字段变化时创建新版本并保留旧版本 |
+| `POST` | `/api/v1/project-knowledge/edges` | 新增约束关系 |
+| `POST` | `/api/v1/project-knowledge/evidence` | 关联约束与制品证据 |
+
+### Events, Quality And Automation
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/project-knowledge/events` | 追加项目事件；提供 `idempotency_key` 时可安全重试 |
+| `GET` | `/api/v1/project-knowledge/events` | 查询 append-only 项目事件 |
+| `GET` | `/api/v1/project-knowledge/eval/cases` | 读取固定 Project Context 质量用例 |
+| `POST` | `/api/v1/project-knowledge/eval/evaluate` | 调试客户端提交的固定用例结果；不进入自动化门禁 |
+| `POST` | `/api/v1/project-knowledge/eval/snapshots` | Hub 在服务端运行完整固定用例并保存可信质量快照 |
+| `GET` | `/api/v1/project-knowledge/eval/snapshots` | 查询质量快照和连续门禁状态 |
+| `GET` | `/api/v1/project-knowledge/automation/gate` | 查看连续质量门禁与功能开关状态 |
+| `POST` | `/api/v1/project-knowledge/automation/proposals/run` | 门禁通过后生成 proposal；不会自动 apply |
+
+自动化由 `ECHOME_PROJECT_AUTOMATION_ENABLED` 控制，默认 `false`。即使开启且质量门禁通过，
+也只允许生成 pending proposal，不会覆盖或删除 Memory、Artifact revision 或 Constraint version。
+客户端不能向质量快照端点提交检索结果；连续门禁只接受 Hub 自己执行并记录的快照。

@@ -8,7 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import verify_token
 from app.core.database import get_session
 from app.models.memory import Project
-from app.models.project_knowledge import ProjectArtifact, ProjectConstraint
+from app.models.project_knowledge import (
+    ArtifactChunk,
+    AutomationProposalRun,
+    ConstraintRevalidationProposal,
+    ContextQualitySnapshot,
+    ContextRun,
+    KnowledgeView,
+    ProjectArtifact,
+    ProjectConstraint,
+    ProjectEvent,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -123,18 +133,26 @@ async def delete_project(
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    knowledge_exists = await session.scalar(
-        select(ProjectArtifact.id)
-        .where(ProjectArtifact.user_id == user_id, ProjectArtifact.project_id == project_id)
-        .limit(1)
-    ) or await session.scalar(
-        select(ProjectConstraint.id)
-        .where(ProjectConstraint.user_id == user_id, ProjectConstraint.project_id == project_id)
-        .limit(1)
+    knowledge_models = (
+        ProjectArtifact,
+        ProjectConstraint,
+        ArtifactChunk,
+        ContextRun,
+        KnowledgeView,
+        ConstraintRevalidationProposal,
+        ProjectEvent,
+        ContextQualitySnapshot,
+        AutomationProposalRun,
     )
-    if knowledge_exists:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Project has indexed artifacts or constraints and cannot be deleted",
+    for model in knowledge_models:
+        knowledge_exists = await session.scalar(
+            select(model.id)
+            .where(model.user_id == user_id, model.project_id == project_id)
+            .limit(1)
         )
+        if knowledge_exists:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Project has Project Knowledge history and cannot be deleted",
+            )
     await session.delete(project)

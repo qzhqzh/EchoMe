@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,18 @@ def _load_checkpoint(path: Path, base_url: str, project_id: str) -> dict[str, An
     }
 
 
+def _write_checkpoint(path: Path, payload: dict[str, Any]) -> None:
+    """Persist a checkpoint atomically so interruption cannot corrupt the last good state."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.replace(path)
+
+
 async def run_backfill(
     *,
     base_url: str,
@@ -82,20 +95,15 @@ async def run_backfill(
             totals["chunks"] += int(batch["chunk_count"])
             totals["embedded"] += int(batch["embedded_count"])
             cursor = batch.get("next_cursor")
-            checkpoint.write_text(
-                json.dumps(
-                    {
-                        "base_url": base_url,
-                        "project_id": project_id,
-                        "after_path": cursor,
-                        "complete": not batch.get("has_more", False),
-                        "totals": totals,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
+            _write_checkpoint(
+                checkpoint,
+                {
+                    "base_url": base_url,
+                    "project_id": project_id,
+                    "after_path": cursor,
+                    "complete": not batch.get("has_more", False),
+                    "totals": totals,
+                },
             )
             if not batch.get("has_more", False):
                 return {**totals, "complete": True, "checkpoint": str(checkpoint)}

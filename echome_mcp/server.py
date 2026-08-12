@@ -637,9 +637,9 @@ async def list_tools() -> list[Tool]:
             },
             outputSchema=PROJECT_CONTEXT_OUTPUT_SCHEMA,
             annotations=ToolAnnotations(
-                readOnlyHint=True,
+                readOnlyHint=False,
                 destructiveHint=False,
-                idempotentHint=True,
+                idempotentHint=False,
                 openWorldHint=False,
             ),
         ),
@@ -765,7 +765,7 @@ async def list_tools() -> list[Tool]:
             annotations=ToolAnnotations(
                 readOnlyHint=False,
                 destructiveHint=False,
-                idempotentHint=True,
+                idempotentHint=False,
                 openWorldHint=False,
             ),
         ),

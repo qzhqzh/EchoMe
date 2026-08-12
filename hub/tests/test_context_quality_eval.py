@@ -2,10 +2,23 @@
 
 from copy import deepcopy
 
+import pytest
+from pydantic import ValidationError
+
+from app.schemas.project_knowledge import ContextQualitySnapshotCreate
 from app.services.context_quality_eval import (
     evaluate_context_quality,
     load_context_quality_cases,
 )
+
+
+def test_quality_snapshot_rejects_client_supplied_results() -> None:
+    with pytest.raises(ValidationError):
+        ContextQualitySnapshotCreate(
+            project_id="qzhqzh/EchoMe",
+            idempotency_key="forged-snapshot",
+            results=[],
+        )
 
 
 def _perfect_result(case: dict, index: int) -> dict:

@@ -6,6 +6,7 @@ import re
 import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -1515,6 +1516,7 @@ async def apply_revalidation_proposal(
     ):
         proposal.status = "expired"
         proposal.decided_at = datetime.now(timezone.utc)
+        await session.commit()
         raise HTTPException(status_code=409, detail="Constraint changed after proposal creation")
     changes = body.changes.model_dump(exclude_unset=True)
     changes.pop("expected_version", None)
@@ -1755,20 +1757,81 @@ async def evaluate_context_quality_snapshot(
     )
 
 
+async def _collect_context_quality_results(
+    session: AsyncSession,
+    project: Project,
+    user_id: str,
+    cases: dict[str, Any],
+    k: int,
+) -> list[dict[str, Any]]:
+    """Run the fixed quality dataset inside the trusted Hub process."""
+    results: list[dict[str, Any]] = []
+    for case in cases["cases"]:
+        started = perf_counter()
+        context = await compile_project_context(
+            session,
+            project,
+            ProjectContextRequest(
+                project_id=project.id,
+                task=case["query"],
+                changed_paths=case.get("changed_paths", []),
+                mode="impact" if case.get("mode") == "preflight" else case.get("mode", "local"),
+                limit=k,
+                token_budget=6000,
+                as_of=case.get("as_of"),
+                record_run=False,
+            ),
+            user_id,
+        )
+        preflight = None
+        if case.get("mode") == "preflight":
+            preflight = await project_preflight(
+                body=ProjectPreflightRequest(
+                    project_id=project.id,
+                    task=case["query"],
+                    changed_paths=case.get("changed_paths", []),
+                    planned_actions=case.get("planned_actions", []),
+                    limit=k,
+                ),
+                session=session,
+                user_id=user_id,
+            )
+        results.append(
+            {
+                "case_id": case["id"],
+                "context": context,
+                "preflight": preflight,
+                "latency_ms": (perf_counter() - started) * 1000,
+                "token_used": context.get("token_used"),
+            }
+        )
+    return results
+
+
 @router.post("/eval/snapshots", status_code=status.HTTP_201_CREATED)
 async def create_context_quality_snapshot(
     body: ContextQualitySnapshotCreate,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
     cases = load_context_quality_cases()
     if body.project_id != cases.get("project_id"):
         raise HTTPException(
             status_code=422,
             detail="The fixed quality dataset does not target this project",
         )
-    report = evaluate_context_quality(cases, body.results, k=body.k)
+    existing = await session.scalar(
+        select(ContextQualitySnapshot).where(
+            ContextQualitySnapshot.user_id == user_id,
+            ContextQualitySnapshot.project_id == body.project_id,
+            ContextQualitySnapshot.idempotency_key == body.idempotency_key,
+        )
+    )
+    if existing is not None:
+        return _quality_snapshot_payload(existing)
+    results = await _collect_context_quality_results(session, project, user_id, cases, body.k)
+    report = evaluate_context_quality(cases, results, k=body.k)
     snapshot_id = uuid.uuid4()
     statement = (
         pg_insert(ContextQualitySnapshot)
