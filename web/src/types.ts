@@ -120,6 +120,130 @@ export interface ProjectCreate {
   path_patterns?: string[]
 }
 
+export type ConstraintStatus = 'proposed' | 'active' | 'uncertain' | 'superseded' | 'deprecated'
+export type ConstraintStability = 'invariant' | 'evolving' | 'temporary'
+
+export interface ProjectConstraint {
+  id: string
+  project_id: string
+  title: string
+  statement: string
+  rationale: string | null
+  kind: string
+  status: ConstraintStatus
+  stability: ConstraintStability
+  confidence: number
+  source: string
+  tags: string[]
+  version: number
+  previous_version_id: string | null
+  last_verified_at: string | null
+  superseded_by: string | null
+  created_at: string
+  updated_at: string
+  selection_reasons?: string[]
+}
+
+export interface ProjectArtifact {
+  id: string
+  project_id: string
+  logical_path: string
+  kind: string
+  title: string
+  content_hash: string
+  hash_algorithm: string
+  size_bytes: number
+  revision: number
+  source_uri: string | null
+  metadata: Record<string, unknown>
+  status: string
+  supersedes_id: string | null
+  indexed_at: string
+}
+
+export interface ConstraintGraphEdge {
+  id: string
+  edge_type: 'constraint' | 'evidence'
+  source_constraint_id?: string
+  target_constraint_id?: string
+  constraint_id?: string
+  artifact_id?: string
+  relation: string
+  reason?: string | null
+  locator?: Record<string, unknown>
+  excerpt?: string | null
+}
+
+export interface ProjectKnowledgeGraph {
+  project_id: string
+  nodes: Array<(ProjectConstraint & { node_type: 'constraint' }) | (ProjectArtifact & { node_type: 'artifact' })>
+  edges: ConstraintGraphEdge[]
+}
+
+export interface ProjectWorkspaceSummary {
+  project: Project
+  constraint_counts: Record<string, number>
+  artifact_counts: Record<string, number>
+  edge_count: number
+  evidence_count: number
+}
+
+export interface ProjectQualityCase {
+  id: string
+  category: string
+  query: string
+  mode: 'local' | 'overview' | 'impact' | 'preflight'
+  changed_paths?: string[]
+  planned_actions?: string[]
+  as_of?: string
+  expected: Record<string, unknown>
+}
+
+export interface ProjectQualityCasesResponse {
+  schema_version: number
+  project_id: string
+  description: string
+  cases: ProjectQualityCase[]
+}
+
+export interface ProjectQualitySnapshot {
+  id: string
+  project_id: string
+  dataset_schema_version: number
+  k: number
+  trigger: string
+  dry_run: boolean
+  passed: boolean
+  metrics: Record<string, number | null>
+  thresholds: Record<string, number>
+  idempotency_key: string
+  created_at: string
+}
+
+export interface ProjectAutomationGate {
+  eligible: boolean
+  feature_enabled: boolean
+  proposal_only: boolean
+  required_snapshots: number
+  snapshot_ids: string[]
+  failures: Array<Record<string, unknown>>
+}
+
+export interface ProjectAutomationRun {
+  id: string
+  project_id: string
+  dry_run: boolean
+  status: string
+  gate: ProjectAutomationGate
+  plans: {
+    sleep: Array<Record<string, unknown>>
+    revalidation: Array<Record<string, unknown>>
+  }
+  generated_proposal_ids: string[]
+  apply_performed: boolean
+  created_at: string
+}
+
 export interface ReviewItem extends MemoryListItem {
   ai_context?: string
   suggested_layer?: MemoryLayer

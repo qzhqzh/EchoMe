@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -9,6 +10,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import (
+    CallToolResult,
     GetPromptResult,
     Prompt,
     PromptArgument,
@@ -16,6 +18,7 @@ from mcp.types import (
     Resource,
     TextContent,
     Tool,
+    ToolAnnotations,
 )
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -38,6 +41,14 @@ from echome_mcp.tools.graph import (
 from echome_mcp.tools.list_by_type import echome_list_by_type
 from echome_mcp.tools.project import echome_create_project, echome_list_projects
 from echome_mcp.tools.project_context import echome_get_project_context
+from echome_mcp.tools.project_knowledge import (
+    echome_constraint_propose,
+    echome_project_context,
+    echome_project_event_append,
+    echome_project_impact,
+    echome_project_index,
+    echome_project_preflight,
+)
 from echome_mcp.tools.remember import echome_remember
 from echome_mcp.tools.search import echome_search
 from echome_mcp.tools.sleep import (
@@ -48,6 +59,43 @@ from echome_mcp.tools.sleep import (
 
 # Create MCP server instance
 server = Server("echome")
+
+PROJECT_CONTEXT_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "project": {"type": "object"},
+        "task": {"type": "string"},
+        "mode": {"type": "string"},
+        "must_include": {"type": "array"},
+        "constraints": {"type": "array"},
+        "memories": {"type": "array"},
+        "artifacts": {"type": "array"},
+        "evidence": {"type": "array"},
+        "conflicts": {"type": "array"},
+        "stale_warnings": {"type": "array"},
+        "unknowns": {"type": "array"},
+        "token_budget": {"type": "integer"},
+        "token_used": {"type": "integer"},
+        "retrieval_trace": {"type": "object"},
+    },
+    "required": ["project", "task", "constraints", "memories", "evidence"],
+    "additionalProperties": True,
+}
+
+PREFLIGHT_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "project_id": {"type": "string"},
+        "task": {"type": "string"},
+        "read_only": {"type": "boolean"},
+        "decision": {"type": "string"},
+        "warnings": {"type": "array"},
+        "requirements": {"type": "array"},
+        "unknowns": {"type": "array"},
+    },
+    "required": ["project_id", "task", "read_only", "decision", "warnings", "unknowns"],
+    "additionalProperties": True,
+}
 
 
 @server.list_tools()
@@ -93,8 +141,16 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "identity", "guardrail", "reasoning", "method", "stack",
-                            "style", "decision", "context", "template", "project",
+                            "identity",
+                            "guardrail",
+                            "reasoning",
+                            "method",
+                            "stack",
+                            "style",
+                            "decision",
+                            "context",
+                            "template",
+                            "project",
                         ],
                         "description": "Optional: filter by memory type",
                     },
@@ -124,8 +180,16 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "identity", "guardrail", "reasoning", "method", "stack",
-                            "style", "decision", "context", "template", "project",
+                            "identity",
+                            "guardrail",
+                            "reasoning",
+                            "method",
+                            "stack",
+                            "style",
+                            "decision",
+                            "context",
+                            "template",
+                            "project",
                         ],
                     },
                     "project_id": {"type": "string"},
@@ -147,8 +211,16 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "identity", "guardrail", "reasoning", "method", "stack",
-                            "style", "decision", "context", "template", "project",
+                            "identity",
+                            "guardrail",
+                            "reasoning",
+                            "method",
+                            "stack",
+                            "style",
+                            "decision",
+                            "context",
+                            "template",
+                            "project",
                         ],
                         "description": "Optional memory type filter",
                     },
@@ -319,7 +391,14 @@ async def list_tools() -> list[Tool]:
                     "memory_id": {"type": "string", "description": "Memory UUID"},
                     "rating": {
                         "type": "string",
-                        "enum": ["helpful", "irrelevant", "outdated", "conflicting", "wrong", "important"],
+                        "enum": [
+                            "helpful",
+                            "irrelevant",
+                            "outdated",
+                            "conflicting",
+                            "wrong",
+                            "important",
+                        ],
                     },
                     "note": {
                         "type": "string",
@@ -404,8 +483,16 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "identity", "guardrail", "reasoning", "method", "stack",
-                            "style", "decision", "context", "template", "project",
+                            "identity",
+                            "guardrail",
+                            "reasoning",
+                            "method",
+                            "stack",
+                            "style",
+                            "decision",
+                            "context",
+                            "template",
+                            "project",
                         ],
                         "description": "Memory type to list",
                     },
@@ -442,8 +529,16 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "identity", "guardrail", "reasoning", "method", "stack",
-                            "style", "decision", "context", "template", "project",
+                            "identity",
+                            "guardrail",
+                            "reasoning",
+                            "method",
+                            "stack",
+                            "style",
+                            "decision",
+                            "context",
+                            "template",
+                            "project",
                         ],
                         "description": "Memory type",
                     },
@@ -481,22 +576,240 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "identity", "guardrail", "reasoning", "method", "stack",
-                            "style", "decision", "context", "template", "project",
+                            "identity",
+                            "guardrail",
+                            "reasoning",
+                            "method",
+                            "stack",
+                            "style",
+                            "decision",
+                            "context",
+                            "template",
+                            "project",
                         ],
                     },
                     "tags": {"type": "array", "items": {"type": "string"}},
-                    "suggested_layer": {"type": "string", "enum": ["L0", "L1", "L2"], "default": "L2"},
+                    "suggested_layer": {
+                        "type": "string",
+                        "enum": ["L0", "L1", "L2"],
+                        "default": "L2",
+                    },
                     "project": {"type": "string"},
                 },
                 "required": ["title", "content", "type", "tags"],
             },
         ),
         Tool(
+            name="echome_project_context",
+            description=(
+                "Default entry point for project implementation work. Returns a task-aware context pack "
+                "combining confirmed/proposed constraints, artifact evidence, and existing scoped memories. "
+                "Use this instead of guessing whether memory search or graph search is needed."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "EchoMe project ID"},
+                    "task": {"type": "string", "description": "Current task or question"},
+                    "changed_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional local paths involved in the task",
+                    },
+                    "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["local", "overview", "impact"],
+                        "default": "local",
+                    },
+                    "token_budget": {
+                        "type": "integer",
+                        "default": 6000,
+                        "minimum": 256,
+                        "maximum": 50000,
+                    },
+                    "as_of": {"type": "string", "format": "date-time"},
+                    "valid_at": {"type": "string", "format": "date-time"},
+                    "record_run": {"type": "boolean", "default": True},
+                    "shadow": {"type": "boolean", "default": False},
+                },
+                "required": ["project_id", "task"],
+            },
+            outputSchema=PROJECT_CONTEXT_OUTPUT_SCHEMA,
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=False,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_project_impact",
+            description=(
+                "Analyze how a requirement, architecture, API, code, or test change propagates through "
+                "the project constraint graph. Returns affected constraints and source evidence with reasons."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "change": {"type": "string", "description": "Proposed change description"},
+                    "changed_paths": {"type": "array", "items": {"type": "string"}},
+                    "constraint_ids": {"type": "array", "items": {"type": "string"}},
+                    "depth": {"type": "integer", "default": 2, "minimum": 0, "maximum": 4},
+                    "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                },
+                "required": ["project_id", "change"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=True,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_project_index",
+            description=(
+                "Synchronize local project artifacts with EchoMe. First sends only a SHA-256 manifest, "
+                "then uploads changed content when dry_run=false. Excludes data, .git, virtualenv, build, "
+                "cache, and dependency directories."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "root_path": {"type": "string", "description": "Absolute local project root"},
+                    "dry_run": {"type": "boolean", "default": True},
+                    "max_files": {"type": "integer", "default": 500, "minimum": 1, "maximum": 5000},
+                },
+                "required": ["project_id", "root_path"],
+            },
+        ),
+        Tool(
+            name="echome_project_preflight",
+            description=(
+                "Run a read-only check before editing, testing, committing, or deploying. Returns only "
+                "evidence-backed historical warnings, relevant constraints, and explicit unknowns."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "task": {"type": "string"},
+                    "changed_paths": {"type": "array", "items": {"type": "string"}},
+                    "planned_actions": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                },
+                "required": ["project_id", "task"],
+            },
+            outputSchema=PREFLIGHT_OUTPUT_SCHEMA,
+            annotations=ToolAnnotations(
+                readOnlyHint=True,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_project_event_append",
+            description=(
+                "Append an issue, attempt, failure, fix, decision, test result, deploy, or note as a "
+                "project event. Events are append-only and never become active constraints automatically."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "event_type": {
+                        "type": "string",
+                        "enum": [
+                            "issue",
+                            "attempt",
+                            "failure",
+                            "fix",
+                            "decision",
+                            "test_result",
+                            "deploy",
+                            "note",
+                        ],
+                    },
+                    "title": {"type": "string"},
+                    "content": {"type": "string"},
+                    "occurred_at": {"type": "string", "format": "date-time"},
+                    "source": {"type": "string", "default": "ai_client"},
+                    "source_ref": {"type": "string"},
+                    "metadata": {"type": "object"},
+                    "idempotency_key": {"type": "string"},
+                    "links": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "target_type": {
+                                    "type": "string",
+                                    "enum": ["memory", "constraint", "artifact", "event"],
+                                },
+                                "target_id": {"type": "string"},
+                                "relation": {"type": "string"},
+                                "metadata": {"type": "object"},
+                            },
+                            "required": ["target_type", "target_id", "relation"],
+                        },
+                    },
+                },
+                "required": ["project_id", "event_type", "title", "content"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=False,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_constraint_propose",
+            description=(
+                "Record a project-stability constraint inferred from requirements, code, tests, or decisions. "
+                "The constraint is stored as proposed and does not modify personal memories or AI behavior rules."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "statement": {"type": "string"},
+                    "rationale": {"type": "string"},
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "functional",
+                            "nonfunctional",
+                            "architecture",
+                            "process",
+                            "security",
+                            "data",
+                            "compatibility",
+                        ],
+                        "default": "architecture",
+                    },
+                    "stability": {
+                        "type": "string",
+                        "enum": ["invariant", "evolving", "temporary"],
+                        "default": "evolving",
+                    },
+                    "confidence": {"type": "number", "default": 0.7, "minimum": 0, "maximum": 1},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["project_id", "title", "statement"],
+            },
+        ),
+        Tool(
             name="echome_get_project_context",
             description=(
-                "Get the full context for a specific project, "
-                "including all memories scoped to it."
+                "Get the full context for a specific project, including all memories scoped to it."
             ),
             inputSchema={
                 "type": "object",
@@ -511,10 +824,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="echome_list_projects",
-            description=(
-                "列出当前用户的所有项目。"
-                "用于查看已有项目，帮助确定 project_id。"
-            ),
+            description=("列出当前用户的所有项目。用于查看已有项目，帮助确定 project_id。"),
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -674,7 +984,7 @@ async def read_resource(uri: Any) -> str:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     """Route tool calls to the appropriate handler."""
     try:
         if name == "echome_capabilities":
@@ -688,7 +998,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             )
         elif name in {"echome_search_summary", "echome_browse_memories"}:
             summary_func = (
-                echome_browse_memories if name == "echome_browse_memories" else echome_search_summary
+                echome_browse_memories
+                if name == "echome_browse_memories"
+                else echome_search_summary
             )
             result = await summary_func(
                 type=arguments.get("type"),
@@ -752,6 +1064,67 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             result = await echome_get_project_context(
                 project_id=arguments.get("project_id"),
             )
+        elif name == "echome_project_context":
+            result = await echome_project_context(
+                project_id=arguments["project_id"],
+                task=arguments["task"],
+                changed_paths=arguments.get("changed_paths"),
+                limit=arguments.get("limit", 20),
+                mode=arguments.get("mode", "local"),
+                token_budget=arguments.get("token_budget", 6000),
+                as_of=arguments.get("as_of"),
+                valid_at=arguments.get("valid_at"),
+                record_run=arguments.get("record_run", True),
+                shadow=arguments.get("shadow", False),
+            )
+        elif name == "echome_project_impact":
+            result = await echome_project_impact(
+                project_id=arguments["project_id"],
+                change=arguments["change"],
+                changed_paths=arguments.get("changed_paths"),
+                constraint_ids=arguments.get("constraint_ids"),
+                depth=arguments.get("depth", 2),
+                limit=arguments.get("limit", 20),
+            )
+        elif name == "echome_project_index":
+            result = await echome_project_index(
+                project_id=arguments["project_id"],
+                root_path=arguments["root_path"],
+                dry_run=arguments.get("dry_run", True),
+                max_files=arguments.get("max_files", 500),
+            )
+        elif name == "echome_project_preflight":
+            result = await echome_project_preflight(
+                project_id=arguments["project_id"],
+                task=arguments["task"],
+                changed_paths=arguments.get("changed_paths"),
+                planned_actions=arguments.get("planned_actions"),
+                limit=arguments.get("limit", 20),
+            )
+        elif name == "echome_project_event_append":
+            result = await echome_project_event_append(
+                project_id=arguments["project_id"],
+                event_type=arguments["event_type"],
+                title=arguments["title"],
+                content=arguments["content"],
+                occurred_at=arguments.get("occurred_at"),
+                source=arguments.get("source", "ai_client"),
+                source_ref=arguments.get("source_ref"),
+                metadata=arguments.get("metadata"),
+                idempotency_key=arguments.get("idempotency_key"),
+                links=arguments.get("links"),
+            )
+        elif name == "echome_constraint_propose":
+            result = await echome_constraint_propose(
+                project_id=arguments["project_id"],
+                title=arguments["title"],
+                statement=arguments["statement"],
+                rationale=arguments.get("rationale"),
+                kind=arguments.get("kind", "architecture"),
+                stability=arguments.get("stability", "evolving"),
+                confidence=arguments.get("confidence", 0.7),
+                tags=arguments.get("tags"),
+            )
         elif name == "echome_list_projects":
             result = await echome_list_projects()
         elif name == "echome_create_project":
@@ -779,13 +1152,36 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "echome_sleep_apply":
             result = await echome_sleep_apply(session_id=arguments["session_id"])
         else:
-            result = f"Unknown tool: {name}"
+            raise ValueError(f"Unknown tool: {name}")
 
-        return [TextContent(type="text", text=result)]
+        structured = None
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, dict):
+                structured = parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+        error_prefixes = (
+            "Error",
+            "EchoMe error",
+            "Project root",
+            "Project not found",
+            "Project path_patterns",
+            "Root path",
+        )
+        is_error = result.startswith(error_prefixes)
+        return CallToolResult(
+            content=[TextContent(type="text", text=result)],
+            structuredContent=structured,
+            isError=is_error,
+        )
 
     except Exception as e:
         error_msg = f"EchoMe error: {e}"
-        return [TextContent(type="text", text=error_msg)]
+        return CallToolResult(
+            content=[TextContent(type="text", text=error_msg)],
+            isError=True,
+        )
 
 
 def run_server(
@@ -798,7 +1194,9 @@ def run_server(
     if use_sse or transport == "sse":
         # SSE mode - for remote/multi-client access
         # TODO: Implement SSE transport when needed
-        raise NotImplementedError("SSE mode not yet implemented. Use streamable-http or stdio mode.")
+        raise NotImplementedError(
+            "SSE mode not yet implemented. Use streamable-http or stdio mode."
+        )
     if transport == "streamable-http":
         _run_streamable_http(host=host, port=port)
         return

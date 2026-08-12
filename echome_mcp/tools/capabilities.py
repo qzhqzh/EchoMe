@@ -29,6 +29,28 @@ CAPABILITIES: dict[str, Any] = {
             "when": "After the task, record clear usefulness signals for memories that were helpful, important, outdated, conflicting, wrong, or irrelevant.",
         },
     ],
+    "project_workflow": [
+        {
+            "step": "preflight",
+            "tool": "echome_project_preflight",
+            "when": "Before a material edit, test, commit, migration, or deploy; returns evidence-backed warnings only.",
+        },
+        {
+            "step": "context",
+            "tool": "echome_project_context",
+            "when": "Default project task entry; choose local, overview, or impact mode and pass changed paths.",
+        },
+        {
+            "step": "impact",
+            "tool": "echome_project_impact",
+            "when": "When a requirement, API, architecture, code, or test change may propagate through constraints.",
+        },
+        {
+            "step": "record",
+            "tool": "echome_project_event_append",
+            "when": "After a durable failure, fix, decision, test result, or deploy; link source evidence when available.",
+        },
+    ],
     "tool_groups": {
         "orientation": [
             {
@@ -76,6 +98,40 @@ CAPABILITIES: dict[str, Any] = {
                 "mutates_state": False,
             },
         ],
+        "project_intelligence": [
+            {
+                "tool": "echome_project_context",
+                "when": "Default entry for project implementation tasks; combines project constraints, artifact evidence, and scoped memories.",
+                "mutates_state": False,
+            },
+            {
+                "tool": "echome_project_impact",
+                "when": "Before changing requirements, architecture, APIs, code paths, or tests; returns the affected local constraint graph.",
+                "mutates_state": False,
+            },
+            {
+                "tool": "echome_project_preflight",
+                "when": "Before project actions; recalls evidence-backed failures and validation requirements without blocking the action.",
+                "mutates_state": False,
+            },
+            {
+                "tool": "echome_project_event_append",
+                "when": "Append a durable project episode. It never promotes itself to an active constraint.",
+                "mutates_state": True,
+                "default_status": "append_only_event",
+            },
+            {
+                "tool": "echome_project_index",
+                "when": "Synchronize local project documents and code metadata using a hash manifest before uploading changed content.",
+                "mutates_state": True,
+            },
+            {
+                "tool": "echome_constraint_propose",
+                "when": "Record an inferred project constraint as proposed without changing personal memory behavior.",
+                "mutates_state": True,
+                "default_status": "proposed",
+            },
+        ],
         "write": [
             {
                 "tool": "echome_memory_feedback",
@@ -94,7 +150,7 @@ CAPABILITIES: dict[str, Any] = {
                 "when": "Save durable preferences, decisions, conventions, or reusable project context.",
                 "mutates_state": True,
                 "default_status": "ai_review",
-            }
+            },
         ],
         "sleep": [
             {
@@ -121,6 +177,9 @@ CAPABILITIES: dict[str, Any] = {
         "Ask for or record feedback only when a memory clearly influenced the task, the user corrected it, or the memory appears outdated/conflicting; do not interrupt every turn.",
         "Archived/deprecated memories should not be used as active facts, but may be useful as provenance through graph tools.",
         "Writing tools should be used only for durable, reusable memories; do not save secrets or one-off temporary facts.",
+        "Use memory tools for user behavior and working preferences; use project-intelligence tools for requirements, implementation constraints, evidence, and impact analysis.",
+        "For project work, call echome_project_preflight before material actions and echome_project_context for the evidence-first context pack; do not ask the user to choose between memory and graph search.",
+        "Project events and inferred constraints remain proposals/evidence. They do not silently become active constraints or mutate memories.",
     ],
 }
 
@@ -136,6 +195,9 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
     return (
         "Use EchoMe MCP as the memory and project-context layer."
         f"{project_hint}\n\n"
+        "For implementation work with a known project, call echome_project_preflight before material actions, "
+        "then call echome_project_context with the task and changed paths. Use local mode for focused work, "
+        "overview for orientation, and impact for propagation analysis.\n\n"
         "Default workflow:\n"
         "1. For broad tasks, call echome_search_summary with a concise query and optional project_id.\n"
         "2. Select only relevant UUIDs and call echome_get_memories.\n"

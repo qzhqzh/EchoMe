@@ -14,6 +14,14 @@ import type {
   MemoryGraphResponse,
   MemoryGraphExplainResponse,
   SleepSessionsResponse,
+  ProjectArtifact,
+  ProjectConstraint,
+  ProjectKnowledgeGraph,
+  ProjectWorkspaceSummary,
+  ProjectAutomationGate,
+  ProjectAutomationRun,
+  ProjectQualityCasesResponse,
+  ProjectQualitySnapshot,
 } from '@/types'
 
 class ApiClient {
@@ -218,6 +226,96 @@ class ApiClient {
 
   async deleteProject(id: string): Promise<void> {
     return this.request<void>('DELETE', `/projects/${id}`)
+  }
+
+  async getProjectWorkspace(projectId: string): Promise<ProjectWorkspaceSummary> {
+    return this.request('GET', '/project-knowledge/workspace', undefined, { project_id: projectId })
+  }
+
+  async listProjectConstraints(projectId: string, params?: { status?: string; query?: string }): Promise<{ total: number; items: ProjectConstraint[] }> {
+    return this.request('GET', '/project-knowledge/constraints', undefined, { project_id: projectId, ...params })
+  }
+
+  async createProjectConstraint(data: {
+    project_id: string
+    title: string
+    statement: string
+    rationale?: string | null
+    kind?: string
+    status?: string
+    stability?: string
+    confidence?: number
+    source?: string
+    tags?: string[]
+  }): Promise<ProjectConstraint> {
+    return this.request('POST', '/project-knowledge/constraints', data)
+  }
+
+  async patchProjectConstraint(id: string, data: Record<string, unknown>): Promise<ProjectConstraint> {
+    return this.request('PATCH', `/project-knowledge/constraints/${id}`, data)
+  }
+
+  async listProjectArtifacts(projectId: string): Promise<{ total: number; items: ProjectArtifact[] }> {
+    return this.request('GET', '/project-knowledge/artifacts', undefined, { project_id: projectId })
+  }
+
+  async getProjectKnowledgeGraph(projectId: string, includeInactive = false): Promise<ProjectKnowledgeGraph> {
+    return this.request('GET', '/project-knowledge/graph', undefined, {
+      project_id: projectId,
+      include_inactive: includeInactive,
+    })
+  }
+
+  async analyzeProjectImpact(data: {
+    project_id: string
+    task: string
+    changed_paths: string[]
+    constraint_ids?: string[]
+    depth?: number
+    limit?: number
+  }): Promise<any> {
+    return this.request('POST', '/project-knowledge/impact', data)
+  }
+
+  async getProjectQualityCases(): Promise<ProjectQualityCasesResponse> {
+    return this.request('GET', '/project-knowledge/eval/cases')
+  }
+
+  async compileProjectContext(data: Record<string, unknown>): Promise<Record<string, any>> {
+    return this.request('POST', '/project-knowledge/context', data)
+  }
+
+  async runProjectPreflight(data: Record<string, unknown>): Promise<Record<string, any>> {
+    return this.request('POST', '/project-knowledge/preflight', data)
+  }
+
+  async createProjectQualitySnapshot(data: Record<string, unknown>): Promise<ProjectQualitySnapshot> {
+    return this.request('POST', '/project-knowledge/eval/snapshots', data)
+  }
+
+  async listProjectQualitySnapshots(projectId: string): Promise<{ total: number; items: ProjectQualitySnapshot[] }> {
+    return this.request('GET', '/project-knowledge/eval/snapshots', undefined, {
+      project_id: projectId,
+      limit: 20,
+    })
+  }
+
+  async getProjectAutomationGate(projectId: string): Promise<ProjectAutomationGate> {
+    return this.request('GET', '/project-knowledge/automation/gate', undefined, {
+      project_id: projectId,
+      required_snapshots: 3,
+    })
+  }
+
+  async runProjectAutomationDryRun(projectId: string): Promise<ProjectAutomationRun> {
+    return this.request('POST', '/project-knowledge/automation/proposals/run', {
+      project_id: projectId,
+      dry_run: true,
+      required_snapshots: 3,
+      include_sleep: true,
+      include_revalidation: true,
+      idempotency_key: `web-dry-run-${crypto.randomUUID()}`,
+    })
   }
 
   // --- Health ---

@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "project_id": "qzhqzh/EchoMe",
+  "description": "Fixed evidence-first project context and preflight evaluation cases.",
+  "cases": [
+    {
+      "id": "fact-domain-boundary",
+      "category": "single_fact",
+      "query": "Memory 和 Project Knowledge 的领域边界是什么？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Memory and project constraints remain separate domains"],
+        "artifact_paths": ["docs/project-knowledge.md"]
+      }
+    },
+    {
+      "id": "fact-context-entrypoint",
+      "category": "single_fact",
+      "query": "AI 做项目开发时默认调用哪个项目上下文入口？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["AI project work uses one task-aware context entrypoint"],
+        "artifact_paths": ["echome_mcp/tools/capabilities.py"]
+      }
+    },
+    {
+      "id": "fact-sleep-all-candidates",
+      "category": "single_fact",
+      "query": "Sleep 候选是否可以用 top-k 截断？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Memory Sleep candidate selection is never top-k retrieval"],
+        "artifact_paths": ["docs/memory-sleep.md"]
+      }
+    },
+    {
+      "id": "fact-provenance-preserved",
+      "category": "single_fact",
+      "query": "记忆整理后原始来源应该怎样处理？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Memory governance preserves provenance instead of deleting sources"],
+        "artifact_paths": ["docs/memory-sleep.md"]
+      }
+    },
+    {
+      "id": "cross-source-api-change",
+      "category": "cross_source_reasoning",
+      "query": "修改 Project Knowledge API 时有哪些跨客户端约束？",
+      "mode": "impact",
+      "changed_paths": ["hub/app/api/project_knowledge.py"],
+      "expected": {
+        "constraint_titles": [
+          "Published API response contracts remain backward compatible",
+          "Inactive constraints are retained but excluded from active context"
+        ],
+        "artifact_paths": ["docs/api-spec.md", "hub/app/api/project_knowledge.py"]
+      }
+    },
+    {
+      "id": "cross-source-mcp-context",
+      "category": "cross_source_reasoning",
+      "query": "MCP context 如何同时使用约束、制品和记忆？",
+      "mode": "overview",
+      "changed_paths": ["echome_mcp/server.py"],
+      "expected": {
+        "constraint_titles": [
+          "AI project work uses one task-aware context entrypoint",
+          "Memory and project constraints remain separate domains"
+        ],
+        "artifact_paths": ["echome_mcp/server.py", "docs/project-knowledge.md"]
+      }
+    },
+    {
+      "id": "temporal-current-revision",
+      "category": "temporal_state",
+      "query": "当前制品 revision 是否比约束证据引用的 revision 更新？",
+      "mode": "local",
+      "expected": {
+        "require_stale_warning": true,
+        "artifact_paths": ["hub/app/api/project_knowledge.py"]
+      }
+    },
+    {
+      "id": "temporal-historical-query",
+      "category": "temporal_state",
+      "query": "在指定 as_of 时间点哪些约束和证据有效？",
+      "mode": "overview",
+      "as_of": "2026-07-12T16:00:00Z",
+      "expected": {
+        "constraint_titles": ["Production database evolution is additive and migration-backed"]
+      }
+    },
+    {
+      "id": "supersession-current-only",
+      "category": "supersession",
+      "query": "制品同步规则的当前版本是什么？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Artifact synchronization transfers content only after hash comparison"],
+        "forbidden_statuses": ["superseded", "deprecated"]
+      }
+    },
+    {
+      "id": "supersession-old-excluded",
+      "category": "supersession",
+      "query": "已经被替代的旧约束是否应作为当前事实返回？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Inactive constraints are retained but excluded from active context"],
+        "forbidden_statuses": ["superseded", "deprecated"]
+      }
+    },
+    {
+      "id": "conflict-surfacing",
+      "category": "conflict",
+      "query": "列出当前相关约束之间的冲突，不要静默选择一边。",
+      "mode": "impact",
+      "expected": {
+        "require_conflict": true
+      }
+    },
+    {
+      "id": "conflict-proposed-labelled",
+      "category": "conflict",
+      "query": "AI 推断的项目约束是否已经被用户确认？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["AI inferred constraints default to proposed"],
+        "allowed_statuses": ["active", "proposed", "uncertain"]
+      }
+    },
+    {
+      "id": "abstain-unknown-secret",
+      "category": "abstention",
+      "query": "EchoMe 生产数据库的 root 密码是什么？",
+      "mode": "local",
+      "expected": {
+        "require_abstention": true,
+        "forbidden_artifact_paths": [".env", ".env.production"]
+      }
+    },
+    {
+      "id": "abstain-unknown-future-release",
+      "category": "abstention",
+      "query": "下个月 EchoMe 一定会发布哪个版本？",
+      "mode": "overview",
+      "expected": {
+        "require_abstention": true
+      }
+    },
+    {
+      "id": "implicit-no-silent-delete",
+      "category": "implicit_constraint",
+      "query": "实现新的记忆整理逻辑，并直接删除归档来源。",
+      "mode": "impact",
+      "expected": {
+        "constraint_titles": ["Memory governance preserves provenance instead of deleting sources"]
+      }
+    },
+    {
+      "id": "implicit-additive-migration",
+      "category": "implicit_constraint",
+      "query": "为 Project Knowledge 增加数据表，应该怎样迁移？",
+      "mode": "impact",
+      "changed_paths": ["hub/alembic/versions/011_context_compiler_and_project_events.py"],
+      "expected": {
+        "constraint_titles": ["Production database evolution is additive and migration-backed"],
+        "artifact_paths": ["hub/alembic/versions/009_add_project_knowledge.py"]
+      }
+    },
+    {
+      "id": "workflow-index-manifest",
+      "category": "workflow",
+      "query": "本地项目制品同步到 Hub 的顺序是什么？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Artifact synchronization transfers content only after hash comparison"],
+        "artifact_paths": ["echome_mcp/tools/project_knowledge.py"]
+      }
+    },
+    {
+      "id": "workflow-ai-proposal",
+      "category": "workflow",
+      "query": "AI 从代码推断出约束后能否直接设为 active？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["AI inferred constraints default to proposed"]
+      }
+    },
+    {
+      "id": "preflight-migration-failure",
+      "category": "workflow_failure",
+      "query": "准备运行数据库迁移，回忆相似失败和验证要求。",
+      "mode": "preflight",
+      "changed_paths": ["hub/alembic/versions/011_context_compiler_and_project_events.py"],
+      "planned_actions": ["alembic upgrade"],
+      "expected": {
+        "preflight_event_types": ["failure", "test_result"],
+        "constraint_titles": ["Production database evolution is additive and migration-backed"]
+      }
+    },
+    {
+      "id": "preflight-web-build",
+      "category": "workflow_failure",
+      "query": "准备构建 Web，检查历史构建失败和验证要求。",
+      "mode": "preflight",
+      "changed_paths": ["web/package.json"],
+      "planned_actions": ["npm run build"],
+      "expected": {
+        "preflight_event_types": ["failure", "fix", "test_result"]
+      }
+    },
+    {
+      "id": "impact-mcp-server",
+      "category": "changed_path_impact",
+      "query": "修改 MCP server 的 project context 输出会影响什么？",
+      "mode": "impact",
+      "changed_paths": ["echome_mcp/server.py"],
+      "expected": {
+        "constraint_titles": [
+          "AI project work uses one task-aware context entrypoint",
+          "Published API response contracts remain backward compatible"
+        ],
+        "artifact_paths": ["echome_mcp/server.py"]
+      }
+    },
+    {
+      "id": "impact-memory-model",
+      "category": "changed_path_impact",
+      "query": "修改 Memory model 时哪些项目边界必须保持？",
+      "mode": "impact",
+      "changed_paths": ["hub/app/models/memory.py"],
+      "expected": {
+        "constraint_titles": [
+          "Memory and project constraints remain separate domains",
+          "Memory governance preserves provenance instead of deleting sources"
+        ],
+        "artifact_paths": ["hub/app/models/memory.py"]
+      }
+    },
+    {
+      "id": "inactive-constraint-exclusion",
+      "category": "inactive_exclusion",
+      "query": "检索当前约束时排除哪些状态？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Inactive constraints are retained but excluded from active context"],
+        "forbidden_statuses": ["superseded", "deprecated"]
+      }
+    },
+    {
+      "id": "inactive-memory-exclusion",
+      "category": "inactive_exclusion",
+      "query": "归档或废弃记忆能否混入当前项目事实？",
+      "mode": "local",
+      "expected": {
+        "forbidden_statuses": ["archived", "deprecated"],
+        "require_abstention": false
+      }
+    },
+    {
+      "id": "artifact-authority",
+      "category": "evidence_precision",
+      "query": "仓库代码和文档与索引副本冲突时以谁为准？",
+      "mode": "local",
+      "expected": {
+        "constraint_titles": ["Repository artifacts are authoritative and indexed revisions are immutable"],
+        "artifact_paths": ["docs/project-knowledge.md", "hub/app/models/project_knowledge.py"]
+      }
+    },
+    {
+      "id": "api-compatible-output",
+      "category": "evidence_precision",
+      "query": "给 MCP 增加 structuredContent 时如何保持旧客户端可用？",
+      "mode": "impact",
+      "changed_paths": ["echome_mcp/server.py"],
+      "expected": {
+        "constraint_titles": ["Published API response contracts remain backward compatible"],
+        "artifact_paths": ["docs/api-spec.md", "echome_mcp/server.py"]
+      }
+    }
+  ]
+}

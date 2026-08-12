@@ -1,3 +1,14 @@
+## Unreleased
+
+- feat: add evidence-first Project Context Compiler with chunk/FTS/vector/graph/temporal retrieval
+- feat: add knowledge freshness, versioned revalidation, append-only events, and read-only preflight
+- feat: add 26-case context quality eval, consecutive quality gates, and proposal-only automation
+- feat(web): add Project Context quality evaluation and automation observability
+- fix: generate trusted quality snapshots inside Hub instead of accepting client-supplied results
+- fix: align MCP side-effect annotations and extend Project Context request timeout
+- fix: persist expired revalidation proposals before returning a conflict
+- fix: make Hub token counting fall back immediately when the tiktoken cache is unavailable offline
+
 ## v1.3.1
 
 - 1730bfe feat: improve retrieval relevance and update MCP instructions

@@ -7,6 +7,7 @@ import httpx
 import yaml
 
 CONFIG_FILE = Path.home() / ".echome" / "config.yaml"
+PROJECT_CONTEXT_TIMEOUT = httpx.Timeout(120.0)
 
 
 def _load_config() -> dict[str, str]:
@@ -218,6 +219,157 @@ class MCPHubClient:
             resp = await client.get(
                 "/api/v1/memories", params={"project_id": project_id, "limit": 50}
             )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def project_context(
+        self,
+        project_id: str,
+        task: str,
+        changed_paths: list[str] | None = None,
+        limit: int = 20,
+        mode: str = "local",
+        token_budget: int = 6000,
+        as_of: str | None = None,
+        valid_at: str | None = None,
+        record_run: bool = True,
+        shadow: bool = False,
+    ) -> dict[str, Any]:
+        """Get task-aware memory, constraint, and artifact context."""
+        payload = {
+            "project_id": project_id,
+            "task": task,
+            "changed_paths": changed_paths or [],
+            "limit": limit,
+            "mode": mode,
+            "token_budget": token_budget,
+            "as_of": as_of,
+            "valid_at": valid_at,
+            "record_run": record_run,
+            "shadow": shadow,
+        }
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers,
+            timeout=PROJECT_CONTEXT_TIMEOUT,
+        ) as client:
+            resp = await client.post("/api/v1/project-knowledge/context", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def append_project_event(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Append an evidence-linked project event."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/project-knowledge/events", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def project_preflight(
+        self,
+        project_id: str,
+        task: str,
+        changed_paths: list[str] | None = None,
+        planned_actions: list[str] | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Get read-only, evidence-backed warnings before a project action."""
+        payload = {
+            "project_id": project_id,
+            "task": task,
+            "changed_paths": changed_paths or [],
+            "planned_actions": planned_actions or [],
+            "limit": limit,
+        }
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/project-knowledge/preflight", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def project_impact(
+        self,
+        project_id: str,
+        task: str,
+        changed_paths: list[str] | None = None,
+        constraint_ids: list[str] | None = None,
+        depth: int = 2,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Analyze local impact around a proposed project change."""
+        payload = {
+            "project_id": project_id,
+            "task": task,
+            "changed_paths": changed_paths or [],
+            "constraint_ids": constraint_ids or [],
+            "depth": depth,
+            "limit": limit,
+        }
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/project-knowledge/impact", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def check_artifact_sync(
+        self, project_id: str, artifacts: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Compare a local artifact manifest without uploading content."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post(
+                "/api/v1/project-knowledge/artifacts/sync/check",
+                json={"project_id": project_id, "artifacts": artifacts},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def apply_artifact_sync(
+        self, project_id: str, artifacts: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Upload only changed artifact content."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post(
+                "/api/v1/project-knowledge/artifacts/sync/apply",
+                json={"project_id": project_id, "artifacts": artifacts},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_constraint(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Create a proposed or user-confirmed project constraint."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/project-knowledge/constraints", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def list_constraints(self, project_id: str) -> dict[str, Any]:
+        """List project constraints for idempotent client workflows."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(
+                "/api/v1/project-knowledge/constraints",
+                params={"project_id": project_id, "limit": 2000},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def list_artifacts(self, project_id: str) -> dict[str, Any]:
+        """List current project artifacts."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(
+                "/api/v1/project-knowledge/artifacts",
+                params={"project_id": project_id, "limit": 1000},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_constraint_edge(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Create one typed constraint relation."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/project-knowledge/edges", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_constraint_evidence(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Link a constraint to an artifact revision."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/project-knowledge/evidence", json=data)
             resp.raise_for_status()
             return resp.json()
 

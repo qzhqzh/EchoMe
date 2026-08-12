@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     embedding_url: str = "http://embedding:20002"
     embedding_dimensions: int = 1024  # Must match bge-m3 model output
 
+    # Project context compiler (can be disabled for a no-data-loss query rollback)
+    context_compiler_enabled: bool = True
+    # Proposal-only automation remains opt-in even after quality gates pass.
+    project_automation_enabled: bool = False
+
     # Limits
     l0_max_tokens: int = 1500
     l0_max_count: int = 20
@@ -67,7 +72,7 @@ def validate_settings() -> None:
             logger.critical(
                 "🚨 ECHOME_JWT_SECRET is using the insecure default value! "
                 "Set a strong random secret in .env before running in production. "
-                "Use: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                'Use: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
             sys.exit(1)
 
