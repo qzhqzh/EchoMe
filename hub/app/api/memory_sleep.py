@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.memories import _compute_and_store_embedding
 from app.core.auth import verify_token
 from app.core.database import get_session
 from app.models.memory import Memory, MemoryEdge, SleepSession
@@ -218,6 +219,7 @@ async def submit_sleep_proposal(
 async def apply_sleep_proposal(
     session_id: uuid.UUID,
     body: SleepApplyRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> SleepApplyResponse:
@@ -246,18 +248,20 @@ async def apply_sleep_proposal(
 
     created_refs: dict[str, uuid.UUID] = {}
     created_memory_ids: list[uuid.UUID] = []
+    created_memory_embeddings: list[tuple[uuid.UUID, str]] = []
     updated_memory_ids: list[uuid.UUID] = []
     edge_ids: list[uuid.UUID] = []
 
     for action in plan.get("actions", []):
         if action.get("op") == "create_memory":
-            memory_id, edge_ids_for_memory = await _apply_create_memory(
+            memory_id, embed_text, edge_ids_for_memory = await _apply_create_memory(
                 session, user_id, sleep_session, action
             )
             client_ref = action.get("client_ref")
             if client_ref:
                 created_refs[client_ref] = memory_id
             created_memory_ids.append(memory_id)
+            created_memory_embeddings.append((memory_id, embed_text))
             edge_ids.extend(edge_ids_for_memory)
 
     await session.flush()
@@ -290,6 +294,9 @@ async def apply_sleep_proposal(
     sleep_session.status = "applied"
     sleep_session.applied_at = datetime.now(timezone.utc)
     await session.commit()
+
+    for memory_id, embed_text in created_memory_embeddings:
+        background_tasks.add_task(_compute_and_store_embedding, memory_id, embed_text)
 
     return SleepApplyResponse(
         session_id=sleep_session.id,
@@ -362,7 +369,7 @@ async def _apply_create_memory(
     user_id: str,
     sleep_session: SleepSession,
     action: dict[str, Any],
-) -> tuple[uuid.UUID, list[uuid.UUID]]:
+) -> tuple[uuid.UUID, str, list[uuid.UUID]]:
     payload = action.get("memory") or {}
     status_value = payload.get("status", "active")
     if status_value != "active":
@@ -406,7 +413,7 @@ async def _apply_create_memory(
         await session.flush()
         edge_ids.append(edge.id)
 
-    return memory.id, edge_ids
+    return memory.id, f"{memory.title}\n{memory.content}", edge_ids
 
 
 async def _apply_status_update(

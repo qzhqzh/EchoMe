@@ -149,6 +149,10 @@ async function handleDelete(): Promise<void> {
 function openProjectMemories(projectId: string): void {
   router.push({ path: '/memories', query: { project_id: projectId } })
 }
+
+function openProjectWorkspace(projectId: string): void {
+  router.push({ path: '/project-workspace', query: { project_id: projectId } })
+}
 </script>
 
 <template>
@@ -231,12 +235,20 @@ function openProjectMemories(projectId: string): void {
             <span class="text-xs text-slate-400">
               {{ projectMeta[project.id]?.count || 0 }} scoped memories
             </span>
-            <button
-              class="rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
-              @click="openProjectMemories(project.id)"
-            >
-              View memories
-            </button>
+            <div class="flex gap-2">
+              <button
+                class="rounded-md border border-slate-600 px-2 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                @click="openProjectMemories(project.id)"
+              >
+                Memories
+              </button>
+              <button
+                class="rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
+                @click="openProjectWorkspace(project.id)"
+              >
+                Workspace
+              </button>
+            </div>
           </div>
           <p v-if="project.git_remote" class="text-xs text-slate-500 font-mono truncate">
             {{ project.git_remote }}

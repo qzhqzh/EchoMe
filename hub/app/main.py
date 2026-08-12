@@ -19,6 +19,7 @@ from app.api import (
     memories,
     memory_sleep,
     observability,
+    project_knowledge,
     projects,
     retrieval_debug,
     review,
@@ -59,7 +60,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: configurable via ECHOME_CORS_ORIGINS env var
 _cors_origins = (
-    ["*"] if settings.cors_origins == "*"
+    ["*"]
+    if settings.cors_origins == "*"
     else [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 )
 app.add_middleware(
@@ -79,6 +81,7 @@ app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(observability.router, prefix="/api/v1")
 app.include_router(retrieval_debug.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
+app.include_router(project_knowledge.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")

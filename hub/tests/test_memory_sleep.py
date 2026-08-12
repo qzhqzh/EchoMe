@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.models.memory import Memory
+from app.models.memory import Memory, SleepSession
 
 
 def _make_memory(
@@ -118,3 +118,76 @@ class TestSleepPlanValidation:
 
         assert exc_info.value.status_code == 400
         assert "subset" in exc_info.value.detail
+
+
+class TestSleepApply:
+    """Tests for post-commit work triggered by an applied plan."""
+
+    @pytest.mark.asyncio
+    async def test_created_memory_schedules_embedding(self, test_user_id: str):
+        from app.api.memory_sleep import (
+            _compute_and_store_embedding,
+            apply_sleep_proposal,
+        )
+        from app.schemas.sleep import SleepApplyRequest
+
+        sleep_session_id = uuid.uuid4()
+        source_id = uuid.uuid4()
+        sleep_session = SleepSession(
+            id=sleep_session_id,
+            user_id=test_user_id,
+            status="proposed",
+            mode="client_generated",
+            candidate_memory_ids=[str(source_id)],
+            json_proposal={
+                "schema_version": "memory_sleep_plan.v1",
+                "session_id": str(sleep_session_id),
+                "input_memory_ids": [str(source_id)],
+                "actions": [
+                    {
+                        "op": "create_memory",
+                        "client_ref": "distilled-1",
+                        "derived_from": [str(source_id)],
+                        "memory": {
+                            "title": "Distilled title",
+                            "content": "Distilled content",
+                            "type": "context",
+                            "scope": {
+                                "global": False,
+                                "projects": ["qzhqzh/EchoMe"],
+                                "exclude_projects": [],
+                            },
+                        },
+                    }
+                ],
+            },
+            created_by={"actor": "test"},
+        )
+        query_result = MagicMock()
+        query_result.scalar_one_or_none.return_value = sleep_session
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=query_result)
+
+        def add_with_id(obj):
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid.uuid4()
+
+        mock_session.add = MagicMock(side_effect=add_with_id)
+        mock_session.flush = AsyncMock()
+        mock_session.commit = AsyncMock()
+        background_tasks = MagicMock()
+
+        result = await apply_sleep_proposal(
+            session_id=sleep_session_id,
+            body=SleepApplyRequest(approved=True),
+            background_tasks=background_tasks,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        assert len(result.created_memory_ids) == 1
+        background_tasks.add_task.assert_called_once_with(
+            _compute_and_store_embedding,
+            result.created_memory_ids[0],
+            "Distilled title\nDistilled content",
+        )

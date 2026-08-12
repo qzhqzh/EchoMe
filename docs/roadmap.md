@@ -1,16 +1,18 @@
 # EchoMe 开发路线图
 
+> 2026-08 的当前状态与下一阶段实施计划见 [next-update-plan-2026-08.md](next-update-plan-2026-08.md)。下方 Phase 0-6 保留为早期路线图参考。
 
-## 当前实际进度（2026-05-29）
+## 当前实际进度（2026-08-12）
 
 代码实现已经超过原始 Phase 0/1 计划，当前仓库处于早期可用发布态：
 
-- **当前版本**：`echome v1.1.7`
+- **当前版本**：`echome v1.3.0`；下一阶段实现位于工作区，生产发布待单独授权
 - **Hub**：已实现认证、多用户、memories CRUD/search、projects、sync/render、review、market、admin、embedding 接入和 rate limit
 - **CLI**：已实现 `init/login/add/list/search/sync/push/pull/review/market/doctor/seed/update/status/version`
-- **MCP Server**：已实现 summary-first 检索（`echome_search_summary` + `echome_get_memories`）、search/get/list_by_type/remember/project context/project list/create project，并提供 `memory_search` alias
-- **Web Console**：已实现 Dashboard、Memories、Review、Projects、Market、Admin、Settings、Login、Help 等页面
-- **验证状态**：`make lint` 通过；Hub 测试 `49 passed, 1 skipped`
+- **MCP Server**：除 summary-first Memory 工作流外，已实现结构化 Project Context、Impact、Event 和 Preflight 工具
+- **Project Knowledge**：已实现制品版本、chunk/FTS/vector 索引、约束版本图、时间与新鲜度、Context Compiler、Project Events 和受控复核
+- **Web Console**：已实现 Memory/Project 工作台、图观测、检索调试和 26 条 Project Context Quality Eval
+- **验证状态**：Hub `74 passed, 1 skipped`，根测试 `9 passed`，Ruff 和 Web production build 通过；生产数据库仍为 Alembic `010`
 
 下面的 Phase 计划保留为原始路线图参考，不代表当前完成度。
 

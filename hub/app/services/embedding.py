@@ -9,7 +9,9 @@ from app.core.config import settings
 logger = logging.getLogger("embedding_client")
 
 
-async def get_embeddings(texts: list[str]) -> list[list[float]] | None:
+async def get_embeddings(
+    texts: list[str], *, timeout_seconds: float = 30.0
+) -> list[list[float]] | None:
     """Get embeddings for a list of texts from the embedding service.
 
     Returns None if the service is unavailable (graceful degradation).
@@ -18,7 +20,7 @@ async def get_embeddings(texts: list[str]) -> list[list[float]] | None:
         return None
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             resp = await client.post(
                 f"{settings.embedding_url}/embed",
                 json={"texts": texts},

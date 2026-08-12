@@ -39,6 +39,11 @@ const routes = [
     component: () => import('@/views/Projects.vue'),
   },
   {
+    path: '/project-workspace',
+    name: 'ProjectWorkspace',
+    component: () => import('@/views/ProjectWorkspace.vue'),
+  },
+  {
     path: '/market',
     name: 'Market',
     component: () => import('@/views/Market.vue'),
