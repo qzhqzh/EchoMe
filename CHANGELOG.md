@@ -1,4 +1,4 @@
-## Unreleased
+## v1.4.0
 
 - feat: add evidence-first Project Context Compiler with chunk/FTS/vector/graph/temporal retrieval
 - feat: add knowledge freshness, versioned revalidation, append-only events, and read-only preflight
