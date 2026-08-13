@@ -16,7 +16,7 @@ async def test_delete_project_returns_conflict_for_context_history() -> None:
     result.scalar_one_or_none.return_value = project
     session = AsyncMock()
     session.execute = AsyncMock(return_value=result)
-    session.scalar = AsyncMock(side_effect=[None, None, None, uuid.uuid4()])
+    session.scalar = AsyncMock(side_effect=[project, None, None, None, uuid.uuid4()])
 
     with pytest.raises(HTTPException) as exc_info:
         await delete_project("qzhqzh/EchoMe", session=session, user_id="user")

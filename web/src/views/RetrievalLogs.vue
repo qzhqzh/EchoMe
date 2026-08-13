@@ -19,6 +19,26 @@ interface RetrievalLog {
   created_at: string
 }
 
+interface ContextRun {
+  id: string
+  project_id: string | null
+  query: string
+  mode: string
+  route: string | null
+  request_id: string | null
+  client: string | null
+  client_version: string | null
+  fallback: string | null
+  error_code: string | null
+  token_budget: number
+  token_used: number
+  candidates: Record<string, number>
+  selected: Record<string, string[]>
+  trace: Record<string, any>
+  status: string
+  created_at: string
+}
+
 const sampleCases = [
   {
     label: 'Git workflow',
@@ -42,14 +62,32 @@ const running = ref(false)
 const currentLog = ref<RetrievalLog | null>(null)
 const logs = ref<RetrievalLog[]>([])
 const loadingLogs = ref(false)
+const activeView = ref<'retrieval' | 'context'>('retrieval')
+const contextRuns = ref<ContextRun[]>([])
+const selectedContextRun = ref<ContextRun | null>(null)
+const loadingContextRuns = ref(false)
 
 onMounted(() => {
   void loadLogs()
+  void loadContextRuns()
 })
 
 function useSample(index: number): void {
   query.value = sampleCases[index].query
   expectedIds.value = sampleCases[index].expected_ids.join('\n')
+}
+
+async function loadContextRuns(): Promise<void> {
+  loadingContextRuns.value = true
+  try {
+    const response = await api.listContextRuns({ limit: 100 })
+    contextRuns.value = response.items
+    if (!selectedContextRun.value && contextRuns.value.length) {
+      selectedContextRun.value = contextRuns.value[0]
+    }
+  } finally {
+    loadingContextRuns.value = false
+  }
 }
 
 function parsedExpectedIds(): string[] {
@@ -104,18 +142,47 @@ function statusClass(log: RetrievalLog): string {
   if (status === 'miss') return 'bg-red-500/15 text-red-200 border-red-500/30'
   return 'bg-slate-700 text-slate-300 border-slate-600'
 }
+
+function contextStatusClass(run: ContextRun): string {
+  if (run.error_code) return 'border-red-500/30 bg-red-500/15 text-red-200'
+  if (run.fallback) return 'border-amber-500/30 bg-amber-500/15 text-amber-200'
+  return 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200'
+}
+
+function selectionCount(run: ContextRun): number {
+  return Object.values(run.selected || {}).reduce((total, items) => total + items.length, 0)
+}
 </script>
 
 <template>
   <div class="space-y-6">
     <header>
-      <h1 class="text-2xl font-semibold text-slate-100">Retrieval Logs</h1>
-      <p class="mt-1 text-sm text-slate-400">
-        Debug memory retrieval paths, fallback behavior, and recent MCP/Web retrieval runs.
-      </p>
+      <h1 class="text-2xl font-semibold text-slate-100">Logs</h1>
+      <p class="mt-1 text-sm text-slate-400">Memory retrieval and context runtime records.</p>
     </header>
 
-    <section class="rounded-lg border border-slate-700 bg-slate-800 p-4">
+    <div class="inline-flex rounded-lg border border-slate-700 bg-slate-900 p-1" role="tablist">
+      <button
+        class="rounded-md px-3 py-1.5 text-sm transition-colors"
+        :class="activeView === 'retrieval' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'"
+        role="tab"
+        :aria-selected="activeView === 'retrieval'"
+        @click="activeView = 'retrieval'"
+      >
+        Retrieval
+      </button>
+      <button
+        class="rounded-md px-3 py-1.5 text-sm transition-colors"
+        :class="activeView === 'context' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'"
+        role="tab"
+        :aria-selected="activeView === 'context'"
+        @click="activeView = 'context'"
+      >
+        Context Runs
+      </button>
+    </div>
+
+    <section v-if="activeView === 'retrieval'" class="rounded-lg border border-slate-700 bg-slate-800 p-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
         <div class="min-w-0 flex-1 space-y-3">
           <div class="flex flex-wrap gap-2">
@@ -170,7 +237,7 @@ function statusClass(log: RetrievalLog): string {
       </div>
     </section>
 
-    <section class="space-y-3">
+    <section v-if="activeView === 'retrieval'" class="space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-base font-semibold text-slate-100">Recent Logs</h2>
         <button class="btn-secondary" :disabled="loadingLogs" @click="loadLogs">
@@ -200,6 +267,103 @@ function statusClass(log: RetrievalLog): string {
           </div>
         </button>
       </div>
+    </section>
+
+    <section v-if="activeView === 'context'" class="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+      <div class="min-w-0 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold text-slate-100">Recent Context Runs</h2>
+          <button class="btn-secondary" :disabled="loadingContextRuns" @click="loadContextRuns">
+            {{ loadingContextRuns ? 'Loading...' : 'Refresh' }}
+          </button>
+        </div>
+        <div v-if="contextRuns.length === 0" class="rounded-lg border border-slate-700 bg-slate-800 p-4 text-sm text-slate-400">
+          No context runs recorded yet.
+        </div>
+        <div v-else class="max-h-[720px] space-y-2 overflow-y-auto pr-1">
+          <button
+            v-for="run in contextRuns"
+            :key="run.id"
+            class="w-full rounded-lg border p-3 text-left transition-colors"
+            :class="selectedContextRun?.id === run.id ? 'border-cyan-500/50 bg-slate-750' : 'border-slate-700 bg-slate-800 hover:bg-slate-750'"
+            @click="selectedContextRun = run"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="line-clamp-2 text-sm font-medium text-slate-100">{{ run.query }}</div>
+                <div class="mt-1 truncate font-mono text-xs text-slate-500">
+                  {{ run.request_id || run.id }}
+                </div>
+              </div>
+              <span :class="['shrink-0 rounded border px-2 py-0.5 text-xs', contextStatusClass(run)]">
+                {{ run.error_code || run.fallback || 'ok' }}
+              </span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400">
+              <span>{{ run.route || run.mode }}</span>
+              <span>{{ run.project_id || 'personal' }}</span>
+              <span>{{ selectionCount(run) }} selected</span>
+              <span>{{ run.token_used }} / {{ run.token_budget }} tokens</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <aside class="min-w-0 rounded-lg border border-slate-700 bg-slate-800 p-4">
+        <div v-if="selectedContextRun" class="space-y-5">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span :class="['rounded border px-2 py-0.5 text-xs', contextStatusClass(selectedContextRun)]">
+                {{ selectedContextRun.status }}
+              </span>
+              <span class="rounded bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
+                {{ selectedContextRun.route || selectedContextRun.mode }}
+              </span>
+            </div>
+            <h2 class="mt-3 text-base font-semibold text-slate-100">{{ selectedContextRun.query }}</h2>
+            <dl class="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+              <div>
+                <dt class="text-slate-500">Request ID</dt>
+                <dd class="mt-1 break-all font-mono text-slate-300">{{ selectedContextRun.request_id || 'legacy run' }}</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500">Client</dt>
+                <dd class="mt-1 text-slate-300">{{ selectedContextRun.client || 'unknown' }} {{ selectedContextRun.client_version || '' }}</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500">Project</dt>
+                <dd class="mt-1 break-all text-slate-300">{{ selectedContextRun.project_id || 'personal' }}</dd>
+              </div>
+              <div>
+                <dt class="text-slate-500">Created</dt>
+                <dd class="mt-1 text-slate-300">{{ formatDate(selectedContextRun.created_at) }}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-200">Selection</h3>
+            <div class="mt-2 grid gap-2 sm:grid-cols-2">
+              <div v-for="(ids, kind) in selectedContextRun.selected" :key="kind" class="rounded border border-slate-700 bg-slate-900 p-3">
+                <div class="text-xs font-medium uppercase text-slate-400">{{ kind }}</div>
+                <div class="mt-1 text-lg font-semibold text-slate-100">{{ ids.length }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-200">Runtime Trace</h3>
+            <pre class="mt-2 max-h-[360px] overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">{{ JSON.stringify({
+              candidates: selectedContextRun.candidates,
+              selected: selectedContextRun.selected,
+              trace: selectedContextRun.trace,
+              fallback: selectedContextRun.fallback,
+              error_code: selectedContextRun.error_code,
+            }, null, 2) }}</pre>
+          </div>
+        </div>
+        <div v-else class="text-sm text-slate-400">Select a context run.</div>
+      </aside>
     </section>
   </div>
 </template>

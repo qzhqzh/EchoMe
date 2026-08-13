@@ -22,6 +22,10 @@ from app.schemas.sleep import (
     SleepProposalSubmitRequest,
     SleepSessionResponse,
 )
+from app.services.project_identity import (
+    canonicalize_project_scopes,
+    project_scope_ids,
+)
 from app.services.token_counter import count_tokens
 
 router = APIRouter(prefix="/memory-sleep", tags=["memory-sleep"])
@@ -90,7 +94,12 @@ def _edge_item(edge: MemoryEdge) -> SleepEdgeItem:
     )
 
 
-def _candidate_filter(query: Any, body: SleepCandidatesRequest, user_id: str) -> Any:
+def _candidate_filter(
+    query: Any,
+    body: SleepCandidatesRequest,
+    user_id: str,
+    scope_project_ids: list[str] | None = None,
+) -> Any:
     query = query.where(
         Memory.user_id == user_id,
         Memory.status.in_([s.value for s in body.status]),
@@ -101,7 +110,11 @@ def _candidate_filter(query: Any, body: SleepCandidatesRequest, user_id: str) ->
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="project_id is required when scope is project",
             )
-        query = query.where(Memory.scope_projects.contains([body.project_id]))
+        assert body.project_id is not None
+        project_ids = scope_project_ids or [body.project_id]
+        query = query.where(
+            or_(*(Memory.scope_projects.contains([project_id]) for project_id in project_ids))
+        )
     elif body.scope == "global":
         query = query.where(Memory.scope_global.is_(True))
     return query
@@ -123,7 +136,15 @@ async def get_sleep_candidates(
 ) -> SleepCandidatesResponse:
     """Return all eligible memory candidates page by page for client-side planning."""
     offset = body.cursor or 0
-    base_query = _candidate_filter(select(Memory), body, user_id)
+    canonical_project_id = body.project_id
+    scope_ids: list[str] | None = None
+    if body.scope == "project" and body.project_id:
+        canonical = await canonicalize_project_scopes(
+            session, user_id, [body.project_id]
+        )
+        canonical_project_id = canonical[0]
+        scope_ids = await project_scope_ids(session, user_id, canonical_project_id)
+    base_query = _candidate_filter(select(Memory), body, user_id, scope_ids)
     base_query = base_query.order_by(Memory.updated_at.desc(), Memory.id)
 
     result = await session.execute(base_query)
@@ -146,7 +167,7 @@ async def get_sleep_candidates(
     else:
         sleep_session = SleepSession(
             user_id=user_id,
-            project_id=body.project_id,
+            project_id=canonical_project_id,
             status="draft",
             mode="client_generated",
             candidate_memory_ids=[str(m.id) for m in candidates],
@@ -177,7 +198,7 @@ async def get_sleep_candidates(
 
     return SleepCandidatesResponse(
         session_id=sleep_session.id,
-        project_id=body.project_id,
+        project_id=canonical_project_id,
         candidates=[_memory_item(m) for m in page],
         protected_memories=[
             _memory_item(m, _protection_reason(m)) for m in protected
@@ -379,6 +400,12 @@ async def _apply_create_memory(
         )
 
     scope = payload.get("scope") or {"global": True, "projects": [], "exclude_projects": []}
+    scope_projects = await canonicalize_project_scopes(
+        session, user_id, scope.get("projects", [])
+    )
+    scope_exclude = await canonicalize_project_scopes(
+        session, user_id, scope.get("exclude_projects", [])
+    )
     memory = Memory(
         user_id=user_id,
         title=payload["title"],
@@ -391,8 +418,8 @@ async def _apply_create_memory(
         source="sleep",
         token_count=count_tokens(payload["content"]),
         scope_global=scope.get("global", True),
-        scope_projects=scope.get("projects", []),
-        scope_exclude=scope.get("exclude_projects", []),
+        scope_projects=scope_projects,
+        scope_exclude=scope_exclude,
         sleep_state="distilled",
         derived_from=[str(i) for i in action.get("derived_from", [])],
     )

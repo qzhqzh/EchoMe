@@ -114,6 +114,12 @@ class ProjectContextRequest(BaseModel):
     valid_at: datetime | None = None
     record_run: bool = True
     shadow: bool = False
+    request_id: str | None = Field(None, max_length=64)
+    client: str | None = Field(None, max_length=64)
+    client_version: str | None = Field(None, max_length=64)
+    route: Literal["project", "impact", "temporal"] | None = None
+    fallback: str | None = Field(None, max_length=32)
+    error_code: str | None = Field(None, max_length=64)
 
 
 class ProjectImpactRequest(ProjectContextRequest):

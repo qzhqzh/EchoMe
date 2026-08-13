@@ -278,6 +278,56 @@ class ArtifactChunk(Base):
     )
 
 
+class ProjectAlias(Base):
+    """An auditable hint that resolves to one canonical project."""
+
+    __tablename__ = "project_aliases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    canonical_project_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("projects.id"), nullable=False
+    )
+    alias_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    alias_value: Mapped[str] = mapped_column(String(2048), nullable=False)
+    normalized_value: Mapped[str] = mapped_column(String(2048), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="proposed")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="ai")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "alias_type IN ('legacy_id','name','git_remote','path','client_hint')",
+            name="valid_project_alias_type",
+        ),
+        CheckConstraint(
+            "status IN ('proposed','active','rejected','archived')",
+            name="valid_project_alias_status",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1", name="valid_project_alias_confidence"
+        ),
+        UniqueConstraint(
+            "user_id",
+            "alias_type",
+            "normalized_value",
+            name="uq_project_alias_normalized",
+        ),
+        Index(
+            "idx_project_aliases_canonical_status",
+            "user_id",
+            "canonical_project_id",
+            "status",
+        ),
+    )
+
+
 class ContextRun(Base):
     """An append-only trace of one project context compilation."""
 
@@ -285,7 +335,9 @@ class ContextRun(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    project_id: Mapped[str] = mapped_column(String(128), ForeignKey("projects.id"), nullable=False)
+    project_id: Mapped[str | None] = mapped_column(
+        String(128), ForeignKey("projects.id"), nullable=True
+    )
     query: Mapped[str] = mapped_column(Text, nullable=False)
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="local")
     changed_paths: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -296,14 +348,66 @@ class ContextRun(Base):
     trace: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     shadow: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="completed")
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    client: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    client_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    route: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    fallback: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
     __table_args__ = (
-        CheckConstraint("mode IN ('local','overview','impact')", name="valid_context_run_mode"),
+        CheckConstraint(
+            "mode IN ('personal','local','overview','impact','temporal')",
+            name="valid_context_run_mode",
+        ),
         CheckConstraint("status IN ('completed','failed')", name="valid_context_run_status"),
         Index("idx_context_runs_project_created", "user_id", "project_id", "created_at"),
+    )
+
+
+class ContextOutcome(Base):
+    """An explicit append-only result signal for a delivered context run."""
+
+    __tablename__ = "context_outcomes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    context_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("context_runs.id"), nullable=False
+    )
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    reported_by: Mapped[str] = mapped_column(String(16), nullable=False, default="ai")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="mcp")
+    project_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_events.id"), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('success','partial','failed','corrected','no_signal')",
+            name="valid_context_outcome",
+        ),
+        CheckConstraint(
+            "reported_by IN ('user','ai','system')", name="valid_context_outcome_reporter"
+        ),
+        CheckConstraint(
+            "source IN ('mcp','web','api','ci')", name="valid_context_outcome_source"
+        ),
+        UniqueConstraint(
+            "user_id",
+            "context_run_id",
+            "idempotency_key",
+            name="uq_context_outcome_idempotency",
+        ),
+        Index("idx_context_outcomes_run_created", "user_id", "context_run_id", "created_at"),
     )
 
 

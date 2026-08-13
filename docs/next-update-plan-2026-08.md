@@ -1,5 +1,7 @@
 # EchoMe 下一阶段更新计划（2026-08）
 
+> 本文件记录已在 v1.4.0 交付的 Project Context Compiler 实施过程。文中的“待授权”和 Alembic `010` 等内容是发布前历史快照，不代表当前运行状态；后续版本规划见 [next-version-plan-v1.5.md](next-version-plan-v1.5.md)。
+
 ## 0. 实施与验收状态
 
 状态日期：2026-08-12。

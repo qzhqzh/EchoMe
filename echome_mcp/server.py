@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import os
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -24,6 +25,13 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from echome_mcp import __version__
+from echome_mcp.runtime import (
+    echome_context,
+    echome_context_outcome,
+    echome_runtime_health,
+    error_contract,
+)
 from echome_mcp.tools.browse import echome_browse_memories, echome_search_summary
 from echome_mcp.tools.capabilities import (
     capabilities_json,
@@ -58,7 +66,7 @@ from echome_mcp.tools.sleep import (
 )
 
 # Create MCP server instance
-server = Server("echome")
+server = Server("echome", version=__version__)
 
 PROJECT_CONTEXT_OUTPUT_SCHEMA = {
     "type": "object",
@@ -101,7 +109,7 @@ PREFLIGHT_OUTPUT_SCHEMA = {
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List all available EchoMe tools."""
-    return [
+    tools = [
         Tool(
             name="echome_capabilities",
             description=(
@@ -600,6 +608,98 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="echome_context",
+            description=(
+                "Default EchoMe entry for any task. Automatically routes to personal memory or canonical "
+                "project context, combines project preflight when applicable, and returns evidence, conflicts, "
+                "unknowns, answerability, runtime metadata, and an explicit read-only cache fallback."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string"},
+                    "project_hint": {
+                        "type": "string",
+                        "description": "Optional project ID, alias, Git remote, or path. The current Git remote is inferred when omitted.",
+                    },
+                    "changed_paths": {"type": "array", "items": {"type": "string"}},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["auto", "personal", "project", "impact", "temporal"],
+                        "default": "auto",
+                    },
+                    "token_budget": {"type": "integer", "minimum": 256, "maximum": 50000, "default": 6000},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                    "as_of": {"type": "string", "format": "date-time"},
+                    "valid_at": {"type": "string", "format": "date-time"},
+                    "client": {"type": "string"},
+                    "client_version": {"type": "string"},
+                },
+                "required": ["task"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=False,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_runtime_health",
+            description=(
+                "Diagnose the MCP package, authenticated Hub, database, migration revision, embedding service, "
+                "feature flags, profile, and read-only context cache."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=True,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_context_outcome",
+            description=(
+                "Append an explicit, idempotent outcome for a completed non-shadow echome_context run. "
+                "Use success/partial/failed only when task evidence exists; use corrected with a note. "
+                "Do not infer failure merely because no outcome was reported."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "context_run_id": {"type": "string", "format": "uuid"},
+                    "outcome": {
+                        "type": "string",
+                        "enum": ["success", "partial", "failed", "corrected", "no_signal"],
+                    },
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+                    "reported_by": {
+                        "type": "string",
+                        "enum": ["user", "ai", "system"],
+                        "default": "ai",
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["mcp", "web", "api", "ci"],
+                        "default": "mcp",
+                    },
+                    "project_event_id": {"type": "string", "format": "uuid"},
+                    "note": {"type": "string", "maxLength": 2000},
+                },
+                "required": ["context_run_id", "outcome", "idempotency_key"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
             name="echome_project_context",
             description=(
                 "Default entry point for project implementation work. Returns a task-aware context pack "
@@ -919,6 +1019,19 @@ async def list_tools() -> list[Tool]:
             },
         ),
     ]
+    if os.getenv("ECHOME_MCP_PROFILE", "full") == "core":
+        core_names = {
+            "echome_capabilities",
+            "echome_context",
+            "echome_runtime_health",
+            "echome_context_outcome",
+            "echome_remember",
+            "memory_remember",
+            "echome_memory_feedback",
+            "echome_memory_feedback_batch",
+        }
+        return [tool for tool in tools if tool.name in core_names]
+    return tools
 
 
 @server.list_prompts()
@@ -989,6 +1102,31 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     try:
         if name == "echome_capabilities":
             result = await echome_capabilities(format=arguments.get("format", "json"))
+        elif name == "echome_context":
+            result = await echome_context(
+                task=arguments["task"],
+                project_hint=arguments.get("project_hint"),
+                changed_paths=arguments.get("changed_paths"),
+                mode=arguments.get("mode", "auto"),
+                token_budget=arguments.get("token_budget", 6000),
+                limit=arguments.get("limit", 20),
+                as_of=arguments.get("as_of"),
+                valid_at=arguments.get("valid_at"),
+                client=arguments.get("client"),
+                client_version=arguments.get("client_version"),
+            )
+        elif name == "echome_runtime_health":
+            result = await echome_runtime_health()
+        elif name == "echome_context_outcome":
+            result = await echome_context_outcome(
+                context_run_id=arguments["context_run_id"],
+                outcome=arguments["outcome"],
+                idempotency_key=arguments["idempotency_key"],
+                reported_by=arguments.get("reported_by", "ai"),
+                source=arguments.get("source", "mcp"),
+                project_event_id=arguments.get("project_event_id"),
+                note=arguments.get("note"),
+            )
         elif name in {"echome_search", "memory_search"}:
             result = await echome_search(
                 query=arguments["query"],
@@ -1169,7 +1307,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             "Project path_patterns",
             "Root path",
         )
-        is_error = result.startswith(error_prefixes)
+        is_error = result.startswith(error_prefixes) or bool(
+            isinstance(structured, dict) and structured.get("error")
+        )
+        if is_error and structured is None:
+            structured = error_contract(RuntimeError(result))
         return CallToolResult(
             content=[TextContent(type="text", text=result)],
             structuredContent=structured,
@@ -1177,9 +1319,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         )
 
     except Exception as e:
-        error_msg = f"EchoMe error: {e}"
+        error = error_contract(e)
+        error_msg = json.dumps(error, ensure_ascii=False, indent=2)
         return CallToolResult(
             content=[TextContent(type="text", text=error_msg)],
+            structuredContent=error,
             isError=True,
         )
 
@@ -1228,7 +1372,17 @@ def _create_streamable_http_app() -> Starlette:
     handle_mcp = MCPHTTPApp()
 
     async def health(_request) -> JSONResponse:
-        return JSONResponse({"status": "ok", "transport": "streamable-http"})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "transport": "streamable-http",
+                "service": "echome",
+                "service_version": __version__,
+                "context_schema_version": "echome.context.v1",
+                "error_schema_version": "echome.error.v1",
+                "profile": os.getenv("ECHOME_MCP_PROFILE", "full"),
+            }
+        )
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: Starlette) -> AsyncIterator[None]:

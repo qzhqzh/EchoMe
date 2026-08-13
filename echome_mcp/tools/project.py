@@ -14,7 +14,7 @@ async def echome_list_projects() -> str:
     try:
         projects = await client.list_projects()
     except Exception as e:
-        return f"获取项目列表失败: {e}"
+        raise RuntimeError(f"获取项目列表失败: {e}") from e
 
     if not projects:
         return "当前没有项目。可以使用 echome_create_project 创建新项目。"
@@ -75,7 +75,7 @@ async def echome_create_project(
         error_msg = str(e)
         if "409" in error_msg or "already exists" in error_msg.lower():
             return f"项目 '{project_id}' 已存在，无需重复创建。"
-        return f"创建项目失败: {e}"
+        raise RuntimeError(f"创建项目失败: {e}") from e
 
     return (
         f"项目创建成功！\n\n"

@@ -412,6 +412,10 @@ class ApiClient {
     return this.request('GET', '/retrieval-debug/logs', undefined, params)
   }
 
+  async listContextRuns(params?: { project_id?: string; limit?: number }): Promise<any> {
+    return this.request('GET', '/project-knowledge/context-runs', undefined, params)
+  }
+
   // --- Admin ---
 
   async getAdminStats(): Promise<any> {

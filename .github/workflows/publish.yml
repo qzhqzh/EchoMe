@@ -60,6 +60,11 @@ jobs:
         run: |
           echo '__version__ = "${{ steps.bump.outputs.version }}"' > echome/__init__.py
 
+      - name: Update MCP and Hub runtime versions
+        run: |
+          sed -i 's/__version__ = "${{ steps.current.outputs.version }}"/__version__ = "${{ steps.bump.outputs.version }}"/' echome_mcp/__init__.py
+          sed -i 's/app_version: str = "${{ steps.current.outputs.version }}"/app_version: str = "${{ steps.bump.outputs.version }}"/' hub/app/core/config.py
+
       - name: Generate changelog
         id: changelog
         run: |
@@ -92,7 +97,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml echome/__init__.py CHANGELOG.md
+          git add pyproject.toml echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py CHANGELOG.md
           git commit -m "release: v${{ steps.bump.outputs.version }}"
 
       - name: Create tag
