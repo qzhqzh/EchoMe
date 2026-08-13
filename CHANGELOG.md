@@ -1,3 +1,7 @@
+## v1.5.0
+
+- d718438 feat: add reliable context runtime (#85)
+
 ## v1.4.0
 
 - feat: add evidence-first Project Context Compiler with chunk/FTS/vector/graph/temporal retrieval
