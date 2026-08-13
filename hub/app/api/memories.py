@@ -23,9 +23,27 @@ from app.schemas.memory import (
     SearchResultItem,
 )
 from app.services.embedding import get_embedding
+from app.services.project_identity import (
+    canonicalize_project_scopes,
+    project_scope_ids,
+    resolve_project,
+)
 from app.services.token_counter import count_tokens
 
 router = APIRouter(prefix="/memories", tags=["memories"])
+
+
+async def _query_project_scope_ids(
+    session: AsyncSession, user_id: str, project_hint: str
+) -> list[str]:
+    """Expand active aliases while preserving the old unknown-project empty result."""
+    try:
+        project = (await resolve_project(session, user_id, project_hint)).project
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return [project_hint]
+        raise
+    return await project_scope_ids(session, user_id, project.id)
 
 
 def _query_tokens(query: str) -> list[str]:
@@ -121,7 +139,10 @@ async def list_memories(
         for tag in tag_list:
             query = query.where(Memory.tags.contains([tag]))
     if project_id:
-        query = query.where(Memory.scope_projects.contains([project_id]))
+        scope_ids = await _query_project_scope_ids(session, user_id, project_id)
+        query = query.where(
+            or_(*(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids))
+        )
     relevance = None
     if isinstance(search_query, str) and search_query:
         title_field = func.lower(Memory.title)
@@ -202,6 +223,12 @@ async def create_memory(
         )
 
     token_count = count_tokens(body.content)
+    scope_projects = await canonicalize_project_scopes(
+        session, user_id, body.scope.projects
+    )
+    scope_exclude = await canonicalize_project_scopes(
+        session, user_id, body.scope.exclude_projects
+    )
 
     memory = Memory(
         user_id=user_id,
@@ -213,8 +240,8 @@ async def create_memory(
         tags=body.tags,
         status=body.status.value,
         scope_global=body.scope.global_,
-        scope_projects=body.scope.projects,
-        scope_exclude=body.scope.exclude_projects,
+        scope_projects=scope_projects,
+        scope_exclude=scope_exclude,
         source=body.source.value,
         token_count=token_count,
         visibility=body.visibility.value,
@@ -254,6 +281,13 @@ async def update_memory(
             detail="project type memory must be associated with a project",
         )
 
+    scope_projects = await canonicalize_project_scopes(
+        session, user_id, body.scope.projects
+    )
+    scope_exclude = await canonicalize_project_scopes(
+        session, user_id, body.scope.exclude_projects
+    )
+
     memory.title = body.title
     memory.content = body.content
     memory.type = body.type.value
@@ -262,8 +296,8 @@ async def update_memory(
     memory.tags = body.tags
     memory.status = body.status.value
     memory.scope_global = body.scope.global_
-    memory.scope_projects = body.scope.projects
-    memory.scope_exclude = body.scope.exclude_projects
+    memory.scope_projects = scope_projects
+    memory.scope_exclude = scope_exclude
     memory.source = body.source.value
     memory.token_count = count_tokens(body.content)
     memory.visibility = body.visibility.value
@@ -300,8 +334,12 @@ async def patch_memory(
     if "scope" in update_data and update_data["scope"] is not None:
         scope = update_data.pop("scope")
         memory.scope_global = scope.get("global", memory.scope_global)
-        memory.scope_projects = scope.get("projects", memory.scope_projects)
-        memory.scope_exclude = scope.get("exclude_projects", memory.scope_exclude)
+        memory.scope_projects = await canonicalize_project_scopes(
+            session, user_id, scope.get("projects", memory.scope_projects)
+        )
+        memory.scope_exclude = await canonicalize_project_scopes(
+            session, user_id, scope.get("exclude_projects", memory.scope_exclude)
+        )
 
     for field, value in update_data.items():
         if value is not None:
@@ -369,8 +407,12 @@ async def search_memories(
         for tag in body.tags:
             base_filter.append(Memory.tags.contains([tag]))
     if body.project_id:
+        scope_ids = await _query_project_scope_ids(session, user_id, body.project_id)
         base_filter.append(
-            (Memory.scope_global.is_(True)) | (Memory.scope_projects.contains([body.project_id]))
+            or_(
+                Memory.scope_global.is_(True),
+                *(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids),
+            )
         )
 
     # Try vector search first

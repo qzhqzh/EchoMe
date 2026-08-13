@@ -26,6 +26,7 @@ from app.models.project_knowledge import (
 )
 from app.schemas.project_knowledge import ProjectContextRequest
 from app.services.embedding import get_embedding, get_embeddings
+from app.services.project_identity import project_scope_ids
 from app.services.token_counter import count_tokens
 
 ACTIVE_CONSTRAINT_STATUSES = {"active", "proposed", "uncertain"}
@@ -371,6 +372,7 @@ async def compile_project_context(
     user_id: str,
 ) -> dict[str, Any]:
     """Compile memory, constraints, chunks, graph signals, and freshness warnings."""
+    body = body.model_copy(update={"project_id": project.id})
     now = datetime.now(timezone.utc)
     as_of = body.as_of or now
     valid_at = body.valid_at or as_of
@@ -443,10 +445,14 @@ async def compile_project_context(
         if _is_temporally_active(item, valid_at=valid_at, as_of=as_of)
     ]
 
+    scope_ids = await project_scope_ids(session, user_id, project.id)
     memory_filter = [
         Memory.user_id == user_id,
         Memory.status.in_(ACTIVE_MEMORY_STATUSES),
-        or_(Memory.scope_global.is_(True), Memory.scope_projects.contains([body.project_id])),
+        or_(
+            Memory.scope_global.is_(True),
+            *(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids),
+        ),
     ]
     if body.as_of:
         memory_filter.append(Memory.updated_at <= body.as_of)
@@ -906,6 +912,12 @@ async def compile_project_context(
             },
             trace=trace_payload,
             shadow=body.shadow,
+            request_id=body.request_id,
+            client=body.client,
+            client_version=body.client_version,
+            route=body.route,
+            fallback=body.fallback,
+            error_code=body.error_code,
         )
         session.add(run)
         await session.flush()

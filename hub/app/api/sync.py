@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
@@ -20,6 +20,7 @@ from app.schemas.memory import (
     SyncPushRequest,
     SyncPushResponse,
 )
+from app.services.project_identity import canonicalize_project_scopes, project_scope_ids
 from app.services.renderer import render_memories
 from app.services.token_counter import count_tokens
 
@@ -41,6 +42,12 @@ async def push_sync(
     affected_ids: list[str] = []
 
     for item in body.memories:
+        scope_projects = await canonicalize_project_scopes(
+            session, user_id, item.scope.projects
+        )
+        scope_exclude = await canonicalize_project_scopes(
+            session, user_id, item.scope.exclude_projects
+        )
         if item.id:
             # Try to find existing
             result = await session.execute(
@@ -52,7 +59,12 @@ async def push_sync(
 
         if existing:
             # Check if content changed
-            if existing.content == item.content and existing.title == item.title:
+            if (
+                existing.content == item.content
+                and existing.title == item.title
+                and existing.scope_projects == scope_projects
+                and existing.scope_exclude == scope_exclude
+            ):
                 unchanged += 1
                 continue
 
@@ -64,8 +76,8 @@ async def push_sync(
             existing.tags = item.tags
             existing.status = item.status.value
             existing.scope_global = item.scope.global_
-            existing.scope_projects = item.scope.projects
-            existing.scope_exclude = item.scope.exclude_projects
+            existing.scope_projects = scope_projects
+            existing.scope_exclude = scope_exclude
             existing.source = item.source.value
             existing.visibility = item.visibility.value
             existing.token_count = count_tokens(item.content)
@@ -84,8 +96,8 @@ async def push_sync(
                 tags=item.tags,
                 status=item.status.value,
                 scope_global=item.scope.global_,
-                scope_projects=item.scope.projects,
-                scope_exclude=item.scope.exclude_projects,
+                scope_projects=scope_projects,
+                scope_exclude=scope_exclude,
                 source=item.source.value,
                 visibility=item.visibility.value,
                 token_count=count_tokens(item.content),
@@ -156,19 +168,30 @@ async def render(
     """
     # Fetch relevant memories
     query = select(Memory).where(Memory.user_id == user_id, Memory.status.in_(["active", "ai_review"]))
+    render_project_ids: list[str] = []
+    if body.project_id:
+        canonical = await canonicalize_project_scopes(session, user_id, [body.project_id])
+        render_project_ids = await project_scope_ids(session, user_id, canonical[0])
+    project_filter = (
+        or_(*(Memory.scope_projects.contains([item]) for item in render_project_ids))
+        if render_project_ids
+        else None
+    )
 
     if body.layer:
         # Explicit layer override
         query = query.where(Memory.layer == body.layer.value)
         if body.project_id:
+            assert project_filter is not None
             query = query.where(
                 (Memory.scope_global.is_(True))
-                | (Memory.scope_projects.contains([body.project_id]))
+                | project_filter
             )
         else:
             query = query.where(Memory.scope_global.is_(True))
         max_tokens = settings.l0_max_tokens
     elif body.project_id:
+        assert project_filter is not None
         # Project render: L0 global + L1 scoped to this project
         query = query.where(
             # L0 global memories
@@ -176,7 +199,7 @@ async def render(
             # L1 memories scoped to this project (or global L1)
             | ((Memory.layer == "L1") & (
                 (Memory.scope_global.is_(True))
-                | (Memory.scope_projects.contains([body.project_id]))
+                | project_filter
             ))
         )
         max_tokens = settings.l0_max_tokens + settings.l1_max_tokens

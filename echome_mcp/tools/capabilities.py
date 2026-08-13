@@ -1,12 +1,21 @@
 """EchoMe MCP capability guide for agents."""
 
 import json
+import os
 from typing import Any
+
+from echome_mcp import __version__
 
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
+    "mcp_version": __version__,
+    "capabilities_version": "echome.capabilities.v2",
+    "context_schema_version": "echome.context.v1",
+    "error_schema_version": "echome.error.v1",
+    "profile": os.getenv("ECHOME_MCP_PROFILE", "full"),
     "purpose": "Personal memory and project context layer for AI agents.",
     "recommended_start": "echome_capabilities",
+    "default_context_tool": "echome_context",
     "default_retrieval_workflow": [
         {
             "step": "discover",
@@ -57,7 +66,22 @@ CAPABILITIES: dict[str, Any] = {
                 "tool": "echome_capabilities",
                 "when": "First contact with EchoMe MCP, or when unsure which EchoMe tool to use.",
                 "mutates_state": False,
-            }
+            },
+            {
+                "tool": "echome_context",
+                "when": "Default single entry for personal or project work; routes automatically and returns answerability plus runtime metadata.",
+                "mutates_state": False,
+            },
+            {
+                "tool": "echome_runtime_health",
+                "when": "Diagnose Hub, database, migration, embedding, MCP version, profile, and cache state.",
+                "mutates_state": False,
+            },
+            {
+                "tool": "echome_context_outcome",
+                "when": "After a completed context run when task evidence clearly shows success, partial value, failure, or correction.",
+                "mutates_state": True,
+            },
         ],
         "retrieval": [
             {
@@ -171,6 +195,7 @@ CAPABILITIES: dict[str, Any] = {
         ],
     },
     "rules": [
+        "Use echome_context as the default initial call; use specialized tools only when its conflicts, unknowns, or recommended actions require focused follow-up.",
         "Do not assume user workflow or project conventions when EchoMe is connected; retrieve relevant memories first.",
         "Use summary-first for broad questions; avoid relying on top_k=5 semantic search for complete project context.",
         "Use graph explanation after reading a key memory if the task depends on its correctness or freshness.",
@@ -180,6 +205,7 @@ CAPABILITIES: dict[str, Any] = {
         "Use memory tools for user behavior and working preferences; use project-intelligence tools for requirements, implementation constraints, evidence, and impact analysis.",
         "For project work, call echome_project_preflight before material actions and echome_project_context for the evidence-first context pack; do not ask the user to choose between memory and graph search.",
         "Project events and inferred constraints remain proposals/evidence. They do not silently become active constraints or mutate memories.",
+        "Context outcomes are append-only evidence for completed non-shadow runs; missing feedback is unknown, never an inferred failure.",
     ],
 }
 
@@ -195,18 +221,20 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
     return (
         "Use EchoMe MCP as the memory and project-context layer."
         f"{project_hint}\n\n"
-        "For implementation work with a known project, call echome_project_preflight before material actions, "
-        "then call echome_project_context with the task and changed paths. Use local mode for focused work, "
-        "overview for orientation, and impact for propagation analysis.\n\n"
+        "Start with echome_context for personal or project work. It infers the current Git remote when possible, "
+        "resolves canonical project aliases, and combines project preflight with context compilation. Use the "
+        "specialized project or graph tools only when the returned conflicts, unknowns, or recommended actions "
+        "require focused follow-up.\n\n"
         "Default workflow:\n"
         "1. For broad tasks, call echome_search_summary with a concise query and optional project_id.\n"
         "2. Select only relevant UUIDs and call echome_get_memories.\n"
         "3. If a selected memory is important for a project decision, deployment, version, historical assumption, "
         "or could be stale, call echome_memory_explain on that memory.\n"
         "4. If neighboring context matters, call echome_memory_neighbors with include_inactive=true for provenance.\n"
-        "5. At task end, if memory usefulness is clear or the user corrected a memory, call echome_memory_feedback or echome_memory_feedback_batch.\n"
-        "6. Treat archived/deprecated memories as non-active facts unless graph provenance explains why they matter.\n"
-        "7. Use echome_remember only for durable preferences, decisions, conventions, or reusable project context.\n\n"
+        "5. At task end, if the unified context result clearly affected task success, call echome_context_outcome once with an idempotency key; otherwise leave it unknown.\n"
+        "6. If individual memory usefulness is clear or the user corrected a memory, call echome_memory_feedback or echome_memory_feedback_batch.\n"
+        "7. Treat archived/deprecated memories as non-active facts unless graph provenance explains why they matter.\n"
+        "8. Use echome_remember only for durable preferences, decisions, conventions, or reusable project context.\n\n"
         "Do not ask the user to remember tool names. Infer the needed EchoMe tools from the task."
     )
 

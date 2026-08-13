@@ -55,6 +55,21 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ## 4. Tools
 
+### 4.0 v1.5 默认入口与运行契约
+
+- `echome_context`：任务默认入口；可推断当前 Git remote，解析 canonical project，并返回统一 context envelope。
+- `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界。
+- `echome_context_outcome`：对 completed、non-shadow Context Run 追加幂等结果信号；缺失信号不等于失败。
+- `ECHOME_MCP_PROFILE=core`：仅暴露 capability、context、health、remember、outcome 和 memory feedback；默认仍为 `full`。
+
+`echome_context` Hub 不可达时，只能返回完全相同请求键的 last-known-good 只读缓存，并显式设置
+`runtime.degraded=true` 和 `fallback=last_known_good`。缓存目录权限为 `0700`，文件为 `0600`；
+缓存正文使用独立生成的本机随机密钥执行 AES-256-GCM 加密，认证 token 只参与 Hub/账号 namespace，
+默认最多保留 7 天；没有 token 时不写缓存。写操作不进入离线队列，也不会伪成功。
+
+MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `message`、`retryable`、
+`request_id`、`degraded` 和 `suggested_action`。
+
 ### 4.1 echome_search_summary
 
 **描述**: 返回紧凑的记忆摘要索引，用于先浏览候选记忆，再按 UUID 精读。适合项目记忆较多、问题范围较宽、或语义搜索 top-k 可能遗漏相关记忆的场景。

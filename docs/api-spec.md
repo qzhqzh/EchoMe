@@ -522,3 +522,43 @@ Project Knowledge 与个人 Memory 独立存储，并通过 Project Context Comp
 自动化由 `ECHOME_PROJECT_AUTOMATION_ENABLED` 控制，默认 `false`。即使开启且质量门禁通过，
 也只允许生成 pending proposal，不会覆盖或删除 Memory、Artifact revision 或 Constraint version。
 客户端不能向质量快照端点提交检索结果；连续门禁只接受 Hub 自己执行并记录的快照。
+
+---
+
+## 13. Reliable Context Runtime
+
+### Unified Context And Health
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/context` | 单入口获取 personal 或 canonical project context；返回 evidence、conflicts、unknowns、answerability 与 runtime metadata |
+| `GET` | `/api/v1/context/runtime/health` | 检查认证、Hub、数据库、Alembic revision、embedding 与 feature flags |
+
+`POST /context` 支持 `task`、`project_hint`、`changed_paths`、`mode`、`token_budget`、
+`limit`、`as_of`、`valid_at`、`request_id`、`client` 和 `client_version`。`mode=auto`
+在有项目提示时解析 canonical project；没有项目提示时走 bounded personal memory route。
+当前 personal route 使用有界词法召回；图与时间多路召回尚未进入本轮发布候选。
+
+### Canonical Project Aliases
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/projects/resolve` | 按 ID、name、Git remote、path 或 client hint 精确解析 canonical project |
+| `GET` | `/api/v1/projects/aliases` | 查询 proposed/active aliases |
+| `POST` | `/api/v1/projects/aliases` | 创建 proposed alias；不能在创建时直接激活 |
+| `PATCH` | `/api/v1/projects/aliases/{alias_id}` | 显式激活、拒绝或归档 alias |
+
+Alias 不搬迁或覆盖历史数据。读路径可展开 active 的历史 scope；写路径把已知 active alias 统一为
+canonical project，无法解析的旧 scope 为兼容历史客户端而原样保留。
+歧义解析返回 `409`，未知项目返回 `404`，跨用户 alias 不可见。
+
+### Context Outcomes
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/context-outcomes` | 为 completed、non-shadow Context Run 追加一个显式结果信号 |
+| `POST` | `/api/v1/context-outcomes/batch` | 最多批量追加 50 个幂等结果信号 |
+| `GET` | `/api/v1/context-outcomes?context_run_id=...` | 读取某次 Context Run 的 append-only outcomes |
+
+Outcome 可为 `success | partial | failed | corrected | no_signal`。`corrected` 必须带 note；
+system/CI 信号必须关联属于同一用户和项目的 Project Event。未提交 outcome 表示 unknown，不能推断为失败。

@@ -45,7 +45,7 @@ class TestSleepCandidates:
     """Tests for sleep candidate pagination and protection."""
 
     @pytest.mark.asyncio
-    async def test_candidates_page_is_not_plain_top_k(self, test_user_id: str):
+    async def test_candidates_page_is_not_plain_top_k(self, test_user_id: str, monkeypatch):
         from app.api.memory_sleep import get_sleep_candidates
         from app.schemas.sleep import SleepCandidatesRequest
 
@@ -71,8 +71,17 @@ class TestSleepCandidates:
         mock_session.flush = AsyncMock()
         mock_session.commit = AsyncMock()
 
+        monkeypatch.setattr(
+            "app.api.memory_sleep.canonicalize_project_scopes",
+            AsyncMock(return_value=["qzhqzh/EchoMe"]),
+        )
+        monkeypatch.setattr(
+            "app.api.memory_sleep.project_scope_ids",
+            AsyncMock(return_value=["EchoMe", "qzhqzh/EchoMe"]),
+        )
+
         body = SleepCandidatesRequest(
-            project_id="qzhqzh/EchoMe",
+            project_id="EchoMe",
             page_size=2,
             include_protected=True,
         )
@@ -80,6 +89,7 @@ class TestSleepCandidates:
         result = await get_sleep_candidates(body=body, session=mock_session, user_id=test_user_id)
 
         assert len(result.candidates) == 2
+        assert result.project_id == "qzhqzh/EchoMe"
         assert "ai_review" in {m.status.value for m in result.candidates}
         assert result.has_more is True
         assert result.next_cursor == 2

@@ -62,6 +62,7 @@ from app.services.context_quality_eval import (
     load_context_quality_cases,
 )
 from app.services.embedding import get_embedding, get_embeddings
+from app.services.project_identity import resolve_project
 from app.services.quality_automation import evaluate_automation_gate
 from app.services.token_counter import count_tokens
 
@@ -80,13 +81,7 @@ CONSTRAINT_REVISION_FIELDS = {
 
 
 async def _require_project(session: AsyncSession, project_id: str, user_id: str) -> Project:
-    result = await session.execute(
-        select(Project).where(Project.id == project_id, Project.user_id == user_id)
-    )
-    project = result.scalar_one_or_none()
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
+    return (await resolve_project(session, user_id, project_id)).project
 
 
 def _artifact_payload(artifact: ProjectArtifact, include_content: bool = False) -> dict[str, Any]:
@@ -578,6 +573,7 @@ async def get_workspace(
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
     project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     constraint_counts = await session.execute(
         select(ProjectConstraint.status, func.count(ProjectConstraint.id))
         .where(ProjectConstraint.user_id == user_id, ProjectConstraint.project_id == project_id)
@@ -623,7 +619,8 @@ async def check_artifact_sync(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     result = await session.execute(
         select(ProjectArtifact).where(
             ProjectArtifact.user_id == user_id,
@@ -663,7 +660,8 @@ async def apply_artifact_sync(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     created: list[dict[str, Any]] = []
     unchanged: list[str] = []
     for item in body.artifacts:
@@ -729,7 +727,8 @@ async def list_artifacts(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     query = select(ProjectArtifact).where(
         ProjectArtifact.user_id == user_id,
         ProjectArtifact.project_id == project_id,
@@ -747,7 +746,8 @@ async def create_constraint(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     existing = await session.scalar(
         select(ProjectConstraint).where(
             ProjectConstraint.user_id == user_id,
@@ -812,7 +812,8 @@ async def list_constraints(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     query = select(ProjectConstraint).where(
         ProjectConstraint.user_id == user_id, ProjectConstraint.project_id == project_id
     )
@@ -832,7 +833,8 @@ async def create_constraint_edge(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     ids = {body.source_constraint_id, body.target_constraint_id}
     result = await session.execute(
         select(ProjectConstraint.id).where(
@@ -872,7 +874,8 @@ async def create_constraint_evidence(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     constraint = await session.scalar(
         select(ProjectConstraint).where(
             ProjectConstraint.id == body.constraint_id,
@@ -956,7 +959,8 @@ async def get_project_graph(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     constraints, artifacts, edges, evidence = await _load_graph(session, project_id, user_id)
     if not include_inactive:
         constraints = [item for item in constraints if item.status in ACTIVE_CONSTRAINT_STATUSES]
@@ -1061,7 +1065,8 @@ async def analyze_project_impact(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     constraints, artifacts, edges, evidence = await _load_graph(session, body.project_id, user_id)
     selected, reasons = _select_impact_ids(constraints, artifacts, edges, evidence, body)
     selected_constraints = [item for item in constraints if item.id in selected]
@@ -1165,6 +1170,7 @@ async def get_project_context(
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     if settings.context_compiler_enabled and not body.shadow:
         return await compile_project_context(session, project, body, user_id)
 
@@ -1189,7 +1195,8 @@ async def rebuild_artifact_chunks(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
         {"lock_key": f"artifact-chunk-backfill:{user_id}:{body.project_id}"},
@@ -1253,7 +1260,8 @@ async def list_artifact_chunks(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     query = (
         select(ArtifactChunk, ProjectArtifact)
         .join(ProjectArtifact, ProjectArtifact.id == ArtifactChunk.artifact_id)
@@ -1281,7 +1289,8 @@ async def rebuild_constraint_embeddings(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     query = select(ProjectConstraint).where(
         ProjectConstraint.user_id == user_id,
         ProjectConstraint.project_id == body.project_id,
@@ -1310,18 +1319,16 @@ async def rebuild_constraint_embeddings(
 
 @router.get("/context-runs")
 async def list_context_runs(
-    project_id: str = Query(...),
+    project_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
-    result = await session.execute(
-        select(ContextRun)
-        .where(ContextRun.user_id == user_id, ContextRun.project_id == project_id)
-        .order_by(ContextRun.created_at.desc())
-        .limit(limit)
-    )
+    query = select(ContextRun).where(ContextRun.user_id == user_id)
+    if project_id:
+        project = await _require_project(session, project_id, user_id)
+        query = query.where(ContextRun.project_id == project.id)
+    result = await session.execute(query.order_by(ContextRun.created_at.desc()).limit(limit))
     items = [
         {
             "id": str(item.id),
@@ -1336,6 +1343,12 @@ async def list_context_runs(
             "trace": item.trace,
             "shadow": item.shadow,
             "status": item.status,
+            "request_id": item.request_id,
+            "client": item.client,
+            "client_version": item.client_version,
+            "route": item.route,
+            "fallback": item.fallback,
+            "error_code": item.error_code,
             "created_at": item.created_at.isoformat(),
         }
         for item in result.scalars().all()
@@ -1349,7 +1362,8 @@ async def create_knowledge_view(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     source_refs: list[dict[str, Any]] = []
     plural_keys = {
         "artifact_ids": "artifact_id",
@@ -1403,7 +1417,8 @@ async def list_knowledge_views(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     query = select(KnowledgeView).where(
         KnowledgeView.user_id == user_id,
         KnowledgeView.project_id == project_id,
@@ -1421,7 +1436,8 @@ async def create_revalidation_proposal(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     constraint = await session.scalar(
         select(ProjectConstraint).where(
             ProjectConstraint.id == body.constraint_id,
@@ -1465,7 +1481,8 @@ async def list_revalidation_proposals(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     query = select(ConstraintRevalidationProposal).where(
         ConstraintRevalidationProposal.user_id == user_id,
         ConstraintRevalidationProposal.project_id == project_id,
@@ -1558,7 +1575,8 @@ async def append_project_event(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     await _validate_event_links(session, body.links, body.project_id, user_id)
     event_id = uuid.uuid4()
     values = body.model_dump(exclude={"links", "metadata"})
@@ -1616,7 +1634,8 @@ async def list_project_events(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     query = select(ProjectEvent).where(
         ProjectEvent.user_id == user_id,
         ProjectEvent.project_id == project_id,
@@ -1646,6 +1665,7 @@ async def project_preflight(
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     event_result = await session.execute(
         select(ProjectEvent)
         .where(ProjectEvent.user_id == user_id, ProjectEvent.project_id == body.project_id)
@@ -1815,6 +1835,7 @@ async def create_context_quality_snapshot(
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     cases = load_context_quality_cases()
     if body.project_id != cases.get("project_id"):
         raise HTTPException(
@@ -1874,7 +1895,8 @@ async def list_context_quality_snapshots(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     result = await session.execute(
         select(ContextQualitySnapshot)
         .where(
@@ -1915,7 +1937,8 @@ async def get_automation_gate(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     gate = await _quality_gate(session, project_id, user_id, required_snapshots)
     gate["feature_enabled"] = settings.project_automation_enabled
     gate["proposal_only"] = True
@@ -1928,7 +1951,8 @@ async def run_proposal_automation(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, body.project_id, user_id)
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
     existing = await session.scalar(
         select(AutomationProposalRun).where(
             AutomationProposalRun.user_id == user_id,
@@ -2084,7 +2108,8 @@ async def list_proposal_automation_runs(
     session: AsyncSession = Depends(get_session),
     user_id: str = Depends(verify_token),
 ) -> dict[str, Any]:
-    await _require_project(session, project_id, user_id)
+    project = await _require_project(session, project_id, user_id)
+    project_id = project.id
     result = await session.execute(
         select(AutomationProposalRun)
         .where(

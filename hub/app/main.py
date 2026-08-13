@@ -13,6 +13,8 @@ from slowapi.errors import RateLimitExceeded
 from app.api import (
     admin,
     auth,
+    context_outcomes,
+    context_runtime,
     feedback,
     health,
     market,
@@ -75,6 +77,8 @@ app.add_middleware(
 # Register routers
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(context_runtime.router, prefix="/api/v1")
+app.include_router(context_outcomes.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")
 app.include_router(memory_sleep.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")

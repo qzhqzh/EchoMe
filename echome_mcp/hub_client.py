@@ -1,5 +1,6 @@
 """HTTP client for MCP Server to communicate with EchoMe Hub."""
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,10 @@ class MCPHubClient:
     def __init__(self) -> None:
         config = _load_config()
         self.base_url = config["hub_url"].rstrip("/")
+        self.cache_namespace = hashlib.sha256(
+            f"{self.base_url}\0{config['token']}".encode()
+        ).hexdigest()
+        self.cache_enabled = bool(config["token"])
         self._headers = {
             "Authorization": f"Bearer {config['token']}",
             "Content-Type": "application/json",
@@ -254,6 +259,31 @@ class MCPHubClient:
             timeout=PROJECT_CONTEXT_TIMEOUT,
         ) as client:
             resp = await client.post("/api/v1/project-knowledge/context", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def unified_context(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Get one routed personal or project context envelope."""
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers,
+            timeout=PROJECT_CONTEXT_TIMEOUT,
+        ) as client:
+            resp = await client.post("/api/v1/context", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def runtime_health(self) -> dict[str, Any]:
+        """Check authenticated Hub runtime dependencies."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get("/api/v1/context/runtime/health")
+            resp.raise_for_status()
+            return resp.json()
+
+    async def create_context_outcome(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Append an explicit result signal for one completed context run."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post("/api/v1/context-outcomes", json=data)
             resp.raise_for_status()
             return resp.json()
 
