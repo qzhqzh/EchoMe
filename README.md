@@ -16,12 +16,12 @@ EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它�
 ## 核心架构
 
 <a href="https://qzhqzh.github.io/EchoMe/?theme=dark&amp;present=1">
-  <img src="docs/echome-architecture-v1.5.github-dark-present.png" alt="EchoMe v1.5 系统架构图（Dark + Presentation）" width="100%">
+  <img src="docs/echome-architecture-v1.5.0.github-dark-present.png" alt="EchoMe v1.5.0 系统与部署架构图（Dark + Presentation）" width="100%">
 </a>
 
 > 点击架构图进入[交互式版本](https://qzhqzh.github.io/EchoMe/?theme=dark&present=1)。默认使用 **Dark + Presentation Stage**，支持节点搜索、关系追踪、缩放、主题切换和图片导出。
 
-架构图由 [Archify 规格](docs/echome-architecture-v1.5.archify.json) 生成，独立 HTML 保存在 [docs/echome-architecture-v1.5.html](docs/echome-architecture-v1.5.html)。
+架构图由 [Archify 规格](docs/echome-architecture-v1.5.0.archify.json) 生成，独立 HTML 保存在 [docs/echome-architecture-v1.5.0.html](docs/echome-architecture-v1.5.0.html)。
 
 ## 核心能力
 
