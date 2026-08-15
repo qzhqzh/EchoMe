@@ -1,0 +1,313 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "EchoMe v1.5 系统架构",
+    "output": "echome-architecture-v1.5.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/qzhqzh/EchoMe",
+      "revision": "7fba4eef599ff20f777617b0cc88f35018f275ec"
+    },
+    "viewBox": [1400, 800],
+    "views": [
+      {
+        "id": "ai-context",
+        "label": "AI 上下文检索",
+        "focus": ["ai-clients", "mcp-gateway", "mcp-server", "context-runtime", "postgres", "embedding"],
+        "note": "从 Codex、Claude、Cursor 经 MCP 进入统一 echome_context，并返回带证据的上下文包。"
+      },
+      {
+        "id": "human-management",
+        "label": "人工管理与观测",
+        "focus": ["browser", "web-console", "hub-api", "postgres"],
+        "note": "Web Console 通过 Hub 管理记忆、项目知识、关系图、评估和 Context Runs。"
+      },
+      {
+        "id": "controlled-learning",
+        "label": "受控整理与学习",
+        "focus": ["hub-api", "sleep-quality", "postgres"],
+        "note": "Sleep proposal、feedback 与 Context Outcome 追加证据，不静默覆盖原始记忆。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "ai-clients",
+      "type": "external",
+      "label": "AI 客户端",
+      "sublabel": "Codex / Claude / Cursor",
+      "pos": [40, 180],
+      "size": [155, 68]
+    },
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "用户浏览器",
+      "sublabel": "管理与调试",
+      "pos": [40, 410],
+      "size": [155, 64]
+    },
+    {
+      "id": "cli",
+      "type": "external",
+      "label": "EchoMe CLI",
+      "sublabel": "sync / index / review",
+      "pos": [40, 630],
+      "size": [155, 64],
+      "sources": [
+        {"path": "echome/main.py", "label": "CLI 入口"}
+      ]
+    },
+    {
+      "id": "mcp-gateway",
+      "type": "cloud",
+      "label": "MCP Gateway",
+      "sublabel": "HTTP :3002 /mcp",
+      "tag": "本机 systemd",
+      "pos": [270, 180],
+      "size": [155, 68]
+    },
+    {
+      "id": "mcp-server",
+      "type": "backend",
+      "label": "EchoMe MCP Server",
+      "sublabel": "29 tools · v1.5.0",
+      "pos": [500, 180],
+      "size": [170, 68],
+      "sources": [
+        {"path": "echome_mcp/server.py", "line": 1, "label": "MCP tools 与 transport"},
+        {"path": "echome_mcp/runtime.py", "line": 1, "label": "统一运行时客户端"}
+      ]
+    },
+    {
+      "id": "web-console",
+      "type": "frontend",
+      "label": "Web Console",
+      "sublabel": "Vue 3 + Nginx :20001",
+      "pos": [270, 410],
+      "size": [170, 68],
+      "sources": [
+        {"path": "web/src/App.vue", "label": "管理界面"},
+        {"path": "web/src/views/RetrievalLogs.vue", "label": "Context Runs"}
+      ]
+    },
+    {
+      "id": "hub-api",
+      "type": "backend",
+      "label": "EchoMe Hub API",
+      "sublabel": "FastAPI :20000",
+      "tag": "JWT / rate limit",
+      "pos": [500, 410],
+      "size": [170, 72],
+      "sources": [
+        {"path": "hub/app/main.py", "line": 24, "label": "应用与路由"},
+        {"path": "docker-compose.yaml", "line": 1, "label": "生产服务"}
+      ]
+    },
+    {
+      "id": "context-runtime",
+      "type": "backend",
+      "label": "Context Runtime",
+      "sublabel": "identity + compiler + impact",
+      "tag": "evidence-first",
+      "pos": [760, 180],
+      "size": [180, 72],
+      "sources": [
+        {"path": "hub/app/api/context_runtime.py", "line": 54, "label": "统一 context API"},
+        {"path": "hub/app/services/context_compiler.py", "label": "上下文编译"},
+        {"path": "hub/app/services/project_identity.py", "label": "项目身份解析"}
+      ]
+    },
+    {
+      "id": "sleep-quality",
+      "type": "backend",
+      "label": "Sleep 与质量闭环",
+      "sublabel": "proposal / eval / outcome",
+      "tag": "append-only",
+      "pos": [760, 550],
+      "size": [180, 72],
+      "sources": [
+        {"path": "hub/app/api/memory_sleep.py", "line": 31, "label": "Sleep 预案"},
+        {"path": "hub/app/api/context_outcomes.py", "line": 16, "label": "Outcome 信号"},
+        {"path": "hub/app/api/project_knowledge.py", "line": 1759, "label": "质量评估"}
+      ]
+    },
+    {
+      "id": "embedding",
+      "type": "backend",
+      "label": "Embedding Service",
+      "sublabel": "BAAI/bge-m3 :20002",
+      "tag": "GPU",
+      "pos": [1080, 130],
+      "size": [180, 68],
+      "sources": [
+        {"path": "embedding/server.py", "label": "向量服务"},
+        {"path": "docker-compose.yaml", "line": 25, "label": "GPU 部署"}
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 16 + pgvector",
+      "sublabel": "权威记忆与项目知识",
+      "tag": "Alembic 015",
+      "pos": [1080, 350],
+      "size": [200, 76],
+      "sources": [
+        {"path": "hub/app/models/memory.py", "line": 32, "label": "Memory 数据模型"},
+        {"path": "hub/app/models/project_knowledge.py", "line": 31, "label": "Project Knowledge"},
+        {"path": "hub/alembic/versions/015_context_outcomes.py", "label": "当前 schema"}
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis 7",
+      "sublabel": "缓存与运行辅助",
+      "pos": [1080, 570],
+      "size": [180, 64],
+      "sources": [
+        {"path": "docker-compose.yaml", "line": 66, "label": "Redis 服务"}
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AI 与用户入口",
+      "wraps": ["ai-clients", "browser", "cli"],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "本机 MCP 运行时",
+      "wraps": ["mcp-gateway", "mcp-server"],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "EchoMe 应用层",
+      "wraps": ["web-console", "hub-api", "context-runtime", "sleep-quality"],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "持久化与检索基础设施",
+      "wraps": ["embedding", "postgres", "redis"],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    {
+      "id": "ai-to-gateway",
+      "from": "ai-clients",
+      "to": "mcp-gateway",
+      "label": "MCP over HTTP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-to-mcp",
+      "from": "mcp-gateway",
+      "to": "mcp-server",
+      "label": "stdio proxy",
+      "variant": "emphasis"
+    },
+    {
+      "id": "mcp-to-context",
+      "from": "mcp-server",
+      "to": "context-runtime",
+      "label": "POST /api/v1/context",
+      "variant": "emphasis",
+      "labelDy": -29
+    },
+    {
+      "id": "browser-to-web",
+      "from": "browser",
+      "to": "web-console",
+      "label": "HTTP"
+    },
+    {
+      "id": "web-to-hub",
+      "from": "web-console",
+      "to": "hub-api",
+      "label": "REST /api/v1",
+      "labelDy": -23
+    },
+    {
+      "id": "cli-to-hub",
+      "from": "cli",
+      "to": "hub-api",
+      "label": "sync / index / review"
+    },
+    {
+      "id": "hub-to-sleep",
+      "from": "hub-api",
+      "to": "sleep-quality",
+      "label": "proposal → validate → apply"
+    },
+    {
+      "id": "context-to-embedding",
+      "from": "context-runtime",
+      "to": "embedding",
+      "label": "semantic recall"
+    },
+    {
+      "id": "context-to-postgres",
+      "from": "context-runtime",
+      "to": "postgres",
+      "label": "memory + graph + temporal"
+    },
+    {
+      "id": "hub-to-postgres",
+      "from": "hub-api",
+      "to": "postgres",
+      "label": "SQLAlchemy async"
+    },
+    {
+      "id": "hub-to-redis",
+      "from": "hub-api",
+      "to": "redis",
+      "label": "cache / coordination",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [[585, 680], [1010, 680], [1010, 602]]
+    },
+    {
+      "id": "sleep-to-postgres",
+      "from": "sleep-quality",
+      "to": "postgres",
+      "label": "append evidence + archive links",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [[980, 586], [980, 460], [1180, 460]],
+      "labelAt": [1080, 450]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "统一检索入口",
+      "items": [
+        "AI 默认调用 echome_context，免去工具选择",
+        "Project alias、图关系、时间信息和 token budget 在 Hub 汇合"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "数据安全边界",
+      "items": [
+        "PostgreSQL + pgvector 是唯一权威数据层",
+        "Sleep 和项目重关联采用 proposal → validate → apply，不删除原始证据"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "质量与可观测性",
+      "items": [
+        "Web Console 统一查看 Context Runs、日志与 Eval",
+        "Feedback 与 Context Outcome 先追加记录，再经评估决定是否影响排序"
+      ]
+    }
+  ]
+}
