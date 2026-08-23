@@ -2,15 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import Badge from '@/components/Badge.vue'
+import DiagnosticsTabs from '@/components/DiagnosticsTabs.vue'
 import { LAYER_COLORS, MEMORY_TYPE_COLORS, STATUS_COLORS } from '@/types'
 import type {
   MemoryGraphExplainResponse,
-  MemoryListItem,
   ProjectAutomationGate,
   ProjectAutomationRun,
   ProjectQualityCasesResponse,
   ProjectQualitySnapshot,
-  SearchResultItem,
+  UnifiedContextResponse,
 } from '@/types'
 
 interface EvalCase {
@@ -23,7 +23,7 @@ interface EvalCase {
 interface EvalResult {
   caseId: string
   loading: boolean
-  usedFallback: boolean
+  executed: boolean
   items: EvalItem[]
   expectedRank: number | null
   explain: MemoryGraphExplainResponse | null
@@ -71,7 +71,7 @@ const projectProgress = ref(0)
 const projectError = ref<string | null>(null)
 
 const summary = computed(() => {
-  const values = Object.values(results.value).filter(result => result.items.length || result.error)
+  const values = Object.values(results.value).filter(result => result.executed)
   const passed = values.filter(result => result.expectedRank !== null && result.expectedRank <= 3).length
   return { total: values.length, passed }
 })
@@ -80,7 +80,7 @@ function defaultResult(caseId: string): EvalResult {
   return {
     caseId,
     loading: false,
-    usedFallback: false,
+    executed: false,
     items: [],
     expectedRank: null,
     explain: null,
@@ -88,26 +88,14 @@ function defaultResult(caseId: string): EvalResult {
   }
 }
 
-function normalizeListItem(item: MemoryListItem): EvalItem {
+function normalizeContextItem(item: UnifiedContextResponse['memories'][number]): EvalItem {
   return {
     id: item.id,
     title: item.title,
     type: item.type,
     layer: item.layer,
+    tags: item.tags,
     status: item.status,
-    tags: item.tags,
-    content: (item as { content?: string }).content,
-  }
-}
-
-function normalizeSearchItem(item: SearchResultItem): EvalItem {
-  return {
-    id: item.id,
-    title: item.title,
-    type: item.type,
-    layer: item.layer,
-    tags: item.tags,
-    score: item.score,
     content: item.content,
   }
 }
@@ -120,22 +108,14 @@ function rankExpected(items: EvalItem[], expectedIds: string[]): number | null {
 async function runEval(testCase: EvalCase): Promise<void> {
   results.value[testCase.id] = { ...defaultResult(testCase.id), loading: true }
   try {
-    const list = await api.listMemories({
-      query: testCase.question,
-      status: 'active',
+    const context = await api.getContext({
+      task: testCase.question,
+      mode: 'personal',
       limit: 20,
+      record_run: false,
+      client: 'web-memory-eval',
     })
-    let items = list.items.map(normalizeListItem)
-    let usedFallback = false
-    if (items.length === 0) {
-      const search = await api.searchMemories({
-        query: testCase.question,
-        top_k: 20,
-        min_score: 0.3,
-      })
-      items = search.results.map(normalizeSearchItem)
-      usedFallback = true
-    }
+    const items = context.memories.map(normalizeContextItem)
     const rank = rankExpected(items, testCase.expectedIds)
     const explainTarget = rank ? items[rank - 1] : items[0]
     const explain = explainTarget
@@ -144,7 +124,7 @@ async function runEval(testCase: EvalCase): Promise<void> {
     results.value[testCase.id] = {
       caseId: testCase.id,
       loading: false,
-      usedFallback,
+      executed: true,
       items: items.slice(0, 5),
       expectedRank: rank,
       explain,
@@ -154,6 +134,7 @@ async function runEval(testCase: EvalCase): Promise<void> {
     results.value[testCase.id] = {
       ...defaultResult(testCase.id),
       loading: false,
+      executed: true,
       error: error instanceof Error ? error.message : String(error),
     }
   }
@@ -177,7 +158,7 @@ function caseResult(caseId: string): EvalResult {
 function statusText(result: EvalResult): string {
   if (result.loading) return 'Running'
   if (result.error) return 'Error'
-  if (!result.items.length) return 'Not run'
+  if (!result.executed) return 'Not run'
   if (result.expectedRank !== null && result.expectedRank <= 3) return 'Pass'
   if (result.expectedRank !== null) return 'Weak'
   return 'Fail'
@@ -252,6 +233,7 @@ onMounted(loadProjectQuality)
 
 <template>
   <div class="space-y-6">
+    <DiagnosticsTabs />
     <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-100">Memory Quality Eval</h1>
@@ -311,7 +293,7 @@ onMounted(loadProjectQuality)
           <div class="space-y-2">
             <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span>Expected rank: {{ caseResult(testCase.id).expectedRank || 'miss' }}</span>
-              <span v-if="caseResult(testCase.id).usedFallback">semantic fallback</span>
+              <span>shared hybrid retrieval</span>
             </div>
             <div
               v-for="(item, index) in caseResult(testCase.id).items"

@@ -21,11 +21,11 @@ from app.api.project_knowledge import project_preflight
 from app.core.auth import verify_token
 from app.core.config import settings
 from app.core.database import async_session_factory, get_session
-from app.models.memory import Memory
 from app.models.project_knowledge import ContextRun
 from app.schemas.context_runtime import UnifiedContextRequest
 from app.schemas.project_knowledge import ProjectContextRequest, ProjectPreflightRequest
-from app.services.context_compiler import compile_project_context, query_tokens
+from app.services.context_compiler import compile_project_context
+from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import resolve_project
 from app.services.token_counter import count_tokens
 
@@ -180,23 +180,14 @@ async def _personal_context(
     user_id: str,
     request_id: str,
 ) -> dict[str, Any]:
-    result = await session.execute(
-        select(Memory).where(
-            Memory.user_id == user_id,
-            Memory.status.in_(["active", "ai_review"]),
-            Memory.scope_global.is_(True),
-        )
+    retrieval = await retrieve_memories(
+        session,
+        user_id=user_id,
+        query=body.task,
+        limit=body.limit,
+        global_only=True,
     )
-    memories = list(result.scalars().all())
-    tokens = query_tokens(body.task)
-    ranked: list[tuple[float, Memory]] = []
-    for memory in memories:
-        document_tokens = query_tokens(f"{memory.title} {memory.content} {' '.join(memory.tags)}")
-        overlap = len(tokens & document_tokens) / max(1, len(tokens))
-        if overlap > 0:
-            ranked.append((overlap + memory.priority / 100, memory))
-    ranked.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
-    selected = [item for _, item in ranked[: body.limit]]
+    selected = [item.memory for item in retrieval.items]
     payloads = [
         {
             "id": str(item.id),
@@ -229,9 +220,9 @@ async def _personal_context(
         "token_budget": body.token_budget,
         "token_used": count_tokens(str(payloads)),
         "retrieval_trace": {
-            "strategy": "bounded_lexical",
-            "candidate_counts": {"memories": len(memories)},
+            **retrieval.trace,
             "selected_count": len(payloads),
+            "candidate_counts": {"memories": retrieval.total_candidates},
         },
     }
     if body.record_run:
@@ -243,7 +234,7 @@ async def _personal_context(
             changed_paths=[],
             token_budget=body.token_budget,
             token_used=context["token_used"],
-            candidates={"memories": len(memories)},
+            candidates={"memories": retrieval.total_candidates},
             selected={"memories": [item["id"] for item in payloads]},
             trace=context["retrieval_trace"],
             request_id=request_id,

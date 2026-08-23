@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from echome_mcp import __version__
 from echome_mcp.hub_client import MCPHubClient
+from echome_mcp.profiles import current_profile
 
 ERROR_SCHEMA_VERSION = "echome.error.v1"
 CONTEXT_SCHEMA_VERSION = "echome.context.v1"
@@ -300,7 +301,7 @@ async def echome_runtime_health() -> str:
     payload = {
         **hub,
         "mcp_version": __version__,
-        "profile": os.getenv("ECHOME_MCP_PROFILE", "full"),
+        "profile": current_profile(),
         "context_schema_version": CONTEXT_SCHEMA_VERSION,
         "error_schema_version": ERROR_SCHEMA_VERSION,
         "cache": {

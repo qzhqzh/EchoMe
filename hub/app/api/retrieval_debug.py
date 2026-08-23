@@ -1,10 +1,9 @@
 """Retrieval debugger and retrieval log API."""
 
-import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import String, case, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.memories import _query_tokens
@@ -17,12 +16,41 @@ from app.schemas.retrieval_debug import (
     RetrievalLogListResponse,
     RetrievalLogResponse,
 )
-from app.services.embedding import get_embedding
+from app.services.memory_retrieval import retrieve_memories
 
 router = APIRouter(prefix="/retrieval-debug", tags=["retrieval-debug"])
 
+_RESULT_LOG_FIELDS = {
+    "id",
+    "title",
+    "type",
+    "layer",
+    "status",
+    "priority",
+    "tags",
+    "updated_at",
+    "score",
+    "reasons",
+}
+_STEP_LOG_FIELDS = {
+    "stage",
+    "strategy",
+    "vector_available",
+    "vector_count",
+    "lexical_count",
+    "lexical_candidate_count",
+    "selected_count",
+    "count",
+    "used",
+    "tokens",
+}
 
-def _memory_payload(memory: Memory, score: float | None = None) -> dict[str, Any]:
+
+def _memory_payload(
+    memory: Memory,
+    score: float | None = None,
+    reasons: tuple[str, ...] = (),
+) -> dict[str, Any]:
     payload = {
         "id": str(memory.id),
         "title": memory.title,
@@ -32,7 +60,7 @@ def _memory_payload(memory: Memory, score: float | None = None) -> dict[str, Any
         "priority": memory.priority,
         "tags": memory.tags,
         "updated_at": memory.updated_at.isoformat(),
-        "content": memory.content,
+        "reasons": list(reasons),
     }
     if score is not None:
         payload["score"] = round(score, 4)
@@ -47,89 +75,29 @@ def _expected_rank(items: list[dict[str, Any]], expected_ids: list[str]) -> int 
     return None
 
 
-async def _lightweight_search(
-    session: AsyncSession,
-    body: RetrievalDebugRequest,
-    user_id: str,
-) -> list[Memory]:
-    query = select(Memory).where(Memory.user_id == user_id)
-    if body.status:
-        query = query.where(Memory.status == body.status)
-    if body.project_id:
-        query = query.where(Memory.scope_projects.contains([body.project_id]))
-
-    title_field = func.lower(Memory.title)
-    content_field = func.lower(Memory.content)
-    tags_field = func.lower(Memory.tags.cast(String))
-    patterns = [f"%{body.query.lower()}%"]
-    patterns.extend(f"%{token}%" for token in _query_tokens(body.query))
-    query = query.where(
-        or_(
-            *[
-                field.like(pattern)
-                for pattern in patterns
-                for field in (title_field, content_field, tags_field)
-            ]
-        )
-    )
-    relevance = sum(
-        case((title_field.like(pattern), 5), else_=0)
-        + case((tags_field.like(pattern), 4), else_=0)
-        + case((content_field.like(pattern), 1), else_=0)
-        for pattern in patterns
-    )
-    result = await session.execute(
-        query.order_by(relevance.desc(), Memory.priority.desc(), Memory.updated_at.desc()).limit(body.limit)
-    )
-    return list(result.scalars().all())
+def _bounded_log_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return value[:512]
+    if isinstance(value, bool | int | float) or value is None:
+        return value
+    if isinstance(value, list):
+        return [
+            bounded
+            for item in value[:64]
+            if not isinstance(item, dict | list)
+            for bounded in [_bounded_log_value(item)]
+        ]
+    return None
 
 
-async def _semantic_search(
-    session: AsyncSession,
-    body: RetrievalDebugRequest,
-    user_id: str,
-) -> list[tuple[Memory, float]]:
-    base_filter = [Memory.user_id == user_id, Memory.status.in_(["active", "ai_review"])]
-    if body.project_id:
-        base_filter.append(
-            (Memory.scope_global.is_(True)) | (Memory.scope_projects.contains([body.project_id]))
-        )
-
-    query_embedding = await get_embedding(body.query)
-    scored: dict[uuid.UUID, tuple[Memory, float]] = {}
-    if query_embedding is not None:
-        vector_query = (
-            select(
-                Memory,
-                Memory.embedding.cosine_distance(query_embedding).label("distance"),
-            )
-            .where(*base_filter)
-            .where(Memory.embedding.isnot(None))
-            .order_by("distance")
-            .limit(body.limit * 2)
-        )
-        result = await session.execute(vector_query)
-        for row in result:
-            similarity = 1.0 - row[1]
-            if similarity >= 0.3:
-                scored[row[0].id] = (row[0], similarity * 0.7)
-
-    keyword_query = select(Memory).where(*base_filter)
-    result = await session.execute(keyword_query)
-    words = body.query.lower().split()
-    for memory in result.scalars().all():
-        searchable = f"{memory.title} {memory.content} {' '.join(memory.tags)}".lower()
-        matches = sum(1 for word in words if word in searchable)
-        score = matches / len(words) if words else 0.0
-        if score < 0.3:
-            continue
-        if memory.id in scored:
-            existing, existing_score = scored[memory.id]
-            scored[memory.id] = (existing, existing_score + score * 0.3)
-        else:
-            scored[memory.id] = (memory, score * 0.3)
-
-    return sorted(scored.values(), key=lambda item: item[1], reverse=True)[: body.limit]
+def _sanitize_log_record(item: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
+    return {
+        key: bounded
+        for key, value in item.items()
+        if key in allowed
+        for bounded in [_bounded_log_value(value)]
+        if bounded is not None
+    }
 
 
 def _log_response(log: RetrievalLog) -> RetrievalLogResponse:
@@ -141,6 +109,10 @@ async def _save_log(
     user_id: str,
     payload: RetrievalLogCreate,
 ) -> RetrievalLog:
+    top_results = [
+        _sanitize_log_record(item, _RESULT_LOG_FIELDS) for item in payload.top_results
+    ]
+    steps = [_sanitize_log_record(item, _STEP_LOG_FIELDS) for item in payload.steps]
     log = RetrievalLog(
         user_id=user_id,
         query=payload.query,
@@ -154,8 +126,8 @@ async def _save_log(
         fallback_used=payload.fallback_used,
         expected_ids=payload.expected_ids,
         expected_rank=payload.expected_rank,
-        top_results=payload.top_results,
-        steps=payload.steps,
+        top_results=top_results,
+        steps=steps,
     )
     session.add(log)
     await session.flush()
@@ -169,25 +141,20 @@ async def debug_query(
     user_id: str = Depends(verify_token),
 ) -> RetrievalLogResponse:
     """Run a retrieval debug query and persist the intermediate steps."""
-    steps: list[dict[str, Any]] = []
-    lightweight = await _lightweight_search(session, body, user_id)
-    steps.append(
-        {
-            "stage": "lightweight",
-            "count": len(lightweight),
-            "tokens": _query_tokens(body.query),
-        }
+    retrieval = await retrieve_memories(
+        session,
+        user_id=user_id,
+        query=body.query,
+        limit=body.limit,
+        statuses=(body.status,) if body.status else ("active", "ai_review"),
+        global_only=body.project_id is None,
+        project_scope_ids=[body.project_id] if body.project_id else None,
     )
-    fallback_used = len(lightweight) == 0
-    semantic: list[tuple[Memory, float]] = []
-    if fallback_used:
-        semantic = await _semantic_search(session, body, user_id)
-        steps.append({"stage": "semantic_fallback", "count": len(semantic)})
-
-    if fallback_used:
-        top_results = [_memory_payload(memory, score) for memory, score in semantic]
-    else:
-        top_results = [_memory_payload(memory) for memory in lightweight]
+    top_results = [
+        _memory_payload(item.memory, item.score, item.reasons) for item in retrieval.items
+    ]
+    steps = [{"stage": "hybrid_memory", **retrieval.trace, "tokens": _query_tokens(body.query)}]
+    fallback_used = not bool(retrieval.trace["vector_available"])
 
     expected_ids = [str(item) for item in body.expected_ids]
     log = await _save_log(
@@ -200,8 +167,8 @@ async def debug_query(
             status=body.status,
             project_id=body.project_id,
             limit=body.limit,
-            lightweight_count=len(lightweight),
-            semantic_count=len(semantic),
+            lightweight_count=int(retrieval.trace["lexical_count"]),
+            semantic_count=int(retrieval.trace["vector_count"]),
             fallback_used=fallback_used,
             expected_ids=expected_ids,
             expected_rank=_expected_rank(top_results, expected_ids),

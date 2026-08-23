@@ -555,11 +555,13 @@ class TestSearchMemories:
         # Only keyword query is executed when get_embedding returns None
         keyword_result = MagicMock()
         keyword_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[mem1]))
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 1
 
-        mock_session.execute = AsyncMock(return_value=keyword_result)
+        mock_session.execute = AsyncMock(side_effect=[count_result, keyword_result])
         mock_request = MagicMock(spec=Request)
 
-        with patch("app.api.memories.get_embedding", return_value=None):
+        with patch("app.services.memory_retrieval.get_embedding", return_value=None):
             result = await search_memories(
                 request=mock_request,
                 body=body,
@@ -582,15 +584,15 @@ class TestSearchMemories:
         body = MemorySearchRequest(query="zzzznonexistent", top_k=5)
 
         mock_session = AsyncMock()
-        vector_result = MagicMock()
-        vector_result.__iter__ = MagicMock(return_value=iter([]))
         keyword_result = MagicMock()
         keyword_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[]))
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
 
-        mock_session.execute = AsyncMock(side_effect=[vector_result, keyword_result])
+        mock_session.execute = AsyncMock(side_effect=[count_result, keyword_result])
         mock_request = MagicMock(spec=Request)
 
-        with patch("app.api.memories.get_embedding", return_value=None):
+        with patch("app.services.memory_retrieval.get_embedding", return_value=None):
             result = await search_memories(
                 request=mock_request,
                 body=body,

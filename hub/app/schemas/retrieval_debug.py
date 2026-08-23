@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class RetrievalDebugRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
-    status: str = "active"
+    status: str | None = None
     project_id: str | None = None
     limit: int = Field(10, ge=1, le=50)
     expected_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)

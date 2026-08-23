@@ -9,8 +9,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
       embedding:
         condition: service_healthy
     environment:
@@ -64,9 +62,3 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  redis:
-    restart: unless-stopped
-    image: redis:7-alpine
-    volumes:
-      - ./data/redis:/data

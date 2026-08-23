@@ -26,6 +26,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from echome_mcp import __version__
+from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 from echome_mcp.runtime import (
     echome_context,
     echome_context_outcome,
@@ -1019,18 +1020,8 @@ async def list_tools() -> list[Tool]:
             },
         ),
     ]
-    if os.getenv("ECHOME_MCP_PROFILE", "full") == "core":
-        core_names = {
-            "echome_capabilities",
-            "echome_context",
-            "echome_runtime_health",
-            "echome_context_outcome",
-            "echome_remember",
-            "memory_remember",
-            "echome_memory_feedback",
-            "echome_memory_feedback_batch",
-        }
-        return [tool for tool in tools if tool.name in core_names]
+    if current_profile() == "core":
+        return [tool for tool in tools if tool.name in CORE_TOOL_NAMES]
     return tools
 
 
@@ -1380,7 +1371,7 @@ def _create_streamable_http_app() -> Starlette:
                 "service_version": __version__,
                 "context_schema_version": "echome.context.v1",
                 "error_schema_version": "echome.error.v1",
-                "profile": os.getenv("ECHOME_MCP_PROFILE", "full"),
+                "profile": current_profile(),
             }
         )
 

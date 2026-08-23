@@ -21,7 +21,9 @@ EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它�
 
 > 点击架构图进入[交互式版本](https://qzhqzh.github.io/EchoMe/?theme=dark&present=1)。默认使用 **Dark + Presentation Stage**，支持节点搜索、关系追踪、缩放、主题切换和图片导出。
 
-架构图由 [Archify 规格](docs/echome-architecture-v1.5.archify.json) 生成，独立 HTML 保存在 [docs/echome-architecture-v1.5.html](docs/echome-architecture-v1.5.html)。
+> 该图是 v1.5.0 发布快照。本工作树的后续收敛（包括移除未接入的 Redis）以[当前架构文档](docs/architecture.md)为准，下一次发布时再生成新的版本化图，不覆盖该快照。
+
+发布快照由 [Archify 规格](docs/echome-architecture-v1.5.archify.json) 生成，独立 HTML 保存在 [docs/echome-architecture-v1.5.html](docs/echome-architecture-v1.5.html)。
 
 ## 核心能力
 
@@ -84,12 +86,11 @@ Context Outcome 与 Memory Feedback 均为 append-only 信号，不会直接、�
 
 1. 首次接触时调用 `echome_capabilities` 发现能力。
 2. 普通任务优先调用 `echome_context`。
-3. 宽泛记忆问题使用 `echome_search_summary`，再按 UUID 调用 `echome_get_memories` 精读。
-4. 关键历史决策调用 `echome_memory_explain` 检查来源、替代关系和时效性。
-5. 项目修改前调用 `echome_project_preflight`，需要局部影响分析时调用 `echome_project_impact`。
-6. 任务结束后，仅在证据明确时追加 feedback、event 或 context outcome。
+3. 关键历史决策调用 `echome_memory_explain` 检查来源、替代关系和时效性。
+4. 任务结束后，仅在证据明确时追加 feedback 或 context outcome。
+5. 在 `full` profile 中，宽泛问题可使用 summary-first，项目修改可使用 preflight/impact 专业工具。
 
-EchoMe MCP 当前提供 `core` 和 `full` 两种 profile。默认 `full` 暴露完整工具集，`ECHOME_MCP_PROFILE=core` 只保留统一上下文、健康检查、remember、outcome 和 feedback 等核心入口。
+EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，暴露 8 个高频入口；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
 
 ## 系统组件
 
@@ -100,7 +101,7 @@ EchoMe MCP 当前提供 `core` 和 `full` 两种 profile。默认 `full` 暴露�
 | Embedding | BAAI/bge-m3 | 语义向量生成与召回 |
 | Web Console | Vue 3 + Nginx | 管理、观测、图分析和质量评估 |
 | CLI | Typer + Rich + httpx | 初始化、同步、审核、Sleep 与环境诊断 |
-| MCP Server | 官方 Python MCP SDK | 向 Codex、Claude Code、Cursor 等暴露 29 个工具 |
+| MCP Server | 官方 Python MCP SDK | 默认 8 个核心工具，可切换完整专业工具集 |
 
 默认 Docker Compose 端口：
 
@@ -145,7 +146,7 @@ echome init
 echome doctor
 ```
 
-`echome init` 会创建本地 vault、配置 Hub，并注册可识别的 AI 客户端。也可以单独执行：
+`echome init` 会创建本地配置、连接 Hub，并注册可识别的 AI 客户端。也可以单独执行：
 
 ```bash
 echome mcp install
@@ -195,6 +196,8 @@ Sleep apply 需要先提交并确认合法 JSON 预案，不会直接批量重�
 | `echome status` | 查看运行和同步状态 |
 | `echome mcp install` | 注册 MCP Server |
 
+`echome push` / `echome pull` 保留为未来的文件式 local-vault 接口，当前会明确返回“未实现”，不会执行空同步并伪报成功。
+
 ## 数据安全原则
 
 - PostgreSQL + pgvector 是唯一权威服务端数据层。
@@ -203,6 +206,7 @@ Sleep apply 需要先提交并确认合法 JSON 预案，不会直接批量重�
 - Sleep、项目重关联和约束复核采用 `proposal → validate → apply`。
 - 原始记忆、制品版本、约束版本、事件和关系证据不被静默删除。
 - 运行反馈先追加记录，经过离线评估后才考虑影响排序。
+- Retrieval Logs 仅保存 ID、标题、分数和 trace，不复制记忆正文。
 - 本地 last-known-good 缓存使用 AES-256-GCM 加密，并受账号、请求键和 TTL 约束。
 
 ## 开发与验证
@@ -221,16 +225,11 @@ uv run ruff check app tests alembic/versions
 
 # Web
 cd ../web
-npm install
+npm ci
 npm run build
 ```
 
-v1.5.0 发布验收基线：
-
-- Hub：`96 passed, 1 skipped`
-- CLI/MCP：`21 passed`
-- Ruff 与 Web production build 通过
-- 隔离生产数据完成 `012 → 015 → 012 → 015` 数据保留型迁移验证
+CI 对 CLI/MCP、Hub 和 Web 分别执行 lockfile 安装、Ruff、pytest 与 production build；发布构建还会在干净虚拟环境中安装 wheel 并运行命令入口。
 
 ## 文档
 
@@ -241,6 +240,7 @@ v1.5.0 发布验收基线：
 - [Memory Sleep](docs/memory-sleep.md)
 - [Hub API 规范](docs/api-spec.md)
 - [MCP Server 规范](docs/mcp-spec.md)
+- [数据生命周期](docs/data-lifecycle.md)
 - [开发路线图](docs/roadmap.md)
 - [用户指南](docs/user-guide.md)
 

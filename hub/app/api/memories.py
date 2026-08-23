@@ -1,7 +1,7 @@
 """Memory CRUD and search API routes."""
 
-import re
 import uuid
+from typing import Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import String, case, func, or_, select
@@ -23,6 +23,7 @@ from app.schemas.memory import (
     SearchResultItem,
 )
 from app.services.embedding import get_embedding
+from app.services.memory_retrieval import memory_query_tokens, retrieve_memories
 from app.services.project_identity import (
     canonicalize_project_scopes,
     project_scope_ids,
@@ -46,25 +47,7 @@ async def _query_project_scope_ids(
     return await project_scope_ids(session, user_id, project.id)
 
 
-def _query_tokens(query: str) -> list[str]:
-    """Split a natural-language query into lightweight searchable tokens."""
-    tokens = re.findall(r"[A-Za-z0-9_+#.-]+|[\u4e00-\u9fff]{2,}", query.lower())
-    stop_tokens = {"我的", "怎样", "怎么", "什么", "如何", "规则", "the", "and", "for"}
-    filtered = [token for token in tokens if len(token) >= 2 and token not in stop_tokens]
-    expanded = list(filtered)
-    expansions = {
-        "提交": ["commit", "pr"],
-        "提交流程": ["commit", "pr", "workflow"],
-        "流程": ["workflow"],
-        "规范": ["rule", "workflow"],
-        "家庭网络": ["网络", "edgeone", "wireguard", "nginx"],
-        "网络架构": ["网络", "edgeone", "wireguard", "nginx"],
-    }
-    query_lower = query.lower()
-    for phrase, extra_tokens in expansions.items():
-        if phrase in query_lower:
-            expanded.extend(extra_tokens)
-    return list(dict.fromkeys(expanded))[:12]
+_query_tokens = memory_query_tokens
 
 
 async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
@@ -100,7 +83,7 @@ async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
             result = await session.execute(
                 sql_update(Memory).where(Memory.id == memory_id).values(embedding=embedding)
             )
-            if result.rowcount > 0:
+            if cast(Any, result).rowcount > 0:
                 await session.commit()
                 logger.info(f"Stored embedding for memory {memory_id}")
             else:
@@ -143,7 +126,7 @@ async def list_memories(
         query = query.where(
             or_(*(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids))
         )
-    relevance = None
+    relevance: Any = None
     if isinstance(search_query, str) and search_query:
         title_field = func.lower(Memory.title)
         content_field = func.lower(Memory.content)
@@ -184,7 +167,7 @@ async def list_memories(
         total=total,
         offset=offset,
         limit=limit,
-        items=memories,  # type: ignore[arg-type]
+        items=memories,
     )
 
 
@@ -395,95 +378,33 @@ async def search_memories(
     user_id: str = Depends(verify_token),
 ) -> SearchResponse:
     """Search memories using hybrid: vector similarity + keyword matching."""
-    from pgvector.sqlalchemy import Vector
-
-    # Base filters
-    base_filter = [Memory.user_id == user_id, Memory.status.in_(["active", "ai_review"])]
-    if body.type:
-        base_filter.append(Memory.type == body.type.value)
-    if body.layer:
-        base_filter.append(Memory.layer == body.layer.value)
-    if body.tags:
-        for tag in body.tags:
-            base_filter.append(Memory.tags.contains([tag]))
+    scope_ids = None
     if body.project_id:
         scope_ids = await _query_project_scope_ids(session, user_id, body.project_id)
-        base_filter.append(
-            or_(
-                Memory.scope_global.is_(True),
-                *(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids),
-            )
-        )
-
-    # Try vector search first
-    query_embedding = await get_embedding(body.query)
-    vector_results: list[tuple[Memory, float]] = []
-
-    if query_embedding is not None:
-        # Vector similarity search using pgvector cosine distance
-        vector_query = (
-            select(
-                Memory,
-                Memory.embedding.cosine_distance(query_embedding).label("distance"),
-            )
-            .where(*base_filter)
-            .where(Memory.embedding.isnot(None))
-            .order_by("distance")
-            .limit(body.top_k * 2)  # Get more candidates for re-ranking
-        )
-        result = await session.execute(vector_query)
-        for row in result:
-            mem = row[0]
-            distance = row[1]
-            similarity = 1.0 - distance  # cosine_distance → similarity
-            if similarity >= 0.3:  # Minimum threshold
-                vector_results.append((mem, similarity))
-
-    # Also do keyword search (fallback + complement)
-    keyword_query = select(Memory).where(*base_filter)
-    result = await session.execute(keyword_query)
-    all_memories = result.scalars().all()
-
-    keyword_results: list[tuple[Memory, float]] = []
-    query_lower = body.query.lower()
-    query_words = query_lower.split()
-
-    for mem in all_memories:
-        searchable = f"{mem.title} {mem.content} {' '.join(mem.tags)}".lower()
-        matches = sum(1 for w in query_words if w in searchable)
-        score = matches / len(query_words) if query_words else 0.0
-        if score >= 0.3:
-            keyword_results.append((mem, score))
-
-    # Merge: vector (weight 0.7) + keyword (weight 0.3)
-    scored_map: dict[uuid.UUID, tuple[Memory, float]] = {}
-
-    for mem, sim in vector_results:
-        scored_map[mem.id] = (mem, sim * 0.7)
-
-    for mem, kw_score in keyword_results:
-        if mem.id in scored_map:
-            existing_mem, existing_score = scored_map[mem.id]
-            scored_map[mem.id] = (existing_mem, existing_score + kw_score * 0.3)
-        else:
-            scored_map[mem.id] = (mem, kw_score * 0.3)
-
-    # Sort by combined score
-    final_results = sorted(scored_map.values(), key=lambda x: x[1], reverse=True)
-    top_results = final_results[: body.top_k]
+    retrieval = await retrieve_memories(
+        session,
+        user_id=user_id,
+        query=body.query,
+        limit=body.top_k,
+        min_source_score=body.min_score,
+        memory_type=body.type.value if body.type else None,
+        layer=body.layer.value if body.layer else None,
+        tags=body.tags,
+        project_scope_ids=scope_ids,
+    )
 
     return SearchResponse(
         results=[
             SearchResultItem(
-                id=mem.id,
-                title=mem.title,
-                content=mem.content,
-                type=mem.type,  # type: ignore[arg-type]
-                layer=mem.layer,  # type: ignore[arg-type]
-                score=round(score, 3),
-                tags=mem.tags,
+                id=item.memory.id,
+                title=item.memory.title,
+                content=item.memory.content,
+                type=item.memory.type,
+                layer=item.memory.layer,
+                score=round(item.score, 3),
+                tags=item.memory.tags,
             )
-            for mem, score in top_results
+            for item in retrieval.items
         ],
-        total_searched=len(all_memories),
+        total_searched=retrieval.total_candidates,
     )
