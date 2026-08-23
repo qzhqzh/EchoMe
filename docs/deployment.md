@@ -61,8 +61,9 @@ docker compose up -d
 | hub | 20000 | FastAPI 后端 |
 | web | 20001 | Vue 3 前端 |
 | embedding | 20002 | BGE-M3 向量服务 |
-| postgres | 5432 | PostgreSQL + pgvector |
-| redis | 6379 | 缓存 |
+| postgres | Compose 内网 | PostgreSQL + pgvector |
+
+Redis 当前没有运行时代码依赖，不再由 Compose 启动。历史 `data/redis` 可保留用于回滚审计，无需在升级时删除。
 
 ### Step 4: 配置 nginx 反向代理
 

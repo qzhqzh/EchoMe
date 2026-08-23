@@ -31,6 +31,7 @@ export default {
   nav_observability: 'Observability',
   nav_eval: 'Eval',
   nav_logs: 'Logs',
+  nav_diagnostics: 'Diagnostics',
   nav_help: 'Help',
   nav_admin: 'Admin',
   nav_settings: 'Settings',

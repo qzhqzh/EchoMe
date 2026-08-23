@@ -4,7 +4,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -45,23 +45,68 @@ async def test_personal_context_records_actual_selected_memories() -> None:
     )
     result = MagicMock()
     result.scalars.return_value.all.return_value = [memory]
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 1
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=result)
+    session.execute = AsyncMock(side_effect=[count_result, result])
     session.add = MagicMock()
     session.flush = AsyncMock()
 
-    context = await _personal_context(
-        session,
-        UnifiedContextRequest(task="Git workflow", client="test"),
-        "user",
-        "request-id",
-    )
+    with patch("app.services.memory_retrieval.get_embedding", return_value=None):
+        context = await _personal_context(
+            session,
+            UnifiedContextRequest(task="Git workflow", client="test"),
+            "user",
+            "request-id",
+        )
 
     assert context["memories"][0]["id"] == str(memory.id)
+    assert context["retrieval_trace"]["strategy"] == "hybrid_memory"
+    assert context["retrieval_trace"]["selected_count"] == 1
     run = session.add.call_args.args[0]
     assert run.project_id is None
     assert run.route == "personal"
     assert run.selected == {"memories": [str(memory.id)]}
+
+
+@pytest.mark.asyncio
+async def test_personal_context_trace_reflects_token_budget_truncation() -> None:
+    memory = Memory(
+        id=uuid.uuid4(),
+        user_id="user",
+        title="Large workflow",
+        content="workflow " * 2000,
+        type="method",
+        layer="L1",
+        scope_global=True,
+        priority=8,
+        tags=["workflow"],
+        status="active",
+        updated_at=datetime.now(timezone.utc),
+    )
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 1
+    candidate_result = MagicMock()
+    candidate_result.scalars.return_value.all.return_value = [memory]
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[count_result, candidate_result])
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    with patch("app.services.memory_retrieval.get_embedding", return_value=None):
+        context = await _personal_context(
+            session,
+            UnifiedContextRequest(
+                task="workflow",
+                token_budget=256,
+                record_run=False,
+            ),
+            "user",
+            "request-id",
+        )
+
+    assert context["memories"] == []
+    assert context["retrieval_trace"]["selected_count"] == 0
 
 
 @pytest.mark.asyncio

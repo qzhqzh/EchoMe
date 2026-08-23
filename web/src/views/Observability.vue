@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import cytoscape from 'cytoscape'
 import { api } from '@/api/client'
 import Badge from '@/components/Badge.vue'
+import DiagnosticsTabs from '@/components/DiagnosticsTabs.vue'
 import { LAYER_COLORS, MEMORY_TYPE_COLORS, STATUS_COLORS } from '@/types'
 import type { Memory, MemoryGraphEdge, MemoryGraphExplainResponse, MemoryGraphNode, SleepSessionItem } from '@/types'
 import type { Core, ElementDefinition, EventObject } from 'cytoscape'
@@ -572,6 +573,7 @@ function zoomGraph(delta: number): void {
 
 <template>
   <div class="space-y-6">
+    <DiagnosticsTabs />
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-slate-100">Memory Observability</h1>

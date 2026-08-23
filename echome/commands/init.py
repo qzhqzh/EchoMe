@@ -30,7 +30,7 @@ def _setup_claude_mcp_fallback() -> None:
         "type": "stdio",
         "command": "echome",
         "args": ["mcp", "serve"],
-        "env": {},
+        "env": {"ECHOME_MCP_PROFILE": "core"},
     }
 
     try:
@@ -53,7 +53,7 @@ def _setup_mcp() -> None:
         "type": "stdio",
         "command": "echome",
         "args": ["mcp", "serve"],
-        "env": {},
+        "env": {"ECHOME_MCP_PROFILE": "core"},
     }
 
     registered = []
@@ -62,7 +62,20 @@ def _setup_mcp() -> None:
     try:
         # User scope makes echome available across all projects
         result = subprocess.run(
-            ["claude", "mcp", "add", "--scope", "user", "echome", "--", "echome", "mcp", "serve"],
+            [
+                "claude",
+                "mcp",
+                "add",
+                "--scope",
+                "user",
+                "echome",
+                "-e",
+                "ECHOME_MCP_PROFILE=core",
+                "--",
+                "echome",
+                "mcp",
+                "serve",
+            ],
             capture_output=True,
             text=True,
         )
@@ -109,6 +122,7 @@ def _upsert_codex_config(path) -> None:
         "\n[mcp_servers.echome]\n"
         "command = \"echome\"\n"
         "args = [\"mcp\", \"serve\"]\n"
+        "env = { ECHOME_MCP_PROFILE = \"core\" }\n"
         "enabled = true\n"
     )
     pattern = re.compile(r"(?ms)^\[mcp_servers\.echome\]\n.*?(?=^\[|\Z)")

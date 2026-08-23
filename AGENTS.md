@@ -99,7 +99,7 @@ Phase 0 — 项目骨架搭建。参考 `docs/roadmap.md` 了解完整计划。
 ### 启动 Hub 开发环境
 ```bash
 cd hub
-docker compose up -d postgres redis
+docker compose up -d postgres
 uv run uvicorn app.main:app --reload
 ```
 

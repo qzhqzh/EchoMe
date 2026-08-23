@@ -31,6 +31,7 @@ export default {
   nav_observability: '观测',
   nav_eval: '评估',
   nav_logs: '日志',
+  nav_diagnostics: '诊断',
   nav_help: '帮助',
   nav_admin: '管理',
   nav_settings: '设置',

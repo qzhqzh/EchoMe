@@ -1,18 +1,18 @@
 """EchoMe MCP capability guide for agents."""
 
 import json
-import os
+from copy import deepcopy
 from typing import Any
 
 from echome_mcp import __version__
+from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v2",
+    "capabilities_version": "echome.capabilities.v3",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
-    "profile": os.getenv("ECHOME_MCP_PROFILE", "full"),
     "purpose": "Personal memory and project context layer for AI agents.",
     "recommended_start": "echome_capabilities",
     "default_context_tool": "echome_context",
@@ -210,14 +210,78 @@ CAPABILITIES: dict[str, Any] = {
 }
 
 
+def capabilities_payload() -> dict[str, Any]:
+    """Build a guide that only advertises tools available in the active profile."""
+    payload = deepcopy(CAPABILITIES)
+    profile = current_profile()
+    payload["profile"] = profile
+    if profile == "full":
+        payload["available_tools"] = "all"
+        return payload
+
+    payload["available_tools"] = sorted(CORE_TOOL_NAMES)
+    payload["profile_note"] = (
+        "Set ECHOME_MCP_PROFILE=full and restart the client to expose specialized tools."
+    )
+    payload["default_retrieval_workflow"] = [
+        {
+            "step": "context",
+            "tool": "echome_context",
+            "when": "Default entry for personal or project work; returns relevant full context.",
+        },
+        {
+            "step": "explain",
+            "tool": "echome_memory_explain",
+            "when": "Inspect provenance and temporal reliability before relying on a key memory.",
+        },
+        {
+            "step": "feedback",
+            "tool": "echome_memory_feedback",
+            "when": "Record a clear usefulness or correction signal after the task.",
+        },
+    ]
+    payload["project_workflow"] = [
+        {
+            "step": "context",
+            "tool": "echome_context",
+            "when": "Pass a project hint and changed paths when project impact matters.",
+        }
+    ]
+    payload["tool_groups"] = {
+        group: [entry for entry in entries if entry["tool"] in CORE_TOOL_NAMES]
+        for group, entries in payload["tool_groups"].items()
+    }
+    payload["tool_groups"] = {
+        group: entries for group, entries in payload["tool_groups"].items() if entries
+    }
+    payload["rules"] = [
+        "Use echome_context as the default initial call for personal and project work.",
+        "Use echome_memory_explain when a key memory may be stale, replaced, or conflicting.",
+        "Archived/deprecated memories are provenance, not active facts.",
+        "Use echome_remember only for durable context and never store secrets.",
+        "Record feedback only when usefulness or a correction is clear; missing feedback is unknown.",
+    ]
+    return payload
+
+
 def capabilities_json() -> str:
     """Return the agent-facing capability guide as JSON."""
-    return json.dumps(CAPABILITIES, ensure_ascii=False, indent=2)
+    return json.dumps(capabilities_payload(), ensure_ascii=False, indent=2)
 
 
 def retrieval_workflow_prompt(project_id: str | None = None) -> str:
     """Return a reusable prompt for EchoMe retrieval."""
     project_hint = f" Project filter: {project_id}." if project_id else ""
+    if current_profile() == "core":
+        return (
+            "Use EchoMe MCP as the memory and project-context layer."
+            f"{project_hint}\n\n"
+            "Call echome_context first with the current task, project hint, and changed paths when known. "
+            "Use echome_memory_explain before relying on a key memory whose provenance or freshness matters. "
+            "After the task, record context outcome or memory feedback only when the signal is clear. "
+            "Use echome_remember only for durable, reusable context and never store secrets. "
+            "Do not ask the user to remember tool names; infer the needed EchoMe call from the task."
+        )
     return (
         "Use EchoMe MCP as the memory and project-context layer."
         f"{project_hint}\n\n"

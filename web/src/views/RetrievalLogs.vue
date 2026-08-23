@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api/client'
+import DiagnosticsTabs from '@/components/DiagnosticsTabs.vue'
 
 interface RetrievalLog {
   id: string
@@ -102,7 +103,6 @@ async function runDebug(): Promise<void> {
   try {
     currentLog.value = await api.runRetrievalDebug({
       query: query.value,
-      status: 'active',
       limit: 10,
       expected_ids: parsedExpectedIds(),
       client: 'web',
@@ -156,6 +156,7 @@ function selectionCount(run: ContextRun): number {
 
 <template>
   <div class="space-y-6">
+    <DiagnosticsTabs />
     <header>
       <h1 class="text-2xl font-semibold text-slate-100">Logs</h1>
       <p class="mt-1 text-sm text-slate-400">Memory retrieval and context runtime records.</p>

@@ -33,7 +33,13 @@ htmlcov/
 Thumbs.db
 
 # Package manager
-uv.lock
+node_modules/
+
+# Local test and backup artifacts
+.playwright-mcp/
+backups/
+docs/*.visual-check.*
+docs/*.same-json-*.html
 
 # Docker
 docker-compose.override.yaml

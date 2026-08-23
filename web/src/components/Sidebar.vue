@@ -25,17 +25,22 @@ interface NavItem {
   icon: string
 }
 
-const navItems = computed<NavItem[]>(() => [
-  { name: t('nav_dashboard'), path: '/', icon: 'dashboard' },
-  { name: t('nav_memories'), path: '/memories', icon: 'memories' },
-  { name: t('nav_review'), path: '/review', icon: 'review' },
-  { name: t('nav_projects'), path: '/projects', icon: 'projects' },
-  { name: t('nav_market'), path: '/market', icon: 'market' },
-  { name: t('nav_observability'), path: '/observability', icon: 'observability' },
-  { name: t('nav_eval'), path: '/eval', icon: 'eval' },
-  { name: t('nav_logs'), path: '/logs', icon: 'logs' },
-  { name: t('nav_help'), path: '/help', icon: 'help' },
-])
+const navItems = computed<NavItem[]>(() => {
+  const items = [
+    { name: t('nav_dashboard'), path: '/', icon: 'dashboard' },
+    { name: t('nav_memories'), path: '/memories', icon: 'memories' },
+    { name: t('nav_review'), path: '/review', icon: 'review' },
+    { name: t('nav_projects'), path: '/projects', icon: 'projects' },
+  ]
+  if (import.meta.env.VITE_ECHOME_MARKET_ENABLED === 'true') {
+    items.push({ name: t('nav_market'), path: '/market', icon: 'market' })
+  }
+  items.push(
+    { name: t('nav_diagnostics'), path: '/observability', icon: 'observability' },
+    { name: t('nav_help'), path: '/help', icon: 'help' },
+  )
+  return items
+})
 
 const visibleNavItems = computed(() => {
   const items = [...navItems.value]
@@ -50,6 +55,14 @@ const currentPath = computed(() => route.path)
 function navigate(path: string): void {
   router.push(path)
   emit('close')
+}
+
+function isNavActive(item: NavItem): boolean {
+  if (item.path === '/observability') {
+    return ['/observability', '/eval', '/logs'].includes(currentPath.value)
+  }
+  return currentPath.value === item.path
+    || (item.path !== '/' && currentPath.value.startsWith(item.path))
 }
 
 function logout(): void {
@@ -88,7 +101,7 @@ function toggleLocale(): void {
         :key="item.path"
         :class="[
           'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-          currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path))
+          isNavActive(item)
             ? 'bg-blue-600/20 text-blue-300'
             : 'text-slate-300 hover:bg-slate-700 hover:text-slate-100'
         ]"

@@ -8,9 +8,11 @@ import httpx
 from echome_mcp import hub_client
 from echome_mcp import runtime as runtime_module
 from echome_mcp import server as server_module
+from echome_mcp.tools.capabilities import capabilities_payload
 
 
-def test_project_tools_advertise_structured_context_and_preflight() -> None:
+def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -> None:
+    monkeypatch.setenv("ECHOME_MCP_PROFILE", "full")
     tools = asyncio.run(server_module.list_tools())
     by_name = {tool.name: tool for tool in tools}
 
@@ -247,7 +249,7 @@ def test_existing_cache_key_permissions_are_tightened(monkeypatch, tmp_path) -> 
     assert key_path.stat().st_mode & 0o777 == 0o600
 
 
-def test_core_profile_is_opt_in_and_keeps_default_context(monkeypatch) -> None:
+def test_explicit_core_profile_keeps_graph_reliability(monkeypatch) -> None:
     monkeypatch.setenv("ECHOME_MCP_PROFILE", "core")
 
     names = {tool.name for tool in asyncio.run(server_module.list_tools())}
@@ -257,11 +259,46 @@ def test_core_profile_is_opt_in_and_keeps_default_context(monkeypatch) -> None:
         "echome_context",
         "echome_runtime_health",
         "echome_context_outcome",
+        "echome_memory_explain",
         "echome_remember",
-        "memory_remember",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
     }
+
+
+def test_full_profile_preserves_specialized_tools(monkeypatch) -> None:
+    monkeypatch.setenv("ECHOME_MCP_PROFILE", "full")
+
+    names = {tool.name for tool in asyncio.run(server_module.list_tools())}
+
+    assert "echome_search_summary" in names
+    assert "echome_project_preflight" in names
+    assert "echome_sleep_candidates" in names
+
+
+def test_unconfigured_legacy_profile_remains_full(monkeypatch) -> None:
+    monkeypatch.delenv("ECHOME_MCP_PROFILE", raising=False)
+
+    names = {tool.name for tool in asyncio.run(server_module.list_tools())}
+
+    assert "echome_search_summary" in names
+    assert "echome_sleep_candidates" in names
+
+
+def test_capability_guide_only_recommends_available_core_tools(monkeypatch) -> None:
+    monkeypatch.setenv("ECHOME_MCP_PROFILE", "core")
+
+    payload = capabilities_payload()
+    advertised = {
+        entry["tool"]
+        for entries in payload["tool_groups"].values()
+        for entry in entries
+    }
+
+    assert payload["profile"] == "core"
+    assert advertised <= set(payload["available_tools"])
+    assert "echome_search_summary" not in advertised
+    assert payload["default_retrieval_workflow"][0]["tool"] == "echome_context"
 
 
 def test_context_outcome_forwards_explicit_signal(monkeypatch) -> None:

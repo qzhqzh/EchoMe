@@ -7,7 +7,8 @@ EchoMe MCP Server 是运行在用户本地的进程，向 AI CLI (Claude Code, C
 **运行方式**：
 ```bash
 echome mcp serve           # stdio 模式（默认，适合 Claude Code）
-echome mcp serve --sse     # SSE 模式（适合远程/多客户端）
+echome mcp serve --http --host 127.0.0.1 --port 20003
+                           # 本地 Streamable HTTP 模式
 ```
 
 **注册方式（Claude Code）**：
@@ -41,7 +42,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 ## 2. MCP 协议版本
 
 - Protocol: MCP 2024-11-05
-- Transport: stdio (默认) / SSE
+- Transport: stdio (默认) / Streamable HTTP
 
 ## 3. Server Info
 
@@ -60,7 +61,9 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 - `echome_context`：任务默认入口；可推断当前 Git remote，解析 canonical project，并返回统一 context envelope。
 - `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界。
 - `echome_context_outcome`：对 completed、non-shadow Context Run 追加幂等结果信号；缺失信号不等于失败。
-- `ECHOME_MCP_PROFILE=core`：仅暴露 capability、context、health、remember、outcome 和 memory feedback；默认仍为 `full`。
+- 新安装配置默认显式使用 `core`：仅暴露 capability、context、health、graph explain、remember、outcome 和 memory feedback 等 8 个高频入口。
+- `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
+- 为保持升级兼容，未配置 `ECHOME_MCP_PROFILE` 的历史客户端继续使用 `full`。
 
 `echome_context` Hub 不可达时，只能返回完全相同请求键的 last-known-good 只读缓存，并显式设置
 `runtime.degraded=true` 和 `fallback=last_known_good`。缓存目录权限为 `0700`，文件为 `0600`；

@@ -37,9 +37,6 @@ class Settings(BaseSettings):
     # Database (default points to docker-compose service name)
     database_url: str = "postgresql+asyncpg://echome:echome@postgres:5432/echome"
 
-    # Redis
-    redis_url: str = "redis://redis:6379/0"
-
     # Embedding service
     embedding_url: str = "http://embedding:20002"
     embedding_dimensions: int = 1024  # Must match bge-m3 model output

@@ -208,7 +208,7 @@ Phase 1 — Memory Sleep + Observability 已完成。参考 `docs/roadmap.md` �
 ### 启动 Hub 开发环境
 ```bash
 cd hub
-docker compose up -d postgres redis
+docker compose up -d postgres
 uv run uvicorn app.main:app --reload
 ```
 

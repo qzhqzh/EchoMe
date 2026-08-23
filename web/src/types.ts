@@ -104,6 +104,24 @@ export interface SearchResponse {
   total_searched: number
 }
 
+export interface UnifiedContextResponse {
+  schema_version: string
+  scope: string
+  task: string
+  memories: Array<{
+    id: string
+    title: string
+    content: string
+    type: string
+    layer: string
+    status: string
+    tags: string[]
+    updated_at: string
+  }>
+  unknowns: string[]
+  retrieval_trace: Record<string, unknown>
+}
+
 export interface Project {
   id: string
   name: string

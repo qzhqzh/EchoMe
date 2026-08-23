@@ -143,53 +143,21 @@ def sync(
 
 
 def push() -> None:
-    """Push local vault changes to Hub."""
-    config = Config.load()
-
-    if not config.token:
-        console.print("[yellow]Not logged in.[/yellow] Run: [cyan]echome login[/cyan]\n")
-        raise typer.Exit(1)
-
-    client = HubClient(config)
-
-    console.print("\n[bold]Pushing to Hub...[/bold]")
-
-    # TODO: Read local vault files and push to Hub
-    # For now, placeholder
-    try:
-        result = client.push([], client_info="echome/0.1.0")
-        console.print(
-            f"  Created: {result.get('created', 0)} | "
-            f"Updated: {result.get('updated', 0)} | "
-            f"Unchanged: {result.get('unchanged', 0)}"
-        )
-        console.print("[green]Push complete![/green]")
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1) from e
+    """Report that file-based vault upload is not implemented."""
+    console.print(
+        "[yellow]Local-vault push is not implemented.[/yellow] "
+        "Use [cyan]echome add[/cyan] or the Web/MCP API to write Hub memories."
+    )
+    raise typer.Exit(2)
 
 
 def pull() -> None:
-    """Pull latest memories from Hub to local vault."""
-    config = Config.load()
-
-    if not config.token:
-        console.print("[yellow]Not logged in.[/yellow] Run: [cyan]echome login[/cyan]\n")
-        raise typer.Exit(1)
-
-    client = HubClient(config)
-
-    console.print("\n[bold]Pulling from Hub...[/bold]")
-
-    try:
-        result = client.pull()
-        total = result.get("total", 0)
-        console.print(f"  Received {total} memories")
-        # TODO: Write to local vault files
-        console.print("[green]Pull complete![/green]")
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1) from e
+    """Report that file-based vault download is not implemented."""
+    console.print(
+        "[yellow]Local-vault pull is not implemented.[/yellow] "
+        "Use [cyan]echome sync[/cyan] to render Hub-backed context."
+    )
+    raise typer.Exit(2)
 
 
 def status() -> None:

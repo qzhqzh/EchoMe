@@ -8,6 +8,7 @@ import type {
   MemoryCreateResponse,
   SearchRequest,
   SearchResponse,
+  UnifiedContextResponse,
   Project,
   ProjectCreate,
   ApproveRequest,
@@ -406,6 +407,18 @@ class ApiClient {
     source?: string
   }): Promise<any> {
     return this.request('POST', '/retrieval-debug/query', body)
+  }
+
+  async getContext(body: {
+    task: string
+    mode?: 'auto' | 'personal' | 'project' | 'impact' | 'temporal'
+    project_hint?: string
+    changed_paths?: string[]
+    limit?: number
+    record_run?: boolean
+    client?: string
+  }): Promise<UnifiedContextResponse> {
+    return this.request('POST', '/context', body)
   }
 
   async listRetrievalLogs(params?: { client?: string; limit?: number }): Promise<any> {
