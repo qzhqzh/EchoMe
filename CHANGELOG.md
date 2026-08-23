@@ -1,3 +1,8 @@
+## v1.5.1
+
+- 93ca19f feat: consolidate memory retrieval and diagnostics (#90)
+- 134ed74 docs: publish interactive architecture diagram (#88)
+
 ## v1.5.0
 
 - d718438 feat: add reliable context runtime (#85)
