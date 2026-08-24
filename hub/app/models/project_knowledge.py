@@ -365,6 +365,7 @@ class ContextRun(Base):
         ),
         CheckConstraint("status IN ('completed','failed')", name="valid_context_run_status"),
         Index("idx_context_runs_project_created", "user_id", "project_id", "created_at"),
+        Index("idx_context_runs_user_status_created", "user_id", "status", "created_at"),
     )
 
 
@@ -379,6 +380,7 @@ class ContextOutcome(Base):
         UUID(as_uuid=True), ForeignKey("context_runs.id"), nullable=False
     )
     outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    policy_effect: Mapped[str | None] = mapped_column(String(16), nullable=True)
     reported_by: Mapped[str] = mapped_column(String(16), nullable=False, default="ai")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="mcp")
     project_event_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -396,11 +398,13 @@ class ContextOutcome(Base):
             name="valid_context_outcome",
         ),
         CheckConstraint(
-            "reported_by IN ('user','ai','system')", name="valid_context_outcome_reporter"
+            "policy_effect IS NULL OR policy_effect IN ('helpful','neutral','harmful','uncertain')",
+            name="valid_context_outcome_policy_effect",
         ),
         CheckConstraint(
-            "source IN ('mcp','web','api','ci')", name="valid_context_outcome_source"
+            "reported_by IN ('user','ai','system')", name="valid_context_outcome_reporter"
         ),
+        CheckConstraint("source IN ('mcp','web','api','ci')", name="valid_context_outcome_source"),
         UniqueConstraint(
             "user_id",
             "context_run_id",
@@ -408,6 +412,77 @@ class ContextOutcome(Base):
             name="uq_context_outcome_idempotency",
         ),
         Index("idx_context_outcomes_run_created", "user_id", "context_run_id", "created_at"),
+        Index(
+            "idx_context_outcomes_policy_effect_created",
+            "user_id",
+            "policy_effect",
+            "created_at",
+        ),
+    )
+
+
+class ReliabilityAssessment(Base):
+    """A rebuildable reliability snapshot for a context subject."""
+
+    __tablename__ = "reliability_assessments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    project_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    assessment_class: Mapped[str] = mapped_column(String(24), nullable=False)
+    support_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    reason_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    evidence_refs: Mapped[list[dict[str, object]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    source_watermark: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    producer: Mapped[str] = mapped_column(String(64), nullable=False, default="echome.rules")
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "subject_type IN ('memory','constraint','artifact')",
+            name="valid_reliability_subject_type",
+        ),
+        CheckConstraint(
+            "assessment_class IN ('invariant','durable','environment_bound','volatile','episodic','unknown')",
+            name="valid_reliability_assessment_class",
+        ),
+        CheckConstraint(
+            "support_state IN ('current_supported','historical','needs_verification','conflicting','dormant_scope','insufficient_evidence')",
+            name="valid_reliability_support_state",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="valid_reliability_confidence",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "subject_type",
+            "subject_id",
+            "source_fingerprint",
+            name="uq_reliability_assessment_fingerprint",
+        ),
+        Index(
+            "idx_reliability_subject_assessed",
+            "user_id",
+            "subject_type",
+            "subject_id",
+            "assessed_at",
+        ),
+        Index(
+            "idx_reliability_project_state",
+            "user_id",
+            "project_id",
+            "support_state",
+        ),
     )
 
 

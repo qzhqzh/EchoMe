@@ -629,10 +629,21 @@ async def list_tools() -> list[Tool]:
                         "enum": ["auto", "personal", "project", "impact", "temporal"],
                         "default": "auto",
                     },
-                    "token_budget": {"type": "integer", "minimum": 256, "maximum": 50000, "default": 6000},
+                    "token_budget": {
+                        "type": "integer",
+                        "minimum": 256,
+                        "maximum": 50000,
+                        "default": 6000,
+                    },
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                     "as_of": {"type": "string", "format": "date-time"},
                     "valid_at": {"type": "string", "format": "date-time"},
+                    "policy_mode": {
+                        "type": "string",
+                        "enum": ["off", "shadow", "enforce"],
+                        "default": "shadow",
+                        "description": "Attach reliability decisions in shadow mode by default; enforce only works when the Hub feature flag is enabled.",
+                    },
                     "client": {"type": "string"},
                     "client_version": {"type": "string"},
                 },
@@ -650,9 +661,25 @@ async def list_tools() -> list[Tool]:
             name="echome_runtime_health",
             description=(
                 "Diagnose the MCP package, authenticated Hub, database, migration revision, embedding service, "
-                "feature flags, profile, and read-only context cache."
+                "feature flags, profile, and read-only context cache. Optionally include the derived context "
+                "policy readiness gate before considering an enforce canary."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_policy_readiness": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                    "project_id": {"type": "string"},
+                    "window_days": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 365,
+                        "default": 30,
+                    },
+                },
+            },
             outputSchema={"type": "object", "additionalProperties": True},
             annotations=ToolAnnotations(
                 readOnlyHint=True,
@@ -675,6 +702,11 @@ async def list_tools() -> list[Tool]:
                     "outcome": {
                         "type": "string",
                         "enum": ["success", "partial", "failed", "corrected", "no_signal"],
+                    },
+                    "policy_effect": {
+                        "type": "string",
+                        "enum": ["helpful", "neutral", "harmful", "uncertain"],
+                        "description": "Optional explicit evidence about the observed policy intervention. Harmful requires a note.",
                     },
                     "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
                     "reported_by": {
@@ -733,6 +765,12 @@ async def list_tools() -> list[Tool]:
                     "valid_at": {"type": "string", "format": "date-time"},
                     "record_run": {"type": "boolean", "default": True},
                     "shadow": {"type": "boolean", "default": False},
+                    "policy_mode": {
+                        "type": "string",
+                        "enum": ["off", "shadow", "enforce"],
+                        "default": "shadow",
+                        "description": "Attach reliability and intervention decisions without mutating source memories or constraints.",
+                    },
                 },
                 "required": ["project_id", "task"],
             },
@@ -961,7 +999,7 @@ async def list_tools() -> list[Tool]:
             name="echome_sleep_candidates",
             description=(
                 "Fetch all eligible Memory Sleep candidates page by page. "
-                "Default statuses are active, ai_review, and pending; deprecated and archived are excluded unless explicitly requested. "
+                "Statuses are active, ai_review, and pending; deprecated and archived are never Sleep candidates. "
                 "Use this before generating a client-side text proposal and JSON sleep plan."
             ),
             inputSchema={
@@ -978,13 +1016,18 @@ async def list_tools() -> list[Tool]:
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": ["active", "ai_review", "pending", "deprecated", "archived"],
+                            "enum": ["active", "ai_review", "pending"],
                         },
                         "description": "Optional explicit statuses; omit for active, ai_review, pending.",
                     },
                     "page_size": {"type": "integer", "default": 100},
                     "cursor": {"type": "integer"},
                     "include_protected": {"type": "boolean", "default": True},
+                    "plan_schema_version": {
+                        "type": "string",
+                        "enum": ["memory_sleep_plan.v1", "memory_sleep_plan.v2"],
+                        "default": "memory_sleep_plan.v2",
+                    },
                 },
                 "required": [],
             },
@@ -993,7 +1036,8 @@ async def list_tools() -> list[Tool]:
             name="echome_sleep_submit_proposal",
             description=(
                 "Submit a client-generated Memory Sleep proposal. "
-                "The JSON proposal must follow memory_sleep_plan.v1 and will be validated by Hub before apply."
+                "memory_sleep_plan.v2 adds source preconditions and before/after replay gates; v1 remains supported. "
+                "The Hub replaces client-supplied simulation output and validates again before apply."
             ),
             inputSchema={
                 "type": "object",
@@ -1103,16 +1147,22 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 limit=arguments.get("limit", 20),
                 as_of=arguments.get("as_of"),
                 valid_at=arguments.get("valid_at"),
+                policy_mode=arguments.get("policy_mode", "shadow"),
                 client=arguments.get("client"),
                 client_version=arguments.get("client_version"),
             )
         elif name == "echome_runtime_health":
-            result = await echome_runtime_health()
+            result = await echome_runtime_health(
+                include_policy_readiness=arguments.get("include_policy_readiness", False),
+                project_id=arguments.get("project_id"),
+                window_days=arguments.get("window_days", 30),
+            )
         elif name == "echome_context_outcome":
             result = await echome_context_outcome(
                 context_run_id=arguments["context_run_id"],
                 outcome=arguments["outcome"],
                 idempotency_key=arguments["idempotency_key"],
+                policy_effect=arguments.get("policy_effect"),
                 reported_by=arguments.get("reported_by", "ai"),
                 source=arguments.get("source", "mcp"),
                 project_event_id=arguments.get("project_event_id"),
@@ -1205,6 +1255,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 valid_at=arguments.get("valid_at"),
                 record_run=arguments.get("record_run", True),
                 shadow=arguments.get("shadow", False),
+                policy_mode=arguments.get("policy_mode", "shadow"),
             )
         elif name == "echome_project_impact":
             result = await echome_project_impact(
@@ -1271,6 +1322,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 page_size=arguments.get("page_size", 100),
                 cursor=arguments.get("cursor"),
                 include_protected=arguments.get("include_protected", True),
+                plan_schema_version=arguments.get("plan_schema_version", "memory_sleep_plan.v2"),
             )
         elif name == "echome_sleep_submit_proposal":
             result = await echome_sleep_submit_proposal(

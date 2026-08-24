@@ -25,6 +25,7 @@ from app.models.project_knowledge import ContextRun
 from app.schemas.context_runtime import UnifiedContextRequest
 from app.schemas.project_knowledge import ProjectContextRequest, ProjectPreflightRequest
 from app.services.context_compiler import compile_project_context
+from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import resolve_project
 from app.services.token_counter import count_tokens
@@ -203,7 +204,7 @@ async def _personal_context(
     ]
     while payloads and count_tokens(str(payloads)) > body.token_budget:
         payloads.pop()
-    unknowns = [] if payloads else ["No supported personal memory matched the task."]
+    token_used = count_tokens(str(payloads))
     context: dict[str, Any] = {
         "schema_version": "echome.context.v1",
         "scope": "personal",
@@ -216,15 +217,29 @@ async def _personal_context(
         "evidence": [],
         "conflicts": [],
         "stale_warnings": [],
-        "unknowns": unknowns,
+        "unknowns": [] if payloads else ["No supported personal memory matched the task."],
         "token_budget": body.token_budget,
-        "token_used": count_tokens(str(payloads)),
+        "token_used": token_used,
         "retrieval_trace": {
             **retrieval.trace,
             "selected_count": len(payloads),
             "candidate_counts": {"memories": retrieval.total_candidates},
         },
     }
+    await apply_context_policy(
+        session,
+        user_id=user_id,
+        context=context,
+        requested_mode=body.policy_mode,
+        enforce_enabled=settings.context_policy_enforce_enabled,
+        persist_assessments=body.record_run,
+        query_mode="personal",
+        valid_at=body.valid_at,
+    )
+    record_policy_diagnostic_overhead(context)
+    context["retrieval_trace"]["selected_count"] = len(context["memories"])
+    if not context["memories"] and not context["unknowns"]:
+        context["unknowns"].append("No supported personal memory matched the task.")
     if body.record_run:
         run = ContextRun(
             user_id=user_id,
@@ -235,7 +250,7 @@ async def _personal_context(
             token_budget=body.token_budget,
             token_used=context["token_used"],
             candidates={"memories": retrieval.total_candidates},
-            selected={"memories": [item["id"] for item in payloads]},
+            selected={"memories": [item["id"] for item in context["memories"]]},
             trace=context["retrieval_trace"],
             request_id=request_id,
             client=body.client,
@@ -275,7 +290,9 @@ async def _build_unified_context(
             if body.mode == "impact" or (body.mode == "auto" and body.changed_paths)
             else "project"
         )
-        compiler_mode = "overview" if route == "temporal" else "impact" if route == "impact" else "local"
+        compiler_mode = (
+            "overview" if route == "temporal" else "impact" if route == "impact" else "local"
+        )
         context = await compile_project_context(
             session,
             project,
@@ -293,6 +310,7 @@ async def _build_unified_context(
                 client=body.client,
                 client_version=body.client_version,
                 route=route,
+                policy_mode=body.policy_mode,
             ),
             user_id,
         )
@@ -379,6 +397,8 @@ async def runtime_health(
         "schema_version": migration_revision,
         "feature_flags": {
             "context_compiler": settings.context_compiler_enabled,
+            "context_policy_shadow": True,
+            "context_policy_enforce": settings.context_policy_enforce_enabled,
             "project_automation": settings.project_automation_enabled,
             "unified_context": True,
         },

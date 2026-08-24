@@ -183,7 +183,7 @@ Sleep 候选选择不能沿用普通检索的 `top_k` 语义。普通检索可�
 - 用户近期刚确认过的核心规则。
 - 明确已经被 Sleep 整理过的记忆。
 - 高优先级 `L0/L1`，除非用户显式选择或存在明确冲突证据。
-- 已经是 `archived` 的记忆，除非用户显式要求重整历史。
+- 已经是 `archived` 或 `deprecated` 的记忆；历史仍可审计和查询，但不能重新进入 Sleep 候选。
 
 “明确已经被 Sleep 整理过”必须有强证据，避免误排除：
 
@@ -339,6 +339,46 @@ JSON 预案用于服务端稳定执行。服务端必须先校验，再在事务
 }
 ```
 
+## Memory Sleep v2
+
+`memory_sleep_plan.v1` 保持兼容；REST 调用省略 `plan_schema_version` 时仍使用 v1，升级后的 MCP
+客户端会显式请求 `memory_sleep_plan.v2`。v2 在原动作列表之外要求：
+
+```json
+{
+  "schema_version": "memory_sleep_plan.v2",
+  "preconditions": [
+    {
+      "memory_id": "uuid-a",
+      "status": "active",
+      "sleep_state": "fresh",
+      "updated_at": "2026-08-23T12:00:00+00:00"
+    }
+  ],
+  "replay_cases": [
+    {
+      "case_id": "git-workflow",
+      "query": "Git 提交流程按什么规则？",
+      "expected_memory_ids": ["uuid-a"],
+      "top_k": 10
+    }
+  ],
+  "quality_gates": {
+    "min_source_coverage": 1.0,
+    "max_replay_regressions": 0,
+    "max_token_growth_ratio": 0.1,
+    "min_scored_replay_cases": 1
+  }
+}
+```
+
+Hub 在 proposal 提交时生成 `server_simulation`，并在 apply 前基于最新数据重新生成。客户端提供的
+`server_simulation` 不受信任。前置条件变化、来源未覆盖、token 超门禁或 replay 退化都会阻止 apply，
+源记忆保持不变。
+
+当前 before/after 模拟使用与线上一致的词法评分做 candidate-local 确定性预检；完整线上回归由
+`POST /api/v1/retrieval-debug/replay` 负责。
+
 ## 服务端校验规则
 
 服务端不能信任客户端 JSON 预案，必须校验：
@@ -469,7 +509,8 @@ Request:
   "status": ["active", "ai_review", "pending"],
   "page_size": 100,
   "cursor": null,
-  "include_protected": true
+  "include_protected": true,
+  "plan_schema_version": "memory_sleep_plan.v2"
 }
 ```
 
@@ -479,7 +520,8 @@ Response:
 {
   "session_id": "uuid",
   "project_id": "qzhqzh/EchoMe",
-  "schema_version": "memory_sleep_plan.v1",
+  "schema_version": "memory_sleep_plan.v2",
+  "supported_schema_versions": ["memory_sleep_plan.v1", "memory_sleep_plan.v2"],
   "candidates": [],
   "protected_memories": [],
   "relation_edges": [],
@@ -698,7 +740,7 @@ include_archived = true
 
 网络图、审计、历史回溯可以读取所有状态，但回答用户当前任务时不能默认使用 `archived` / `deprecated`。
 
-Memory Sleep 候选默认取 `active`、`ai_review`、`pending`。客户端生成预案时应能看到这些记忆的状态，并由用户审核最终 JSON 预案。`deprecated` 和 `archived` 默认不参与重新整理，除非用户显式要求重整历史。
+Memory Sleep 候选只取 `active`、`ai_review`、`pending`。客户端生成预案时应能看到这些记忆的状态，并由用户审核最终 JSON 预案。`deprecated` 和 `archived` 不参与重新整理；它们只在历史审计和图谱查询中作为 provenance 使用。
 
 ## MVP 推进顺序
 

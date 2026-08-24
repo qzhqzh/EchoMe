@@ -11,7 +11,8 @@
 
 EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它统一保存工作习惯、技术偏好、项目文档、约束关系、历史决策和验证证据，让 Codex、Claude Code、Cursor 等客户端通过 MCP 获得一致、可追溯、可演进的上下文。
 
-当前稳定版本为 **v1.5.0**，主题是 Reliable Context Runtime。
+当前稳定版本为 **v1.5.1**。v1.7 release candidate 正在把 Trusted Context Policy、Sleep v2
+和策略校准门禁合并为一个可安全发布的版本；生产策略仍保持 shadow。
 
 ## 核心架构
 
@@ -63,9 +64,9 @@ AI 默认调用 `echome_context`，由运行时自动完成：
 Memory Sleep 用于整理不断增长的记忆，但不会静默覆盖历史：
 
 1. Hub 返回所有符合条件的非归档、非 deprecated 候选。
-2. 服务端或能力更强的客户端 AI 生成文本预案和 `memory_sleep_plan.v1` JSON。
-3. Hub 校验并展示 proposal。
-4. 确认后新增归纳记忆，原记忆转为 archived，并保留派生和替代关系。
+2. 服务端或能力更强的客户端 AI 生成文本预案和 JSON；新版 MCP 默认请求带来源前置条件与 replay cases 的 v2，REST v1 继续兼容。
+3. Hub 校验并运行整理前后 simulation，展示来源覆盖、token footprint 和检索回归。
+4. 确认后 Hub 按最新数据重新验证，再新增归纳记忆、归档来源并保留派生和替代关系。
 
 ### 质量与可观测性
 
@@ -75,6 +76,8 @@ Web Console 提供：
 - 可交互记忆关系图和节点邻居
 - Retrieval Debugger 与检索日志
 - Context Runs、fallback、错误与选入证据
+- Reliability/intervention shadow trace 与真实 Retrieval Log replay
+- Policy Readiness 汇总显式 policy effect，并且只授予 canary 评估资格，不自动开启 enforce
 - Memory Quality Eval 与 Project Context Eval
 - Sleep session 和变更审计
 
@@ -201,7 +204,7 @@ Sleep apply 需要先提交并确认合法 JSON 预案，不会直接批量重�
 ## 数据安全原则
 
 - PostgreSQL + pgvector 是唯一权威服务端数据层。
-- 数据库迁移采用 Alembic；v1.5 当前 schema revision 为 `015`。
+- 数据库迁移采用 Alembic；当前生产 schema revision 为 `015`，v1.7 release candidate 目标为 additive `017`。
 - archived 和 deprecated 记忆不会作为当前有效事实参与默认检索。
 - Sleep、项目重关联和约束复核采用 `proposal → validate → apply`。
 - 原始记忆、制品版本、约束版本、事件和关系证据不被静默删除。
@@ -235,6 +238,8 @@ CI 对 CLI/MCP、Hub 和 Web 分别执行 lockfile 安装、Ruff、pytest 与 pr
 
 - [系统架构](docs/architecture.md)
 - [v1.5 规划与验收](docs/next-version-plan-v1.5.md)
+- [v1.6 Trusted Context Policy 历史基线](docs/next-version-plan-v1.6.md)
+- [v1.7 Trusted Context Calibration 计划](docs/next-version-plan-v1.7.md)
 - [记忆模型](docs/memory-model.md)
 - [记忆检索设计](docs/memory-retrieval.md)
 - [Memory Sleep](docs/memory-sleep.md)

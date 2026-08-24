@@ -19,6 +19,7 @@ class UnifiedContextRequest(BaseModel):
     request_id: str | None = Field(None, max_length=64)
     client: str | None = Field(None, max_length=64)
     client_version: str | None = Field(None, max_length=64)
+    policy_mode: Literal["off", "shadow", "enforce"] = "shadow"
 
     @model_validator(mode="after")
     def validate_scope(self) -> "UnifiedContextRequest":

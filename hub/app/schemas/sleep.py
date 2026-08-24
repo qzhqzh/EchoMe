@@ -10,11 +10,14 @@ from app.schemas.memory import MemoryLayer, MemoryStatus, MemoryType, ScopeSchem
 
 SleepMode = Literal["server_generated", "client_generated"]
 SleepSessionStatus = Literal["draft", "proposed", "approved", "applied", "rejected"]
-DEFAULT_CANDIDATE_STATUSES = [
-    MemoryStatus.active,
-    MemoryStatus.ai_review,
-    MemoryStatus.pending,
-]
+SleepCandidateStatus = Literal["active", "ai_review", "pending"]
+SleepRequestedStatus = Literal["active", "ai_review", "pending", "deprecated", "archived"]
+DEFAULT_CANDIDATE_STATUSES: list[SleepCandidateStatus] = ["active", "ai_review", "pending"]
+ELIGIBLE_CANDIDATE_STATUSES = frozenset(DEFAULT_CANDIDATE_STATUSES)
+
+
+def _default_candidate_statuses() -> list[SleepRequestedStatus]:
+    return ["active", "ai_review", "pending"]
 
 
 class SleepCandidatesRequest(BaseModel):
@@ -23,10 +26,13 @@ class SleepCandidatesRequest(BaseModel):
     project_id: str | None = None
     session_id: uuid.UUID | None = None
     scope: Literal["project", "global", "all"] = "project"
-    status: list[MemoryStatus] = Field(default_factory=lambda: DEFAULT_CANDIDATE_STATUSES.copy())
+    status: list[SleepRequestedStatus] = Field(default_factory=_default_candidate_statuses)
     page_size: int = Field(100, ge=1, le=500)
     cursor: int | None = Field(None, ge=0)
     include_protected: bool = True
+    plan_schema_version: Literal["memory_sleep_plan.v1", "memory_sleep_plan.v2"] = (
+        "memory_sleep_plan.v1"
+    )
 
 
 class SleepMemoryItem(BaseModel):
@@ -71,6 +77,9 @@ class SleepCandidatesResponse(BaseModel):
     session_id: uuid.UUID
     project_id: str | None
     schema_version: str = "memory_sleep_plan.v1"
+    supported_schema_versions: list[str] = Field(
+        default_factory=lambda: ["memory_sleep_plan.v1", "memory_sleep_plan.v2"]
+    )
     candidates: list[SleepMemoryItem]
     protected_memories: list[SleepMemoryItem]
     relation_edges: list[SleepEdgeItem]

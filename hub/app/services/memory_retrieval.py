@@ -44,11 +44,7 @@ def memory_query_tokens(query: str) -> list[str]:
     lowered = query.lower()
     if len(lowered) > 2048:
         lowered = f"{lowered[:1024]} {lowered[-1024:]}"
-    tokens = {
-        token
-        for token in re.findall(r"[A-Za-z0-9_+#.-]{2,}", lowered)
-        if len(token) <= 64
-    }
+    tokens = {token for token in re.findall(r"[A-Za-z0-9_+#.-]{2,}", lowered) if len(token) <= 64}
     for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", lowered):
         if len(chunk) <= 32:
             tokens.add(chunk)
@@ -80,22 +76,27 @@ def _independent_matches(tokens: set[str], text: str) -> list[str]:
     return matches
 
 
-def _lexical_similarity(query_tokens: set[str], memory: Memory) -> float:
+def lexical_memory_similarity(
+    query_tokens: set[str],
+    *,
+    title: str,
+    tags: list[str],
+    content: str,
+) -> float:
+    """Score memory-shaped text using the same lexical signals as live retrieval."""
     if not query_tokens:
         return 0.0
-    title = memory.title.lower()
-    tags = " ".join(memory.tags or []).lower()
-    content = memory.content.lower()
-    title_matches = _independent_matches(query_tokens, title)
-    tag_matches = _independent_matches(query_tokens - set(title_matches), tags)
+    lowered_title = title.lower()
+    lowered_tags = " ".join(tags).lower()
+    lowered_content = content.lower()
+    title_matches = _independent_matches(query_tokens, lowered_title)
+    tag_matches = _independent_matches(query_tokens - set(title_matches), lowered_tags)
     content_matches = _independent_matches(
-        query_tokens - set(title_matches) - set(tag_matches), content
+        query_tokens - set(title_matches) - set(tag_matches), lowered_content
     )
     return min(
         1.0,
-        0.45 * len(title_matches)
-        + 0.35 * len(tag_matches)
-        + 0.18 * len(content_matches),
+        0.45 * len(title_matches) + 0.35 * len(tag_matches) + 0.18 * len(content_matches),
     )
 
 
@@ -132,9 +133,7 @@ async def retrieve_memories(
             )
         )
 
-    total_result = await session.execute(
-        select(func.count()).select_from(Memory).where(*filters)
-    )
+    total_result = await session.execute(select(func.count()).select_from(Memory).where(*filters))
     total_candidates = total_result.scalar_one()
     query_token_list = memory_query_tokens(query)
     query_tokens = set(query_token_list)
@@ -195,7 +194,15 @@ async def retrieve_memories(
     lexical_scores = {
         memory.id: score
         for memory in candidates
-        if (score := _lexical_similarity(query_tokens, memory)) >= min_source_score
+        if (
+            score := lexical_memory_similarity(
+                query_tokens,
+                title=memory.title,
+                tags=memory.tags or [],
+                content=memory.content,
+            )
+        )
+        >= min_source_score
     }
 
     ranked: list[RankedMemory] = []

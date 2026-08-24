@@ -30,7 +30,11 @@ DEFAULT_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
 def _cache_directory() -> Path:
     configured = os.getenv("ECHOME_CONTEXT_CACHE_DIR")
-    return Path(configured).expanduser() if configured else Path.home() / ".echome" / "cache" / "context"
+    return (
+        Path(configured).expanduser()
+        if configured
+        else Path.home() / ".echome" / "cache" / "context"
+    )
 
 
 def _cache_encryption_key() -> bytes | None:
@@ -191,7 +195,9 @@ def error_contract(exc: Exception, request_id: str | None = None) -> dict[str, A
             if not detail and isinstance(response_payload.get("error"), dict):
                 detail = response_payload["error"].get("message")
             if detail:
-                message = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+                message = (
+                    detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+                )
         except (ValueError, AttributeError):
             pass
         action = "Check the request and EchoMe authentication." if status < 500 else "Retry later."
@@ -240,6 +246,7 @@ async def echome_context(
     limit: int = 20,
     as_of: str | None = None,
     valid_at: str | None = None,
+    policy_mode: str = "shadow",
     client: str | None = None,
     client_version: str | None = None,
 ) -> str:
@@ -257,6 +264,7 @@ async def echome_context(
         "limit": limit,
         "as_of": as_of,
         "valid_at": valid_at,
+        "policy_mode": policy_mode,
         "record_run": True,
         "request_id": request_id,
         "client": client or "mcp",
@@ -291,11 +299,16 @@ async def echome_context(
     return json.dumps(context, ensure_ascii=False, indent=2)
 
 
-async def echome_runtime_health() -> str:
+async def echome_runtime_health(
+    include_policy_readiness: bool = False,
+    project_id: str | None = None,
+    window_days: int = 30,
+) -> str:
     """Report MCP/cache configuration and authenticated Hub component health."""
     request_id = str(uuid.uuid4())
+    client = MCPHubClient()
     try:
-        hub = await MCPHubClient().runtime_health()
+        hub = await client.runtime_health()
     except Exception as exc:
         return json.dumps(error_contract(exc, request_id), ensure_ascii=False, indent=2)
     payload = {
@@ -308,12 +321,25 @@ async def echome_runtime_health() -> str:
             "mode": "read_only_last_known_good",
             "directory": str(_cache_directory()),
             "encryption": "aes-256-gcm-local-random-key",
-            "enabled": MCPHubClient().cache_enabled,
+            "enabled": client.cache_enabled,
             "key_source": "local_random_file",
             "max_age_seconds": _cache_max_age_seconds(),
         },
         "request_id": request_id,
     }
+    if include_policy_readiness:
+        try:
+            payload["context_policy_readiness"] = await client.context_policy_readiness(
+                project_id=project_id,
+                window_days=window_days,
+            )
+        except Exception as exc:
+            payload["context_policy_readiness"] = {
+                "status": "unavailable",
+                "eligible_for_canary": False,
+                "auto_enforce": False,
+                "error": error_contract(exc, request_id)["error"],
+            }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
@@ -321,6 +347,7 @@ async def echome_context_outcome(
     context_run_id: str,
     outcome: str,
     idempotency_key: str,
+    policy_effect: str | None = None,
     reported_by: str = "ai",
     source: str = "mcp",
     project_event_id: str | None = None,
@@ -330,6 +357,7 @@ async def echome_context_outcome(
     payload = {
         "context_run_id": context_run_id,
         "outcome": outcome,
+        "policy_effect": policy_effect,
         "reported_by": reported_by,
         "source": source,
         "project_event_id": project_event_id,

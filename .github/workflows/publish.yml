@@ -12,6 +12,10 @@ on:
           - patch
           - minor
           - major
+      target_version:
+        description: "Optional explicit semver target, for example 1.7.0"
+        required: false
+        type: string
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -32,6 +36,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Require and synchronize main
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "Releases must run from main" >&2
+            exit 1
+          fi
+          git pull --ff-only origin main
+
       - name: Get current version
         id: current
         run: |
@@ -41,16 +53,46 @@ jobs:
 
       - name: Bump version
         id: bump
+        env:
+          BUMP_TYPE: ${{ inputs.bump }}
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+          TARGET_VERSION: ${{ inputs.target_version }}
         run: |
-          IFS='.' read -r major minor patch <<< "${{ steps.current.outputs.version }}"
-          case "${{ inputs.bump }}" in
-            major) major=$((major + 1)); minor=0; patch=0 ;;
-            minor) minor=$((minor + 1)); patch=0 ;;
-            patch) patch=$((patch + 1)) ;;
-          esac
-          NEW_VERSION="${major}.${minor}.${patch}"
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "New version: $NEW_VERSION"
+          python - <<'PY'
+          import os
+          import re
+
+          current_text = os.environ["CURRENT_VERSION"]
+          target_text = os.environ.get("TARGET_VERSION", "").strip()
+          bump_type = os.environ["BUMP_TYPE"]
+          semver = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
+          if not semver.fullmatch(current_text):
+              raise SystemExit("current version must use numeric X.Y.Z semver")
+
+          current = tuple(map(int, current_text.split(".")))
+          if target_text:
+              if not semver.fullmatch(target_text):
+                  raise SystemExit("target_version must use numeric X.Y.Z semver")
+              target = tuple(map(int, target_text.split(".")))
+              if target <= current:
+                  raise SystemExit("target_version must be greater than the current version")
+              new_version = target_text
+          else:
+              if bump_type not in {"major", "minor", "patch"}:
+                  raise SystemExit("unsupported bump type")
+              major, minor, patch = current
+              if bump_type == "major":
+                  major, minor, patch = major + 1, 0, 0
+              elif bump_type == "minor":
+                  minor, patch = minor + 1, 0
+              else:
+                  patch += 1
+              new_version = f"{major}.{minor}.{patch}"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={new_version}\n")
+          print(f"New version: {new_version}")
+          PY
 
       - name: Update version in pyproject.toml
         run: |
@@ -64,6 +106,34 @@ jobs:
         run: |
           sed -i 's/__version__ = "${{ steps.current.outputs.version }}"/__version__ = "${{ steps.bump.outputs.version }}"/' echome_mcp/__init__.py
           sed -i 's/app_version: str = "${{ steps.current.outputs.version }}"/app_version: str = "${{ steps.bump.outputs.version }}"/' hub/app/core/config.py
+          sed -Ei 's/当前稳定版本为 \*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*/当前稳定版本为 **v${{ steps.bump.outputs.version }}**/' README.md
+
+      - name: Verify release version files
+        env:
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          checks = {
+              "pyproject.toml": pyproject["project"]["version"] == version,
+              "echome/__init__.py": Path("echome/__init__.py").read_text(encoding="utf-8").strip()
+              == f'__version__ = "{version}"',
+              "echome_mcp/__init__.py": f'__version__ = "{version}"'
+              in Path("echome_mcp/__init__.py").read_text(encoding="utf-8"),
+              "hub/app/core/config.py": f'app_version: str = "{version}"'
+              in Path("hub/app/core/config.py").read_text(encoding="utf-8"),
+              "README.md": f"当前稳定版本为 **v{version}**"
+              in Path("README.md").read_text(encoding="utf-8"),
+          }
+          failed = [path for path, passed in checks.items() if not passed]
+          if failed:
+              raise SystemExit(f"release version update failed: {', '.join(failed)}")
+          PY
 
       - name: Generate changelog
         id: changelog
@@ -93,32 +163,6 @@ jobs:
           cat /tmp/changelog_entry.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Commit version bump + changelog
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py CHANGELOG.md
-          git commit -m "release: v${{ steps.bump.outputs.version }}"
-
-      - name: Create tag
-        run: |
-          git tag "v${{ steps.bump.outputs.version }}"
-
-      - name: Push commit and tag
-        run: |
-          git pull --rebase origin main
-          git push origin main
-          git push origin "v${{ steps.bump.outputs.version }}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v${{ steps.bump.outputs.version }}"
-          name: "v${{ steps.bump.outputs.version }}"
-          body: ${{ steps.changelog.outputs.notes }}
-          draft: false
-          prerelease: false
-
       - name: Install build tools
         run: pip install build
 
@@ -129,6 +173,30 @@ jobs:
         run: |
           pip install dist/*.whl
           echome --help
+
+      - name: Commit version bump + changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md CHANGELOG.md
+          git commit -m "release: v${{ steps.bump.outputs.version }}"
+
+      - name: Create tag
+        run: |
+          git tag "v${{ steps.bump.outputs.version }}"
+
+      - name: Push commit and tag
+        run: |
+          git push --atomic origin HEAD:main "v${{ steps.bump.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.bump.outputs.version }}"
+          name: "v${{ steps.bump.outputs.version }}"
+          body: ${{ steps.changelog.outputs.notes }}
+          draft: false
+          prerelease: false
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

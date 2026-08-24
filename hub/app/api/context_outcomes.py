@@ -21,6 +21,7 @@ def _payload(item: ContextOutcome) -> dict[str, Any]:
         "id": str(item.id),
         "context_run_id": str(item.context_run_id),
         "outcome": item.outcome,
+        "policy_effect": item.policy_effect,
         "reported_by": item.reported_by,
         "source": item.source,
         "project_event_id": str(item.project_event_id) if item.project_event_id else None,
@@ -36,12 +37,22 @@ async def _append(
     user_id: str,
 ) -> ContextOutcome:
     run = await session.scalar(
-        select(ContextRun).where(ContextRun.id == body.context_run_id, ContextRun.user_id == user_id)
+        select(ContextRun).where(
+            ContextRun.id == body.context_run_id, ContextRun.user_id == user_id
+        )
     )
     if run is None:
         raise HTTPException(status_code=404, detail="Context run not found")
     if run.status != "completed" or run.shadow:
         raise HTTPException(status_code=422, detail="Outcomes require a completed, non-shadow run")
+    policy = run.trace.get("context_policy") if isinstance(run.trace, dict) else None
+    if body.policy_effect is not None and (
+        not isinstance(policy, dict) or policy.get("effective_mode") not in {"shadow", "enforce"}
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Policy effects require a context run with an observed context policy",
+        )
     if body.project_event_id:
         event = await session.scalar(
             select(ProjectEvent).where(
@@ -50,7 +61,9 @@ async def _append(
             )
         )
         if event is None or run.project_id is None or event.project_id != run.project_id:
-            raise HTTPException(status_code=422, detail="Project event does not belong to the context run")
+            raise HTTPException(
+                status_code=422, detail="Project event does not belong to the context run"
+            )
     statement = (
         insert(ContextOutcome)
         .values(user_id=user_id, **body.model_dump())
@@ -68,10 +81,19 @@ async def _append(
         )
     )
     if existing is None:
-        raise HTTPException(status_code=409, detail="Context outcome conflict could not be resolved")
+        raise HTTPException(
+            status_code=409, detail="Context outcome conflict could not be resolved"
+        )
     same_payload = all(
         getattr(existing, field) == getattr(body, field)
-        for field in ("outcome", "reported_by", "source", "project_event_id", "note")
+        for field in (
+            "outcome",
+            "policy_effect",
+            "reported_by",
+            "source",
+            "project_event_id",
+            "note",
+        )
     )
     if not same_payload:
         raise HTTPException(status_code=409, detail="Idempotency key has a different payload")

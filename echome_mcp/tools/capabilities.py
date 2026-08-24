@@ -10,7 +10,7 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v3",
+    "capabilities_version": "echome.capabilities.v5",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
@@ -69,17 +69,17 @@ CAPABILITIES: dict[str, Any] = {
             },
             {
                 "tool": "echome_context",
-                "when": "Default single entry for personal or project work; routes automatically and returns answerability plus runtime metadata.",
+                "when": "Default single entry for personal or project work; routes automatically and returns answerability, reliability interventions, and runtime metadata.",
                 "mutates_state": False,
             },
             {
                 "tool": "echome_runtime_health",
-                "when": "Diagnose Hub, database, migration, embedding, MCP version, profile, and cache state.",
+                "when": "Diagnose runtime state; request policy readiness before considering any enforce canary.",
                 "mutates_state": False,
             },
             {
                 "tool": "echome_context_outcome",
-                "when": "After a completed context run when task evidence clearly shows success, partial value, failure, or correction.",
+                "when": "After a completed context run when task or policy-effect evidence is explicit; never infer missing signals.",
                 "mutates_state": True,
             },
         ],
@@ -179,12 +179,12 @@ CAPABILITIES: dict[str, Any] = {
         "sleep": [
             {
                 "tool": "echome_sleep_candidates",
-                "when": "List all eligible memories for manual Memory Sleep planning.",
+                "when": "List all eligible memories and the latest v2 planning contract for manual Memory Sleep planning.",
                 "mutates_state": False,
             },
             {
                 "tool": "echome_sleep_submit_proposal",
-                "when": "Submit a user/AI approved JSON sleep proposal.",
+                "when": "Submit a JSON sleep proposal; v2 receives server-owned before/after simulation results.",
                 "mutates_state": True,
             },
             {
@@ -205,7 +205,9 @@ CAPABILITIES: dict[str, Any] = {
         "Use memory tools for user behavior and working preferences; use project-intelligence tools for requirements, implementation constraints, evidence, and impact analysis.",
         "For project work, call echome_project_preflight before material actions and echome_project_context for the evidence-first context pack; do not ask the user to choose between memory and graph search.",
         "Project events and inferred constraints remain proposals/evidence. They do not silently become active constraints or mutate memories.",
-        "Context outcomes are append-only evidence for completed non-shadow runs; missing feedback is unknown, never an inferred failure.",
+        "Context outcomes are append-only evidence for completed non-shadow runs; policy_effect is optional and must be explicit. Missing feedback is unknown, never an inferred failure.",
+        "Context reliability defaults to shadow mode: decisions are observable but source memories and constraints are never rewritten. Enforce mode also requires an explicit Hub feature flag.",
+        "Before any enforce canary, call echome_runtime_health with include_policy_readiness=true. eligible_for_canary never enables enforce automatically.",
     ],
 }
 
@@ -295,7 +297,7 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
         "3. If a selected memory is important for a project decision, deployment, version, historical assumption, "
         "or could be stale, call echome_memory_explain on that memory.\n"
         "4. If neighboring context matters, call echome_memory_neighbors with include_inactive=true for provenance.\n"
-        "5. At task end, if the unified context result clearly affected task success, call echome_context_outcome once with an idempotency key; otherwise leave it unknown.\n"
+        "5. At task end, if the unified context or policy intervention clearly affected task success, call echome_context_outcome once with an idempotency key and optional policy_effect; otherwise leave it unknown.\n"
         "6. If individual memory usefulness is clear or the user corrected a memory, call echome_memory_feedback or echome_memory_feedback_batch.\n"
         "7. Treat archived/deprecated memories as non-active facts unless graph provenance explains why they matter.\n"
         "8. Use echome_remember only for durable preferences, decisions, conventions, or reusable project context.\n\n"

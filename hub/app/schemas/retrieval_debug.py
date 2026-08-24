@@ -56,3 +56,9 @@ class RetrievalLogResponse(BaseModel):
 class RetrievalLogListResponse(BaseModel):
     total: int
     items: list[RetrievalLogResponse]
+
+
+class RetrievalReplayRequest(BaseModel):
+    log_ids: list[uuid.UUID] = Field(default_factory=list, max_length=30)
+    client: str | None = Field(None, max_length=32)
+    max_logs: int = Field(20, ge=1, le=30)

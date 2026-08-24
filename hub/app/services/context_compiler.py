@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.memory import Memory, Project
 from app.models.project_knowledge import (
     ArtifactChunk,
@@ -25,6 +26,7 @@ from app.models.project_knowledge import (
     ProjectConstraint,
 )
 from app.schemas.project_knowledge import ProjectContextRequest
+from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.embedding import get_embedding, get_embeddings
 from app.services.project_identity import project_scope_ids
 from app.services.token_counter import count_tokens
@@ -892,6 +894,18 @@ async def compile_project_context(
     if run_id:
         pack["context_run_id"] = str(run_id)
     _trim_to_budget(pack, body.token_budget)
+    await apply_context_policy(
+        session,
+        user_id=user_id,
+        context=pack,
+        requested_mode=body.policy_mode,
+        enforce_enabled=settings.context_policy_enforce_enabled,
+        persist_assessments=body.record_run,
+        project_id=body.project_id,
+        query_mode=body.route or body.mode,
+        valid_at=body.valid_at,
+    )
+    record_policy_diagnostic_overhead(pack)
 
     if body.record_run:
         assert run_id is not None

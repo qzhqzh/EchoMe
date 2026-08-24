@@ -117,9 +117,75 @@ export interface UnifiedContextResponse {
     status: string
     tags: string[]
     updated_at: string
+    reliability?: ContextReliability
+    intervention?: ContextIntervention
   }>
   unknowns: string[]
   retrieval_trace: Record<string, unknown>
+  context_policy?: ContextPolicySummary
+}
+
+export interface ContextReliability {
+  schema_version: number
+  classification: string
+  support_state: string
+  confidence: number
+  reason_codes: string[]
+  evidence_refs: Array<Record<string, unknown>>
+  source_watermark: Record<string, unknown>
+  producer: string
+  assessed_at: string
+}
+
+export interface ContextIntervention {
+  action: 'inject' | 'inject_with_warning' | 'expand' | 'silent' | 'abstain'
+  include: boolean
+  reason: string
+}
+
+export interface ContextPolicySummary {
+  schema_version: number
+  requested_mode: 'off' | 'shadow' | 'enforce'
+  effective_mode: 'off' | 'shadow' | 'enforce'
+  enforced: boolean
+  decision_counts: Record<string, number>
+  would_exclude?: { memories: string[]; constraints: string[] }
+  excluded?: { memories: string[]; constraints: string[] }
+  source_mutation?: string
+  fallback_reason?: string
+}
+
+export interface ContextPolicyReadiness {
+  schema_version: 'echome.context-policy-readiness.v1'
+  generated_at: string
+  project_id: string | null
+  window_days: number
+  sample_limit: number | null
+  evidence_truncated: boolean
+  status: 'insufficient_data' | 'hold' | 'eligible_for_canary'
+  eligible_for_canary: boolean
+  auto_enforce: false
+  reasons: string[]
+  recommendations: string[]
+  thresholds: Record<string, number>
+  metrics: {
+    observed_shadow_runs: number
+    ignored_runs: number
+    invalid_policy_trace_runs: number
+    enforced_runs_excluded: number
+    outcome_runs: number
+    evaluated_intervention_runs: number
+    intervention_runs: number
+    would_exclude_runs: number
+    would_exclude_items: number
+    evaluation_coverage: number | null
+    helpful_rate: number | null
+    harmful_rate: number | null
+    source_mutation_violations: number
+    policy_effects: Record<string, number>
+    task_outcomes: Record<string, number>
+    latest_observed_at: string | null
+  }
 }
 
 export interface Project {
@@ -160,6 +226,23 @@ export interface ProjectConstraint {
   created_at: string
   updated_at: string
   selection_reasons?: string[]
+  reliability?: ContextReliability
+  intervention?: ContextIntervention
+}
+
+export interface RetrievalReplayReport {
+  schema_version: number
+  generated_at: string
+  read_only: boolean
+  log_count: number
+  scored_count: number
+  regressed: number
+  improved: number
+  unchanged: number
+  unscored: number
+  average_top_k_jaccard: number | null
+  passed: boolean
+  items: Array<Record<string, unknown>>
 }
 
 export interface ProjectArtifact {

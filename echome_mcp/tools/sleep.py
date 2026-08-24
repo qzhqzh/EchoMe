@@ -14,6 +14,7 @@ async def echome_sleep_candidates(
     page_size: int = 100,
     cursor: int | None = None,
     include_protected: bool = True,
+    plan_schema_version: str = "memory_sleep_plan.v2",
 ) -> str:
     """Fetch memory sleep candidates as JSON."""
     client = MCPHubClient()
@@ -24,6 +25,7 @@ async def echome_sleep_candidates(
         "page_size": page_size,
         "cursor": cursor,
         "include_protected": include_protected,
+        "plan_schema_version": plan_schema_version,
     }
     if status:
         payload["status"] = status

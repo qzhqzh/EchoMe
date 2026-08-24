@@ -23,8 +23,26 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     assert by_name["echome_project_event_append"].annotations.readOnlyHint is False
     assert by_name["echome_project_event_append"].annotations.idempotentHint is False
     assert by_name["echome_context"].outputSchema is not None
+    assert by_name["echome_context"].inputSchema["properties"]["policy_mode"]["default"] == "shadow"
+    assert (
+        by_name["echome_project_context"].inputSchema["properties"]["policy_mode"]["default"]
+        == "shadow"
+    )
+    assert (
+        by_name["echome_sleep_candidates"].inputSchema["properties"]["plan_schema_version"][
+            "default"
+        ]
+        == "memory_sleep_plan.v2"
+    )
     assert by_name["echome_runtime_health"].annotations.readOnlyHint is True
+    assert (
+        by_name["echome_runtime_health"].inputSchema["properties"]["include_policy_readiness"][
+            "default"
+        ]
+        is False
+    )
     assert by_name["echome_context_outcome"].annotations.idempotentHint is True
+    assert "policy_effect" in by_name["echome_context_outcome"].inputSchema["properties"]
 
 
 def test_project_context_returns_text_and_structured_content(monkeypatch) -> None:
@@ -50,6 +68,44 @@ def test_project_context_returns_text_and_structured_content(monkeypatch) -> Non
     assert result.isError is False
     assert result.structuredContent == payload
     assert json.loads(result.content[0].text) == payload
+
+
+def test_mcp_context_policy_and_sleep_schema_are_forwarded(monkeypatch) -> None:
+    captured: dict[str, dict] = {}
+
+    async def fake_context(**kwargs) -> str:
+        captured["context"] = kwargs
+        return json.dumps({"schema_version": "echome.context.v1"})
+
+    async def fake_project_context(**kwargs) -> str:
+        captured["project_context"] = kwargs
+        return json.dumps({"schema_version": "echome.context.v1"})
+
+    async def fake_sleep_candidates(**kwargs) -> str:
+        captured["sleep_candidates"] = kwargs
+        return json.dumps({"schema_version": kwargs["plan_schema_version"]})
+
+    monkeypatch.setattr(server_module, "echome_context", fake_context)
+    monkeypatch.setattr(server_module, "echome_project_context", fake_project_context)
+    monkeypatch.setattr(server_module, "echome_sleep_candidates", fake_sleep_candidates)
+
+    asyncio.run(
+        server_module.call_tool(
+            "echome_context",
+            {"task": "check reliability", "policy_mode": "enforce"},
+        )
+    )
+    asyncio.run(
+        server_module.call_tool(
+            "echome_project_context",
+            {"project_id": "demo", "task": "check reliability"},
+        )
+    )
+    asyncio.run(server_module.call_tool("echome_sleep_candidates", {}))
+
+    assert captured["context"]["policy_mode"] == "enforce"
+    assert captured["project_context"]["policy_mode"] == "shadow"
+    assert captured["sleep_candidates"]["plan_schema_version"] == "memory_sleep_plan.v2"
 
 
 def test_project_context_failure_sets_protocol_error(monkeypatch) -> None:
@@ -289,11 +345,7 @@ def test_capability_guide_only_recommends_available_core_tools(monkeypatch) -> N
     monkeypatch.setenv("ECHOME_MCP_PROFILE", "core")
 
     payload = capabilities_payload()
-    advertised = {
-        entry["tool"]
-        for entries in payload["tool_groups"].values()
-        for entry in entries
-    }
+    advertised = {entry["tool"] for entries in payload["tool_groups"].values() for entry in entries}
 
     assert payload["profile"] == "core"
     assert advertised <= set(payload["available_tools"])
@@ -315,6 +367,7 @@ def test_context_outcome_forwards_explicit_signal(monkeypatch) -> None:
             {
                 "context_run_id": "11111111-1111-1111-1111-111111111111",
                 "outcome": "success",
+                "policy_effect": "helpful",
                 "idempotency_key": "task-1",
             },
         )
@@ -322,4 +375,52 @@ def test_context_outcome_forwards_explicit_signal(monkeypatch) -> None:
 
     assert result.isError is False
     assert captured["outcome"] == "success"
+    assert captured["policy_effect"] == "helpful"
     assert captured["reported_by"] == "ai"
+
+
+def test_runtime_health_can_include_policy_readiness(monkeypatch) -> None:
+    captured: dict = {}
+
+    async def fake_health(**kwargs) -> str:
+        captured.update(kwargs)
+        return json.dumps({"status": "ok"})
+
+    monkeypatch.setattr(server_module, "echome_runtime_health", fake_health)
+    result = asyncio.run(
+        server_module.call_tool(
+            "echome_runtime_health",
+            {
+                "include_policy_readiness": True,
+                "project_id": "qzhqzh/EchoMe",
+                "window_days": 45,
+            },
+        )
+    )
+
+    assert result.isError is False
+    assert captured == {
+        "include_policy_readiness": True,
+        "project_id": "qzhqzh/EchoMe",
+        "window_days": 45,
+    }
+
+
+def test_runtime_health_readiness_failure_is_non_fatal(monkeypatch) -> None:
+    class FakeClient:
+        cache_enabled = False
+
+        async def runtime_health(self) -> dict:
+            return {"status": "ok"}
+
+        async def context_policy_readiness(self, **_kwargs) -> dict:
+            raise RuntimeError("readiness unavailable")
+
+    monkeypatch.setattr(runtime_module, "MCPHubClient", FakeClient)
+    payload = json.loads(
+        asyncio.run(runtime_module.echome_runtime_health(include_policy_readiness=True))
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["context_policy_readiness"]["status"] == "unavailable"
+    assert payload["context_policy_readiness"]["auto_enforce"] is False

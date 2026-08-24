@@ -120,6 +120,7 @@ class ProjectContextRequest(BaseModel):
     route: Literal["project", "impact", "temporal"] | None = None
     fallback: str | None = Field(None, max_length=32)
     error_code: str | None = Field(None, max_length=64)
+    policy_mode: Literal["off", "shadow", "enforce"] = "shadow"
 
 
 class ProjectImpactRequest(ProjectContextRequest):
@@ -202,6 +203,22 @@ class ProjectPreflightRequest(BaseModel):
 class ContextQualityEvalRequest(BaseModel):
     results: list[dict] = Field(..., min_length=1, max_length=1000)
     k: int = Field(10, ge=1, le=100)
+
+
+class ScaleReplayObservation(BaseModel):
+    case_id: str = Field(..., min_length=1, max_length=128)
+    memory_count: int = Field(..., ge=1, le=10_000_000)
+    irrelevant_count: int = Field(0, ge=0, le=10_000_000)
+    correct: bool
+    memory_calls: int = Field(..., ge=0, le=1000)
+    token_used: int | None = Field(None, ge=0, le=10_000_000)
+
+
+class ScaleReplayEvalRequest(BaseModel):
+    observations: list[ScaleReplayObservation] = Field(..., min_length=2, max_length=5000)
+    call_budget: int = Field(2, ge=0, le=100)
+    reliability_threshold: float = Field(0.8, ge=0, le=1)
+    degradation_tolerance: float = Field(0.1, ge=0, le=1)
 
 
 class ContextQualitySnapshotCreate(BaseModel):

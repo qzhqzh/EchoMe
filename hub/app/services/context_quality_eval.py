@@ -26,7 +26,7 @@ def load_context_quality_cases(path: Path = DEFAULT_CASES_PATH) -> dict[str, Any
 
 
 def _ratio(numerator: int, denominator: int) -> float | None:
-    return round(numerator / denominator, 4) if denominator else None
+    return numerator / denominator if denominator else None
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -297,4 +297,75 @@ def evaluate_context_quality(
         "thresholds": {f"recall_at_{k}": 0.90},
         "passed": evaluated_count == len(cases) and recall is not None and recall >= 0.90,
         "cases": case_reports,
+    }
+
+
+def evaluate_scale_reliability(
+    observations: list[dict[str, Any]],
+    *,
+    call_budget: int = 2,
+    reliability_threshold: float = 0.8,
+    degradation_tolerance: float = 0.1,
+) -> dict[str, Any]:
+    """Measure answer reliability as the available memory set grows."""
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for observation in observations:
+        grouped.setdefault(int(observation["memory_count"]), []).append(observation)
+
+    scales: list[dict[str, Any]] = []
+    for memory_count, items in sorted(grouped.items()):
+        correct = sum(bool(item["correct"]) for item in items)
+        within_budget = sum(
+            bool(item["correct"]) and int(item["memory_calls"]) <= call_budget for item in items
+        )
+        calls = [float(item["memory_calls"]) for item in items]
+        tokens = [
+            float(item["token_used"])
+            for item in items
+            if isinstance(item.get("token_used"), int | float)
+        ]
+        irrelevant = [float(item.get("irrelevant_count", 0)) for item in items]
+        scales.append(
+            {
+                "memory_count": memory_count,
+                "case_count": len(items),
+                "accuracy": _ratio(correct, len(items)),
+                "budget_compliant_reliability": _ratio(within_budget, len(items)),
+                "memory_calls_p90": _percentile(calls, 0.9),
+                "average_token_cost": round(mean(tokens), 3) if tokens else None,
+                "average_irrelevant_count": round(mean(irrelevant), 3),
+            }
+        )
+
+    baseline = scales[0]["budget_compliant_reliability"] if scales else None
+    breakdown_onset: int | None = None
+    for scale in scales:
+        reliability = scale["budget_compliant_reliability"]
+        raw_degradation = (
+            baseline - reliability if baseline is not None and reliability is not None else None
+        )
+        scale["degradation_from_baseline"] = (
+            round(raw_degradation, 4) if raw_degradation is not None else None
+        )
+        if (
+            breakdown_onset is None
+            and reliability is not None
+            and (
+                reliability < reliability_threshold
+                or (raw_degradation is not None and raw_degradation > degradation_tolerance)
+            )
+        ):
+            breakdown_onset = scale["memory_count"]
+
+    return {
+        "schema_version": 1,
+        "observation_count": len(observations),
+        "call_budget": call_budget,
+        "reliability_threshold": reliability_threshold,
+        "degradation_tolerance": degradation_tolerance,
+        "baseline_memory_count": scales[0]["memory_count"] if scales else None,
+        "baseline_reliability": baseline,
+        "breakdown_onset": breakdown_onset,
+        "passed": bool(scales) and breakdown_onset is None,
+        "scales": scales,
     }

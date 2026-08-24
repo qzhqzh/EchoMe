@@ -23,6 +23,8 @@ import type {
   ProjectAutomationRun,
   ProjectQualityCasesResponse,
   ProjectQualitySnapshot,
+  RetrievalReplayReport,
+  ContextPolicyReadiness,
 } from '@/types'
 
 class ApiClient {
@@ -381,6 +383,16 @@ class ApiClient {
     return this.request('GET', '/observability/memory-graph', undefined, params)
   }
 
+  async listReliabilityAssessments(params?: {
+    project_id?: string
+    subject_type?: string
+    subject_id?: string
+    support_state?: string
+    limit?: number
+  }): Promise<any> {
+    return this.request('GET', '/observability/reliability-assessments', undefined, params)
+  }
+
   async explainMemoryGraph(memoryId: string, params?: { include_inactive?: boolean }): Promise<MemoryGraphExplainResponse> {
     return this.request('GET', `/observability/memory-graph/explain/${memoryId}`, undefined, params)
   }
@@ -417,6 +429,7 @@ class ApiClient {
     limit?: number
     record_run?: boolean
     client?: string
+    policy_mode?: 'off' | 'shadow' | 'enforce'
   }): Promise<UnifiedContextResponse> {
     return this.request('POST', '/context', body)
   }
@@ -425,8 +438,27 @@ class ApiClient {
     return this.request('GET', '/retrieval-debug/logs', undefined, params)
   }
 
+  async replayRetrievalLogs(body: {
+    log_ids?: string[]
+    client?: string
+    max_logs?: number
+  }): Promise<RetrievalReplayReport> {
+    return this.request('POST', '/retrieval-debug/replay', body)
+  }
+
+  async evaluateContextScale(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request('POST', '/project-knowledge/eval/scale', body)
+  }
+
   async listContextRuns(params?: { project_id?: string; limit?: number }): Promise<any> {
     return this.request('GET', '/project-knowledge/context-runs', undefined, params)
+  }
+
+  async getContextPolicyReadiness(params?: {
+    project_id?: string
+    window_days?: number
+  }): Promise<ContextPolicyReadiness> {
+    return this.request('GET', '/observability/context-policy/readiness', undefined, params)
   }
 
   // --- Admin ---
