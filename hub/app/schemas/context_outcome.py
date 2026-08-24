@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class ContextOutcomeCreate(BaseModel):
     context_run_id: uuid.UUID
     outcome: Literal["success", "partial", "failed", "corrected", "no_signal"]
+    policy_effect: Literal["helpful", "neutral", "harmful", "uncertain"] | None = None
     reported_by: Literal["user", "ai", "system"] = "ai"
     source: Literal["mcp", "web", "api", "ci"] = "mcp"
     project_event_id: uuid.UUID | None = None
@@ -32,6 +33,8 @@ class ContextOutcomeCreate(BaseModel):
     def validate_evidence(self) -> "ContextOutcomeCreate":
         if self.outcome == "corrected" and not self.note:
             raise ValueError("corrected outcomes require a note")
+        if self.policy_effect == "harmful" and not self.note:
+            raise ValueError("harmful policy effects require a note")
         if (self.reported_by == "system" or self.source == "ci") and not self.project_event_id:
             raise ValueError("system and CI outcomes require a project_event_id")
         return self

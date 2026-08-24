@@ -51,6 +51,7 @@ from app.schemas.project_knowledge import (
     ProjectPreflightRequest,
     RevalidationApplyRequest,
     RevalidationProposalCreate,
+    ScaleReplayEvalRequest,
 )
 from app.services.context_compiler import (
     compile_project_context,
@@ -59,6 +60,7 @@ from app.services.context_compiler import (
 )
 from app.services.context_quality_eval import (
     evaluate_context_quality,
+    evaluate_scale_reliability,
     load_context_quality_cases,
 )
 from app.services.embedding import get_embedding, get_embeddings
@@ -1774,6 +1776,21 @@ async def evaluate_context_quality_snapshot(
         load_context_quality_cases(),
         body.results,
         k=body.k,
+    )
+
+
+@router.post("/eval/scale")
+async def evaluate_context_scale(
+    body: ScaleReplayEvalRequest,
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """Evaluate scale-conditioned reliability from replay observations."""
+    del user_id
+    return evaluate_scale_reliability(
+        [item.model_dump() for item in body.observations],
+        call_budget=body.call_budget,
+        reliability_threshold=body.reliability_threshold,
+        degradation_tolerance=body.degradation_tolerance,
     )
 
 

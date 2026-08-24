@@ -15,8 +15,10 @@ from app.schemas.retrieval_debug import (
     RetrievalLogCreate,
     RetrievalLogListResponse,
     RetrievalLogResponse,
+    RetrievalReplayRequest,
 )
 from app.services.memory_retrieval import retrieve_memories
+from app.services.retrieval_replay import build_replay_report, compare_retrieval_replay
 
 router = APIRouter(prefix="/retrieval-debug", tags=["retrieval-debug"])
 
@@ -44,6 +46,14 @@ _STEP_LOG_FIELDS = {
     "used",
     "tokens",
 }
+
+
+def _uses_hybrid_replay_strategy(log: RetrievalLog) -> bool:
+    return any(
+        step.get("stage") == "hybrid_memory" or step.get("strategy") == "hybrid_memory"
+        for step in log.steps
+        if isinstance(step, dict)
+    )
 
 
 def _memory_payload(
@@ -109,9 +119,7 @@ async def _save_log(
     user_id: str,
     payload: RetrievalLogCreate,
 ) -> RetrievalLog:
-    top_results = [
-        _sanitize_log_record(item, _RESULT_LOG_FIELDS) for item in payload.top_results
-    ]
+    top_results = [_sanitize_log_record(item, _RESULT_LOG_FIELDS) for item in payload.top_results]
     steps = [_sanitize_log_record(item, _STEP_LOG_FIELDS) for item in payload.steps]
     log = RetrievalLog(
         user_id=user_id,
@@ -206,3 +214,64 @@ async def list_logs(
         total=total,
         items=[_log_response(log) for log in result.scalars().all()],
     )
+
+
+@router.post("/replay")
+async def replay_logs(
+    body: RetrievalReplayRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """Replay recorded queries and report ranking regressions without writing new logs."""
+    query = select(RetrievalLog).where(RetrievalLog.user_id == user_id)
+    if body.log_ids:
+        query = query.where(RetrievalLog.id.in_(body.log_ids))
+    if body.client:
+        query = query.where(RetrievalLog.client == body.client)
+    result = await session.execute(
+        query.order_by(RetrievalLog.created_at.desc()).limit(body.max_logs)
+    )
+
+    comparisons: list[dict[str, Any]] = []
+    for log in result.scalars().all():
+        if not _uses_hybrid_replay_strategy(log):
+            comparisons.append(
+                compare_retrieval_replay(
+                    log_id=str(log.id),
+                    query=log.query,
+                    expected_ids=[str(item) for item in log.expected_ids],
+                    previous_expected_rank=log.expected_rank,
+                    previous_results=log.top_results,
+                    current_results=[],
+                    current_trace={
+                        "replay_skipped": True,
+                        "reason": "recorded_retrieval_strategy_is_not_replayable",
+                    },
+                    comparable=False,
+                )
+            )
+            continue
+        retrieval = await retrieve_memories(
+            session,
+            user_id=user_id,
+            query=log.query,
+            limit=log.limit,
+            statuses=(log.status_filter,) if log.status_filter else ("active", "ai_review"),
+            global_only=log.project_id is None,
+            project_scope_ids=[log.project_id] if log.project_id else None,
+        )
+        current_results = [
+            _memory_payload(item.memory, item.score, item.reasons) for item in retrieval.items
+        ]
+        comparisons.append(
+            compare_retrieval_replay(
+                log_id=str(log.id),
+                query=log.query,
+                expected_ids=[str(item) for item in log.expected_ids],
+                previous_expected_rank=log.expected_rank,
+                previous_results=log.top_results,
+                current_results=current_results,
+                current_trace=retrieval.trace,
+            )
+        )
+    return build_replay_report(comparisons)

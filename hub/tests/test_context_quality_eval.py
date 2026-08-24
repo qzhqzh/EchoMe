@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from app.schemas.project_knowledge import ContextQualitySnapshotCreate
 from app.services.context_quality_eval import (
     evaluate_context_quality,
+    evaluate_scale_reliability,
     load_context_quality_cases,
 )
 
@@ -160,3 +161,56 @@ def test_forbidden_inactive_status_fails_constraint_adherence() -> None:
     report = evaluate_context_quality(single_payload, results)
 
     assert report["metrics"]["constraint_adherence"] == 0.0
+
+
+def test_scale_reliability_reports_first_breakdown() -> None:
+    observations = [
+        {
+            "case_id": f"small-{index}",
+            "memory_count": 100,
+            "irrelevant_count": 50,
+            "correct": True,
+            "memory_calls": 1,
+            "token_used": 500,
+        }
+        for index in range(10)
+    ]
+    observations.extend(
+        {
+            "case_id": f"large-{index}",
+            "memory_count": 10_000,
+            "irrelevant_count": 9_900,
+            "correct": index < 6,
+            "memory_calls": 3 if index >= 5 else 2,
+            "token_used": 1200,
+        }
+        for index in range(10)
+    )
+
+    report = evaluate_scale_reliability(observations)
+
+    assert report["baseline_reliability"] == 1.0
+    assert report["breakdown_onset"] == 10_000
+    assert report["scales"][1]["budget_compliant_reliability"] == 0.5
+    assert report["passed"] is False
+
+
+def test_scale_gate_uses_unrounded_reliability() -> None:
+    observations = [
+        {
+            "case_id": f"case-{index}",
+            "memory_count": 100,
+            "correct": index < 2,
+            "memory_calls": 1,
+        }
+        for index in range(3)
+    ]
+
+    report = evaluate_scale_reliability(
+        observations,
+        reliability_threshold=0.6667,
+    )
+
+    assert report["scales"][0]["budget_compliant_reliability"] < 0.6667
+    assert report["breakdown_onset"] == 100
+    assert report["passed"] is False

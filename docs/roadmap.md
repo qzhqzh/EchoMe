@@ -1,19 +1,23 @@
 # EchoMe 开发路线图
 
-> v1.4 的实施记录见 [next-update-plan-2026-08.md](next-update-plan-2026-08.md)，当前 v1.5 规划见 [next-version-plan-v1.5.md](next-version-plan-v1.5.md)。下方 Phase 0-6 保留为早期路线图参考。
+> v1.4 的实施记录见 [next-update-plan-2026-08.md](next-update-plan-2026-08.md)，当前发布候选见
+> [next-version-plan-v1.7.md](next-version-plan-v1.7.md)。下方 Phase 0-6 保留为早期路线图参考。
 
 ## 当前实际进度（2026-08-23）
 
 代码实现已经超过原始 Phase 0/1 计划，当前仓库处于早期可用发布态：
 
-- **当前版本**：`echome v1.5.0`，Reliable Context Runtime 已完成发布验收
+- **当前稳定版本**：`echome v1.5.1`
+- **当前发布候选**：v1.7 Trusted Context Calibration；整合可靠性快照、Context Policy、真实回放、
+  Sleep v2 和只读 Policy Readiness，生产数据库仍保持 revision `015`
 - **Hub**：已实现认证、多用户、memories CRUD/search、projects、sync/render、review、market、admin、embedding 接入和 rate limit
 - **CLI**：已实现 `init/login/add/list/search/sync/review/market/doctor/seed/update/status/version`；文件式 local-vault `push/pull` 仍是保留接口，会明确返回未实现
 - **MCP Server**：除 summary-first Memory 工作流外，已实现结构化 Project Context、Impact、Event 和 Preflight 工具
 - **Project Knowledge**：已实现制品版本、chunk/FTS/vector 索引、约束版本图、时间与新鲜度、Context Compiler、Project Events 和受控复核
 - **Web Console**：已实现 Memory/Project 工作台，以及统一 Diagnostics 下的图观测、检索调试、Memory Eval 和 26 条 Project Context Quality Eval
 - **v1.5 实现**：canonical project aliases、统一 `echome_context`、运行时健康/结构化错误/只读缓存、Context Runs Web 观测和 append-only Context Outcomes 已完成
-- **当前收敛工作**：共享 personal memory 混合检索、默认 8 工具 MCP core profile、完整 CI、依赖目录清理和未接入 Redis 移除正在发布前验证；本轮没有连接或迁移生产数据库
+- **当前收敛工作**：完成 `017` additive migration、全量回归、生产副本迁移演练、浏览器验收和独立复审；
+  readiness 只授予 canary 评估资格，不自动开启 enforce
 
 下面的 Phase 计划保留为原始路线图参考，不代表当前完成度。
 

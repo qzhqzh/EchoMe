@@ -52,7 +52,15 @@ async def test_personal_context_records_actual_selected_memories() -> None:
     session.add = MagicMock()
     session.flush = AsyncMock()
 
-    with patch("app.services.memory_retrieval.get_embedding", return_value=None):
+    async def apply_policy(*_args, **kwargs):
+        kwargs["context"]["memories"][0]["reliability"] = {"reason_codes": ["diagnostic" * 2000]}
+        kwargs["context"]["context_policy"] = {"effective_mode": "shadow"}
+        return kwargs["context"]
+
+    with (
+        patch("app.services.memory_retrieval.get_embedding", return_value=None),
+        patch("app.api.context_runtime.apply_context_policy", side_effect=apply_policy),
+    ):
         context = await _personal_context(
             session,
             UnifiedContextRequest(task="Git workflow", client="test"),
@@ -63,6 +71,8 @@ async def test_personal_context_records_actual_selected_memories() -> None:
     assert context["memories"][0]["id"] == str(memory.id)
     assert context["retrieval_trace"]["strategy"] == "hybrid_memory"
     assert context["retrieval_trace"]["selected_count"] == 1
+    assert context["token_used"] <= context["token_budget"]
+    assert context["context_policy"]["diagnostic_token_overhead"] > 0
     run = session.add.call_args.args[0]
     assert run.project_id is None
     assert run.route == "personal"
@@ -93,7 +103,14 @@ async def test_personal_context_trace_reflects_token_budget_truncation() -> None
     session.add = MagicMock()
     session.flush = AsyncMock()
 
-    with patch("app.services.memory_retrieval.get_embedding", return_value=None):
+    async def apply_policy(*_args, **kwargs):
+        kwargs["context"]["context_policy"] = {"effective_mode": "shadow"}
+        return kwargs["context"]
+
+    with (
+        patch("app.services.memory_retrieval.get_embedding", return_value=None),
+        patch("app.api.context_runtime.apply_context_policy", side_effect=apply_policy),
+    ):
         context = await _personal_context(
             session,
             UnifiedContextRequest(

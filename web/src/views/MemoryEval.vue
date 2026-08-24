@@ -10,6 +10,8 @@ import type {
   ProjectAutomationRun,
   ProjectQualityCasesResponse,
   ProjectQualitySnapshot,
+  ContextIntervention,
+  ContextReliability,
   UnifiedContextResponse,
 } from '@/types'
 
@@ -39,6 +41,8 @@ interface EvalItem {
   tags: string[]
   score?: number
   content?: string
+  reliability?: ContextReliability
+  intervention?: ContextIntervention
 }
 
 const cases: EvalCase[] = [
@@ -97,6 +101,8 @@ function normalizeContextItem(item: UnifiedContextResponse['memories'][number]):
     tags: item.tags,
     status: item.status,
     content: item.content,
+    reliability: item.reliability,
+    intervention: item.intervention,
   }
 }
 
@@ -114,6 +120,7 @@ async function runEval(testCase: EvalCase): Promise<void> {
       limit: 20,
       record_run: false,
       client: 'web-memory-eval',
+      policy_mode: 'shadow',
     })
     const items = context.memories.map(normalizeContextItem)
     const rank = rankExpected(items, testCase.expectedIds)
@@ -313,6 +320,12 @@ onMounted(loadProjectQuality)
                   <Badge v-if="item.status" :color="STATUS_COLORS[item.status as keyof typeof STATUS_COLORS]" size="sm">{{ item.status }}</Badge>
                   <span v-if="item.score !== undefined" class="rounded bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-300">
                     {{ item.score.toFixed(2) }}
+                  </span>
+                  <span v-if="item.reliability" class="rounded bg-cyan-500/15 px-1.5 py-0.5 text-xs text-cyan-200">
+                    {{ item.reliability.support_state }} · {{ Math.round(item.reliability.confidence * 100) }}%
+                  </span>
+                  <span v-if="item.intervention" class="rounded bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-300">
+                    {{ item.intervention.action }}
                   </span>
                 </div>
               </div>

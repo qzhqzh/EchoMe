@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import DiagnosticsTabs from '@/components/DiagnosticsTabs.vue'
+import type { ContextPolicyReadiness, RetrievalReplayReport } from '@/types'
 
 interface RetrievalLog {
   id: string
@@ -67,10 +68,17 @@ const activeView = ref<'retrieval' | 'context'>('retrieval')
 const contextRuns = ref<ContextRun[]>([])
 const selectedContextRun = ref<ContextRun | null>(null)
 const loadingContextRuns = ref(false)
+const contextRunsError = ref<string | null>(null)
+const replaying = ref(false)
+const replayReport = ref<RetrievalReplayReport | null>(null)
+const policyReadiness = ref<ContextPolicyReadiness | null>(null)
+const loadingPolicyReadiness = ref(false)
+const policyReadinessError = ref<string | null>(null)
 
 onMounted(() => {
   void loadLogs()
   void loadContextRuns()
+  void loadPolicyReadiness()
 })
 
 function useSample(index: number): void {
@@ -80,14 +88,32 @@ function useSample(index: number): void {
 
 async function loadContextRuns(): Promise<void> {
   loadingContextRuns.value = true
+  contextRunsError.value = null
   try {
     const response = await api.listContextRuns({ limit: 100 })
     contextRuns.value = response.items
     if (!selectedContextRun.value && contextRuns.value.length) {
       selectedContextRun.value = contextRuns.value[0]
     }
+  } catch (error) {
+    contextRuns.value = []
+    selectedContextRun.value = null
+    contextRunsError.value = error instanceof Error ? error.message : 'Context runs are unavailable.'
   } finally {
     loadingContextRuns.value = false
+  }
+}
+
+async function loadPolicyReadiness(): Promise<void> {
+  loadingPolicyReadiness.value = true
+  policyReadinessError.value = null
+  try {
+    policyReadiness.value = await api.getContextPolicyReadiness({ window_days: 30 })
+  } catch (error) {
+    policyReadiness.value = null
+    policyReadinessError.value = error instanceof Error ? error.message : 'Policy readiness is unavailable.'
+  } finally {
+    loadingPolicyReadiness.value = false
   }
 }
 
@@ -124,6 +150,18 @@ async function loadLogs(): Promise<void> {
   }
 }
 
+async function replayScoredLogs(): Promise<void> {
+  replaying.value = true
+  try {
+    replayReport.value = await api.replayRetrievalLogs({
+      log_ids: logs.value.filter(log => log.expected_ids.length > 0).map(log => log.id),
+      max_logs: 30,
+    })
+  } finally {
+    replaying.value = false
+  }
+}
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleString()
 }
@@ -151,6 +189,21 @@ function contextStatusClass(run: ContextRun): string {
 
 function selectionCount(run: ContextRun): number {
   return Object.values(run.selected || {}).reduce((total, items) => total + items.length, 0)
+}
+
+function contextPolicy(run: ContextRun): Record<string, any> | null {
+  const policy = run.trace?.context_policy
+  return policy && typeof policy === 'object' ? policy : null
+}
+
+function readinessStatusClass(status: ContextPolicyReadiness['status']): string {
+  if (status === 'eligible_for_canary') return 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200'
+  if (status === 'hold') return 'border-red-500/30 bg-red-500/15 text-red-200'
+  return 'border-amber-500/30 bg-amber-500/15 text-amber-200'
+}
+
+function formatRate(value: number | null): string {
+  return value === null ? 'n/a' : `${Math.round(value * 100)}%`
 }
 </script>
 
@@ -241,9 +294,30 @@ function selectionCount(run: ContextRun): number {
     <section v-if="activeView === 'retrieval'" class="space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-base font-semibold text-slate-100">Recent Logs</h2>
-        <button class="btn-secondary" :disabled="loadingLogs" @click="loadLogs">
-          {{ loadingLogs ? 'Loading...' : 'Refresh' }}
-        </button>
+        <div class="flex gap-2">
+          <button
+            class="btn-secondary"
+            :disabled="replaying || !logs.some(log => log.expected_ids.length > 0)"
+            @click="replayScoredLogs"
+          >
+            {{ replaying ? 'Replaying...' : 'Replay scored' }}
+          </button>
+          <button class="btn-secondary" :disabled="loadingLogs" @click="loadLogs">
+            {{ loadingLogs ? 'Loading...' : 'Refresh' }}
+          </button>
+        </div>
+      </div>
+      <div v-if="replayReport" class="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <div class="rounded border border-slate-700 bg-slate-800 p-3">
+          <div class="text-xs text-slate-500">Replay</div>
+          <div class="mt-1 text-lg font-semibold" :class="replayReport.passed ? 'text-emerald-300' : 'text-red-300'">
+            {{ replayReport.passed ? 'pass' : 'regression' }}
+          </div>
+        </div>
+        <div v-for="key in ['scored_count', 'regressed', 'improved', 'unchanged', 'unscored']" :key="key" class="rounded border border-slate-700 bg-slate-800 p-3">
+          <div class="text-xs text-slate-500">{{ key.replace('_', ' ') }}</div>
+          <div class="mt-1 text-lg font-semibold text-slate-100">{{ replayReport[key as keyof RetrievalReplayReport] }}</div>
+        </div>
       </div>
       <div v-if="logs.length === 0" class="rounded-lg border border-slate-700 bg-slate-800 p-4 text-sm text-slate-400">
         No retrieval logs yet.
@@ -270,6 +344,72 @@ function selectionCount(run: ContextRun): number {
       </div>
     </section>
 
+    <section v-if="activeView === 'context'" class="rounded-lg border border-slate-700 bg-slate-800 p-4">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-base font-semibold text-slate-100">Policy Readiness</h2>
+            <span
+              v-if="policyReadiness"
+              :class="['rounded border px-2 py-0.5 text-xs', readinessStatusClass(policyReadiness.status)]"
+            >
+              {{ policyReadiness.status.replace(/_/g, ' ') }}
+            </span>
+          </div>
+          <p class="mt-1 text-xs text-slate-400">
+            Derived from 30 days of shadow runs and explicit policy-effect outcomes. This gate never enables enforce.
+          </p>
+        </div>
+        <button class="btn-secondary shrink-0" :disabled="loadingPolicyReadiness" @click="loadPolicyReadiness">
+          {{ loadingPolicyReadiness ? 'Loading...' : 'Refresh' }}
+        </button>
+      </div>
+
+      <div v-if="policyReadiness" class="mt-4 space-y-4">
+        <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
+          <div>
+            <dt class="text-xs text-slate-500">Shadow runs</dt>
+            <dd class="mt-1 font-semibold text-slate-100">{{ policyReadiness.metrics.observed_shadow_runs }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-slate-500">Evaluated interventions</dt>
+            <dd class="mt-1 font-semibold text-slate-100">{{ policyReadiness.metrics.evaluated_intervention_runs }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-slate-500">Coverage</dt>
+            <dd class="mt-1 font-semibold text-slate-100">{{ formatRate(policyReadiness.metrics.evaluation_coverage) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-slate-500">Helpful</dt>
+            <dd class="mt-1 font-semibold text-emerald-300">{{ formatRate(policyReadiness.metrics.helpful_rate) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-slate-500">Harmful</dt>
+            <dd class="mt-1 font-semibold text-red-300">{{ formatRate(policyReadiness.metrics.harmful_rate) }}</dd>
+          </div>
+        </dl>
+
+        <div class="grid gap-4 text-xs lg:grid-cols-2">
+          <div>
+            <h3 class="font-semibold text-slate-300">Gate reasons</h3>
+            <ul class="mt-2 space-y-1 text-slate-400">
+              <li v-for="reason in policyReadiness.reasons" :key="reason">{{ reason.replace(/_/g, ' ') }}</li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="font-semibold text-slate-300">Next action</h3>
+            <ul class="mt-2 space-y-1 text-slate-400">
+              <li v-for="item in policyReadiness.recommendations" :key="item">{{ item }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="loadingPolicyReadiness" class="mt-4 text-sm text-slate-400">Loading readiness evidence...</div>
+      <div v-else-if="policyReadinessError" class="mt-4 text-sm text-amber-300">
+        {{ policyReadinessError }}
+      </div>
+    </section>
+
     <section v-if="activeView === 'context'" class="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
       <div class="min-w-0 space-y-3">
         <div class="flex items-center justify-between">
@@ -278,7 +418,10 @@ function selectionCount(run: ContextRun): number {
             {{ loadingContextRuns ? 'Loading...' : 'Refresh' }}
           </button>
         </div>
-        <div v-if="contextRuns.length === 0" class="rounded-lg border border-slate-700 bg-slate-800 p-4 text-sm text-slate-400">
+        <div v-if="contextRunsError" class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          {{ contextRunsError }}
+        </div>
+        <div v-else-if="contextRuns.length === 0" class="rounded-lg border border-slate-700 bg-slate-800 p-4 text-sm text-slate-400">
           No context runs recorded yet.
         </div>
         <div v-else class="max-h-[720px] space-y-2 overflow-y-auto pr-1">
@@ -348,6 +491,22 @@ function selectionCount(run: ContextRun): number {
               <div v-for="(ids, kind) in selectedContextRun.selected" :key="kind" class="rounded border border-slate-700 bg-slate-900 p-3">
                 <div class="text-xs font-medium uppercase text-slate-400">{{ kind }}</div>
                 <div class="mt-1 text-lg font-semibold text-slate-100">{{ ids.length }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="contextPolicy(selectedContextRun)">
+            <h3 class="text-sm font-semibold text-slate-200">Context Policy</h3>
+            <div class="mt-2 rounded border border-slate-700 bg-slate-900 p-3 text-xs">
+              <div class="flex flex-wrap gap-2 text-slate-300">
+                <span>{{ contextPolicy(selectedContextRun)?.requested_mode }} → {{ contextPolicy(selectedContextRun)?.effective_mode }}</span>
+                <span>{{ contextPolicy(selectedContextRun)?.enforced ? 'enforced' : 'observed only' }}</span>
+                <span>source mutation: {{ contextPolicy(selectedContextRun)?.source_mutation || 'none' }}</span>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2 text-slate-400">
+                <span v-for="(count, action) in contextPolicy(selectedContextRun)?.decision_counts || {}" :key="action">
+                  {{ action }} {{ count }}
+                </span>
               </div>
             </div>
           </div>

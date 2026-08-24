@@ -43,6 +43,8 @@ class Settings(BaseSettings):
 
     # Project context compiler (can be disabled for a no-data-loss query rollback)
     context_compiler_enabled: bool = True
+    # Context policy is evaluated in shadow mode by default. Enforced filtering is opt-in.
+    context_policy_enforce_enabled: bool = False
     # Proposal-only automation remains opt-in even after quality gates pass.
     project_automation_enabled: bool = False
 

@@ -516,6 +516,7 @@ Project Knowledge 与个人 Memory 独立存储，并通过 Project Context Comp
 | `POST` | `/api/v1/project-knowledge/eval/evaluate` | 调试客户端提交的固定用例结果；不进入自动化门禁 |
 | `POST` | `/api/v1/project-knowledge/eval/snapshots` | Hub 在服务端运行完整固定用例并保存可信质量快照 |
 | `GET` | `/api/v1/project-knowledge/eval/snapshots` | 查询质量快照和连续门禁状态 |
+| `POST` | `/api/v1/project-knowledge/eval/scale` | 按记忆规模评估预算内可靠性与退化拐点 |
 | `GET` | `/api/v1/project-knowledge/automation/gate` | 查看连续质量门禁与功能开关状态 |
 | `POST` | `/api/v1/project-knowledge/automation/proposals/run` | 门禁通过后生成 proposal；不会自动 apply |
 
@@ -535,9 +536,20 @@ Project Knowledge 与个人 Memory 独立存储，并通过 Project Context Comp
 | `GET` | `/api/v1/context/runtime/health` | 检查认证、Hub、数据库、Alembic revision、embedding 与 feature flags |
 
 `POST /context` 支持 `task`、`project_hint`、`changed_paths`、`mode`、`token_budget`、
-`limit`、`as_of`、`valid_at`、`request_id`、`client` 和 `client_version`。`mode=auto`
+`limit`、`as_of`、`valid_at`、`request_id`、`client`、`client_version` 和 `policy_mode`。`mode=auto`
 在有项目提示时解析 canonical project；没有项目提示时走 bounded personal memory route。
 当前 personal route 使用有界词法召回；图与时间多路召回尚未进入本轮发布候选。
+
+`policy_mode` 默认为 `shadow`，会返回 reliability/intervention 与 would-exclude trace，但不改变结果。
+`enforce` 只有在服务端 feature flag 开启时生效，否则回退 shadow。
+
+### Reliability And Replay
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/observability/reliability-assessments` | 查询可重建可靠性快照，不返回记忆正文 |
+| `GET` | `/api/v1/observability/context-policy/readiness` | 从 shadow runs 与显式 policy effects 派生只读 canary readiness；不会开启 enforce |
+| `POST` | `/api/v1/retrieval-debug/replay` | 只读重放真实 Retrieval Logs 并报告 expected-rank 回归 |
 
 ### Canonical Project Aliases
 
@@ -560,5 +572,14 @@ canonical project，无法解析的旧 scope 为兼容历史客户端而原样�
 | `POST` | `/api/v1/context-outcomes/batch` | 最多批量追加 50 个幂等结果信号 |
 | `GET` | `/api/v1/context-outcomes?context_run_id=...` | 读取某次 Context Run 的 append-only outcomes |
 
-Outcome 可为 `success | partial | failed | corrected | no_signal`。`corrected` 必须带 note；
+Outcome 可为 `success | partial | failed | corrected | no_signal`，并可选附带
+`policy_effect=helpful | neutral | harmful | uncertain`。`corrected` 和 `harmful` 必须带 note；
+policy effect 只接受带有 Context Policy trace 的运行。
 system/CI 信号必须关联属于同一用户和项目的 Project Event。未提交 outcome 表示 unknown，不能推断为失败。
+
+Readiness 只统计指定窗口内 completed、effective shadow 且 trace schema 完整的 Context Runs；enforce、off
+和无 policy trace 运行不会进入分母。畸形 policy trace 会计入 `invalid_policy_trace_runs` 并强制进入 hold。
+helpful/harmful 与 coverage 只统计实际 intervention runs；截断证据窗口进入 hold。所有阈值使用未舍入比例
+判定，响应中的展示精度不会放宽门禁。
+结果只有 `insufficient_data | hold | eligible_for_canary`，并固定返回
+`auto_enforce=false`。它是发布证据，不是策略开关。

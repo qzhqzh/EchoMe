@@ -109,6 +109,7 @@ async def echome_project_context(
     valid_at: str | None = None,
     record_run: bool = True,
     shadow: bool = False,
+    policy_mode: str = "shadow",
 ) -> str:
     """Return one AI-readable project context pack across memory and constraints."""
     client = MCPHubClient()
@@ -123,6 +124,7 @@ async def echome_project_context(
         valid_at,
         record_run,
         shadow,
+        policy_mode,
     )
     return _json(result)
 

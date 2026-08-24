@@ -56,11 +56,13 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ## 4. Tools
 
-### 4.0 v1.5 默认入口与运行契约
+### 4.0 v1.7 默认入口与运行契约
 
 - `echome_context`：任务默认入口；可推断当前 Git remote，解析 canonical project，并返回统一 context envelope。
-- `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界。
-- `echome_context_outcome`：对 completed、non-shadow Context Run 追加幂等结果信号；缺失信号不等于失败。
+- `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界；传
+  `include_policy_readiness=true` 时返回只读策略门禁。
+- `echome_context_outcome`：对 completed、non-shadow Context Run 追加幂等结果信号；可附带显式
+  `policy_effect`，缺失信号不等于失败。
 - 新安装配置默认显式使用 `core`：仅暴露 capability、context、health、graph explain、remember、outcome 和 memory feedback 等 8 个高频入口。
 - `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
 - 为保持升级兼容，未配置 `ECHOME_MCP_PROFILE` 的历史客户端继续使用 `full`。
@@ -72,6 +74,21 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `message`、`retryable`、
 `request_id`、`degraded` 和 `suggested_action`。
+
+v1.7 延续 `echome_context` 与 `echome_project_context` 的 `policy_mode`：
+
+- 默认 `shadow`，返回 reliability、intervention 和 policy trace，但不改变选入结果。
+- `off` 跳过策略计算。
+- `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
+
+`echome_capabilities` 当前契约版本为 `echome.capabilities.v5`。core profile 仍保持 8 个工具；AI 可通过
+`echome_runtime_health(include_policy_readiness=true)` 读取校准门禁，无需扩大默认工具面。
+`echome_sleep_candidates` 默认返回
+`memory_sleep_plan.v2`，也可显式请求 v1；v2 proposal 由 Hub 生成 server-owned simulation，并在
+apply 前重新验证。
+
+readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不得把它解释为已经开启 enforce，
+也不得自动修改 Hub feature flag。
 
 ### 4.1 echome_search_summary
 

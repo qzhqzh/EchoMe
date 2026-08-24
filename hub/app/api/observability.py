@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import verify_token
 from app.core.database import get_session
 from app.models.memory import Memory, MemoryEdge, MemoryFeedback, SleepSession
+from app.models.project_knowledge import ReliabilityAssessment
+from app.services.context_policy_readiness import evaluate_context_policy_readiness
 
 router = APIRouter(prefix="/observability", tags=["observability"])
 
@@ -89,6 +91,25 @@ def _sleep_session_payload(sleep_session: SleepSession) -> dict[str, Any]:
         "created_at": sleep_session.created_at.isoformat(),
         "updated_at": sleep_session.updated_at.isoformat(),
         "applied_at": sleep_session.applied_at.isoformat() if sleep_session.applied_at else None,
+    }
+
+
+def _reliability_payload(assessment: ReliabilityAssessment) -> dict[str, Any]:
+    return {
+        "id": str(assessment.id),
+        "project_id": assessment.project_id,
+        "subject_type": assessment.subject_type,
+        "subject_id": str(assessment.subject_id),
+        "assessment_class": assessment.assessment_class,
+        "support_state": assessment.support_state,
+        "confidence": assessment.confidence,
+        "reason_codes": assessment.reason_codes,
+        "evidence_refs": assessment.evidence_refs,
+        "source_watermark": assessment.source_watermark,
+        "source_fingerprint": assessment.source_fingerprint,
+        "producer": assessment.producer,
+        "schema_version": assessment.schema_version,
+        "assessed_at": assessment.assessed_at.isoformat(),
     }
 
 
@@ -322,6 +343,51 @@ async def list_sleep_sessions(
         "limit": limit,
         "items": [_sleep_session_payload(s) for s in sessions],
     }
+
+
+@router.get("/reliability-assessments")
+async def list_reliability_assessments(
+    project_id: str | None = None,
+    subject_type: str | None = None,
+    subject_id: uuid.UUID | None = None,
+    support_state: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """List rebuildable reliability snapshots without exposing source content."""
+    query = select(ReliabilityAssessment).where(ReliabilityAssessment.user_id == user_id)
+    if project_id:
+        query = query.where(ReliabilityAssessment.project_id == project_id)
+    if subject_type:
+        query = query.where(ReliabilityAssessment.subject_type == subject_type)
+    if subject_id:
+        query = query.where(ReliabilityAssessment.subject_id == subject_id)
+    if support_state:
+        query = query.where(ReliabilityAssessment.support_state == support_state)
+    result = await session.execute(
+        query.order_by(ReliabilityAssessment.assessed_at.desc()).limit(limit)
+    )
+    items = list(result.scalars().all())
+    return {"total": len(items), "items": [_reliability_payload(item) for item in items]}
+
+
+@router.get("/context-policy/readiness")
+async def get_context_policy_readiness(
+    project_id: str | None = None,
+    window_days: int = Query(30, ge=1, le=365),
+    max_runs: int = Query(1000, ge=20, le=2000),
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """Derive a read-only, non-activating context policy rollout gate."""
+    return await evaluate_context_policy_readiness(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        window_days=window_days,
+        max_runs=max_runs,
+    )
 
 
 @router.get("/sleep-sessions/{session_id}")

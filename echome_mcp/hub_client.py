@@ -239,6 +239,7 @@ class MCPHubClient:
         valid_at: str | None = None,
         record_run: bool = True,
         shadow: bool = False,
+        policy_mode: str = "shadow",
     ) -> dict[str, Any]:
         """Get task-aware memory, constraint, and artifact context."""
         payload = {
@@ -252,6 +253,7 @@ class MCPHubClient:
             "valid_at": valid_at,
             "record_run": record_run,
             "shadow": shadow,
+            "policy_mode": policy_mode,
         }
         async with httpx.AsyncClient(
             base_url=self.base_url,
@@ -279,6 +281,27 @@ class MCPHubClient:
             resp = await client.get("/api/v1/context/runtime/health")
             resp.raise_for_status()
             return resp.json()
+
+    async def context_policy_readiness(
+        self,
+        *,
+        project_id: str | None = None,
+        window_days: int = 30,
+    ) -> dict[str, Any]:
+        """Read the derived, non-activating context policy rollout gate."""
+        params: dict[str, str | int] = {"window_days": window_days}
+        if project_id:
+            params["project_id"] = project_id
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get(
+                "/api/v1/observability/context-policy/readiness",
+                params=params,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Context policy readiness response must be an object")
+            return payload
 
     async def create_context_outcome(self, data: dict[str, Any]) -> dict[str, Any]:
         """Append an explicit result signal for one completed context run."""

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.memory import Memory, MemoryEdge, SleepSession
+from app.models.project_knowledge import ReliabilityAssessment
 
 
 def _make_sleep_session(user_id: str) -> MagicMock:
@@ -76,7 +77,9 @@ class TestObservability:
         count_result = MagicMock()
         count_result.scalar_one.return_value = 1
         sessions_result = MagicMock()
-        sessions_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[sleep_session]))
+        sessions_result.scalars.return_value = MagicMock(
+            all=MagicMock(return_value=[sleep_session])
+        )
 
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock(side_effect=[count_result, sessions_result])
@@ -117,6 +120,78 @@ class TestObservability:
         assert result["edges"] == []
 
     @pytest.mark.asyncio
+    async def test_reliability_history_is_metadata_only(self, test_user_id: str):
+        from app.api.observability import list_reliability_assessments
+
+        assessment = ReliabilityAssessment(
+            id=uuid.uuid4(),
+            user_id=test_user_id,
+            project_id="qzhqzh/EchoMe",
+            subject_type="memory",
+            subject_id=uuid.uuid4(),
+            assessment_class="environment_bound",
+            support_state="needs_verification",
+            confidence=0.78,
+            reason_codes=["volatile_requires_verification"],
+            evidence_refs=[],
+            source_watermark={"status": "active"},
+            source_fingerprint="a" * 64,
+            producer="echome.rules.v1",
+            schema_version=1,
+            assessed_at=datetime.now(timezone.utc),
+        )
+        result_set = MagicMock()
+        result_set.scalars.return_value.all.return_value = [assessment]
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = result_set
+
+        result = await list_reliability_assessments(
+            project_id=None,
+            subject_type="memory",
+            subject_id=None,
+            support_state=None,
+            limit=100,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        assert result["items"][0]["support_state"] == "needs_verification"
+        assert "content" not in result["items"][0]
+
+    @pytest.mark.asyncio
+    async def test_context_policy_readiness_is_read_only(self, test_user_id: str, monkeypatch):
+        from app.api.observability import get_context_policy_readiness
+
+        expected = {
+            "schema_version": "echome.context-policy-readiness.v1",
+            "status": "insufficient_data",
+            "auto_enforce": False,
+        }
+        evaluate = AsyncMock(return_value=expected)
+        monkeypatch.setattr(
+            "app.api.observability.evaluate_context_policy_readiness",
+            evaluate,
+        )
+        mock_session = AsyncMock()
+
+        result = await get_context_policy_readiness(
+            project_id="qzhqzh/EchoMe",
+            window_days=45,
+            max_runs=500,
+            session=mock_session,
+            user_id=test_user_id,
+        )
+
+        assert result == expected
+        evaluate.assert_awaited_once_with(
+            mock_session,
+            user_id=test_user_id,
+            project_id="qzhqzh/EchoMe",
+            window_days=45,
+            max_runs=500,
+        )
+
+    @pytest.mark.asyncio
     async def test_memory_neighbors_returns_local_graph_and_assessment(self, test_user_id: str):
         from app.api.observability import get_memory_neighbors
 
@@ -129,7 +204,9 @@ class TestObservability:
         edge_result = MagicMock()
         edge_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[edge]))
         memories_result = MagicMock()
-        memories_result.scalars.return_value = MagicMock(all=MagicMock(return_value=[center, neighbor]))
+        memories_result.scalars.return_value = MagicMock(
+            all=MagicMock(return_value=[center, neighbor])
+        )
 
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock(side_effect=[center_result, edge_result, memories_result])
