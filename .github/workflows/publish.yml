@@ -108,6 +108,11 @@ jobs:
           sed -i 's/app_version: str = "${{ steps.current.outputs.version }}"/app_version: str = "${{ steps.bump.outputs.version }}"/' hub/app/core/config.py
           sed -Ei 's/当前稳定版本为 \*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*/当前稳定版本为 **v${{ steps.bump.outputs.version }}**/' README.md
 
+      - name: Synchronize lockfile
+        run: |
+          pip install uv
+          uv lock
+
       - name: Verify release version files
         env:
           RELEASE_VERSION: ${{ steps.bump.outputs.version }}
@@ -119,8 +124,13 @@ jobs:
 
           version = os.environ["RELEASE_VERSION"]
           pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          lockfile = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
+          locked_echome = next(
+              package for package in lockfile["package"] if package["name"] == "echome"
+          )
           checks = {
               "pyproject.toml": pyproject["project"]["version"] == version,
+              "uv.lock": locked_echome["version"] == version,
               "echome/__init__.py": Path("echome/__init__.py").read_text(encoding="utf-8").strip()
               == f'__version__ = "{version}"',
               "echome_mcp/__init__.py": f'__version__ = "{version}"'
@@ -178,7 +188,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md CHANGELOG.md
+          git add pyproject.toml uv.lock echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md CHANGELOG.md
           git commit -m "release: v${{ steps.bump.outputs.version }}"
 
       - name: Create tag
