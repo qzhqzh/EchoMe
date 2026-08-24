@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "EchoMe Hub"
-    app_version: str = "1.7.0"
+    app_version: str = "1.7.1"
     debug: bool = False
     port: int = 20000
 

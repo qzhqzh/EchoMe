@@ -1,3 +1,8 @@
+## v1.7.1
+
+- 373ef04 docs: record v1.7 rollout completion
+- e91e8b5 fix: keep release metadata synchronized
+
 ## v1.7.0
 
 - 3e1c890 feat: add trusted context calibration
