@@ -1,3 +1,7 @@
+## v1.7.0
+
+- 3e1c890 feat: add trusted context calibration
+
 ## v1.5.1
 
 - 93ca19f feat: consolidate memory retrieval and diagnostics (#90)
