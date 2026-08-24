@@ -1,7 +1,7 @@
 # EchoMe v1.7 计划：Trusted Context Calibration
 
-状态日期：2026-08-24。当前处于 release candidate 最终验收阶段；生产数据库仍为 `015`，
-尚未执行迁移、部署、合并或 PyPI 发布。
+状态日期：2026-08-24。v1.7.0 已正式发布并部署；生产数据库为 `017`，Hub、Web 与本地 MCP
+均已完成升级验收，Context Policy 继续保持 shadow。
 
 ## 1. 版本判断
 
@@ -139,4 +139,12 @@ policy effect 与 bounded Context Run 查询新增并发索引：
   Playwright。
 - 独立审查发现的截断优先级、畸形 trace、阈值舍入、发布输入注入、在线索引恢复和错误态问题均已修复，
   并由针对性测试或真实 PostgreSQL 故障注入覆盖。
-- 待完成：PR/合并、正式发布、生产迁移和 MCP 重启。
+- 发布：功能 PR [#91](https://github.com/qzhqzh/EchoMe/pull/91) 与元数据修复 PR
+  [#92](https://github.com/qzhqzh/EchoMe/pull/92) 已通过全部 CI 并 squash 合并；
+  [v1.7.0](https://github.com/qzhqzh/EchoMe/releases/tag/v1.7.0) 已发布到 GitHub Release 与 PyPI。
+- 生产：迁移前 custom-format 备份可由 `pg_restore` 解析，权限为 `600`，SHA-256 为
+  `f18d899224b3ffe5c8c1f28421e9abf36c4f660be1d7d75d04ff36754a664872`；生产已完成
+  `015 -> 016 -> 017`，CHECK constraint validated，两个并发索引均为 valid/ready。
+- 运行时：Hub、Web、embedding 与 PostgreSQL 健康；本地 MCP/Hub/package 均为 `1.7.0`，schema 为
+  `017`，capabilities 为 `echome.capabilities.v5`。readiness 为 `insufficient_data`，
+  `eligible_for_canary=false`、`auto_enforce=false`。
