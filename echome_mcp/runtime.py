@@ -292,6 +292,12 @@ async def echome_context(
                 }
             )
             cached["degradation_error"] = failure["error"]
+            cached["completion_contract"] = {
+                "schema_version": "echome.context-completion.v1",
+                "report_outcome": False,
+                "required_at_task_end": False,
+                "reason": "Cached context is read-only and does not represent a new context run.",
+            }
             return json.dumps(cached, ensure_ascii=False, indent=2)
         return json.dumps(failure, ensure_ascii=False, indent=2)
     with suppress(OSError, TypeError):

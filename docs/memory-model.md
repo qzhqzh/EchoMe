@@ -268,7 +268,7 @@ limits:
 ```
 1. AI 提交 {title, content, type, tags, suggested_layer}
 2. Hub 创建记忆，status=ai_review，source=ai_suggested
-3. ai_review 记忆立即参与后续检索，但不默认参与 Memory Sleep 深度整理
+3. ai_review 记忆立即参与后续检索，也是 Memory Sleep 的默认候选状态之一
 4. 用户可以通过 `echome review` 或 Web Console 审核
 5. 用户可以：
    - approve: 确认，状态变为 active
@@ -281,15 +281,15 @@ limits:
 
 ## 9. 版本化与冲突
 
-- 每条记忆有 `updated_at` 时间戳
-- push/pull 使用 last-write-wins 策略（单租户，冲突概率极低）
-- 本地 vault 本身可以用 git 管理（可选，非必须）
-- Hub 保留所有修改历史（通过 sync_log + updated_at）
+- 每条记忆保留 `updated_at`、状态、Sleep 来源和关系证据
+- 文件式 `push/pull` 目前是明确未实现的保留接口，不采用隐式 last-write-wins
+- Memory Sleep 通过新增派生记忆、归档来源和 `derived_from / superseded_by` 关系表达整理结果
+- 本地 Markdown/Git 投影应先以只读导出提供；未来回写必须走 proposal/validate/apply
 
 ## 10. 扩展方向
 
 - **团队共享**：type=`shared_workflow`，scope 扩展为 team level
 - **自动学习**：对话分析 → 提取偏好 → pending 记忆
 - **知识图谱**：记忆之间建立关联（related_ids 字段）
-- **时间衰减**：长期未使用的记忆降低 priority
+- **时态复核**：根据版本、环境和来源变化判断是否需复核；长期未访问本身不降低 priority
 - **导入源**：从 Notion/Obsidian/已有 CLAUDE.md 批量导入

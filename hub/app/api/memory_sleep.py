@@ -1,5 +1,6 @@
 """Memory Sleep API routes."""
 
+import json
 import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -24,6 +25,7 @@ from app.schemas.sleep import (
     SleepProposalSubmitRequest,
     SleepSessionResponse,
 )
+from app.services.content_safety import require_safe_content
 from app.services.memory_sleep_simulation import simulate_sleep_plan_v2
 from app.services.project_identity import (
     canonicalize_project_scopes,
@@ -279,6 +281,7 @@ async def submit_sleep_proposal(
 
     plan = deepcopy(body.json_proposal)
     _validate_plan_header(plan, sleep_session)
+    require_safe_content(body.text_proposal, json.dumps(plan, default=str))
     if plan["schema_version"] == PLAN_SCHEMA_V2:
         simulation = await _simulate_v2_plan(session, user_id, sleep_session, plan, lock=False)
         if not simulation["passed"]:
@@ -507,6 +510,7 @@ def _validate_created_memory(payload: Any) -> None:
         isinstance(payload.get(key), str) and payload[key] for key in ("title", "content", "type")
     ):
         raise HTTPException(status_code=400, detail="create_memory payload is incomplete")
+    require_safe_content(payload["title"], payload["content"])
     if len(payload["title"]) > 256 or len(payload["content"]) > 100_000:
         raise HTTPException(status_code=400, detail="Created memory content is too large")
     if payload["type"] not in ALLOWED_MEMORY_TYPES:

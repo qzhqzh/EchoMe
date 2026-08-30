@@ -24,6 +24,7 @@ from app.models.project_knowledge import (
     ConstraintEdge,
     ConstraintEvidence,
     ConstraintRevalidationProposal,
+    ContextOutcome,
     ContextQualitySnapshot,
     ContextRun,
     EventLink,
@@ -49,9 +50,17 @@ from app.schemas.project_knowledge import (
     ProjectEventCreate,
     ProjectImpactRequest,
     ProjectPreflightRequest,
+    ReflectionPrepareRequest,
+    ReflectionSubmitRequest,
     RevalidationApplyRequest,
     RevalidationProposalCreate,
     ScaleReplayEvalRequest,
+)
+from app.services.content_safety import (
+    find_sensitive_artifact,
+    find_sensitive_content,
+    require_safe_artifact,
+    require_safe_content,
 )
 from app.services.context_compiler import (
     compile_project_context,
@@ -66,6 +75,16 @@ from app.services.context_quality_eval import (
 from app.services.embedding import get_embedding, get_embeddings
 from app.services.project_identity import resolve_project
 from app.services.quality_automation import evaluate_automation_gate
+from app.services.reflection import (
+    ReflectionSourceChangedError,
+    build_source_watermark,
+    reflection_request_fingerprint,
+    render_reflection_claims,
+    source_ids_from_context,
+    source_version_token,
+    validate_claim_sources,
+    verify_source_watermark,
+)
 from app.services.token_counter import count_tokens
 
 router = APIRouter(prefix="/project-knowledge", tags=["project-knowledge"])
@@ -266,7 +285,12 @@ def _quality_snapshot_payload(item: ContextQualitySnapshot) -> dict[str, Any]:
         "dry_run": item.dry_run,
         "passed": item.passed,
         "metrics": item.metrics,
+        "ability_metrics": (item.report or {}).get("ability_metrics", {}),
         "thresholds": item.thresholds,
+        "threshold_bounds": (item.report or {}).get("threshold_bounds", {}),
+        "ability_threshold_bounds": (item.report or {}).get(
+            "ability_threshold_bounds", {}
+        ),
         "idempotency_key": item.idempotency_key,
         "created_at": item.created_at.isoformat(),
     }
@@ -623,6 +647,14 @@ async def check_artifact_sync(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    for item in body.artifacts:
+        require_safe_artifact(
+            item.logical_path,
+            "",
+            item.title,
+            item.source_uri,
+            json.dumps(item.metadata, ensure_ascii=False, default=str),
+        )
     result = await session.execute(
         select(ProjectArtifact).where(
             ProjectArtifact.user_id == user_id,
@@ -667,6 +699,13 @@ async def apply_artifact_sync(
     created: list[dict[str, Any]] = []
     unchanged: list[str] = []
     for item in body.artifacts:
+        require_safe_artifact(
+            item.logical_path,
+            item.content,
+            item.title,
+            item.source_uri,
+            json.dumps(item.metadata, ensure_ascii=False, default=str),
+        )
         actual_hash = hashlib.sha256(item.content.encode("utf-8")).hexdigest()
         if actual_hash != item.content_hash:
             raise HTTPException(
@@ -750,6 +789,12 @@ async def create_constraint(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    require_safe_content(
+        body.title,
+        body.statement,
+        body.rationale,
+        json.dumps(body.tags, ensure_ascii=False),
+    )
     existing = await session.scalar(
         select(ProjectConstraint).where(
             ProjectConstraint.user_id == user_id,
@@ -795,6 +840,12 @@ async def patch_constraint(
     if changes.get("superseded_by") is not None:
         raise HTTPException(status_code=422, detail="superseded_by is managed by the server")
     changes.pop("superseded_by", None)
+    require_safe_content(
+        changes.get("title", constraint.title),
+        changes.get("statement", constraint.statement),
+        changes.get("rationale", constraint.rationale),
+        json.dumps(changes.get("tags", constraint.tags), ensure_ascii=False),
+    )
     if CONSTRAINT_REVISION_FIELDS & changes.keys():
         revision = await _create_constraint_revision(session, constraint, changes, user_id)
         return _constraint_payload(revision)
@@ -837,6 +888,7 @@ async def create_constraint_edge(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    require_safe_content(body.reason, json.dumps(body.source_metadata, default=str))
     ids = {body.source_constraint_id, body.target_constraint_id}
     result = await session.execute(
         select(ProjectConstraint.id).where(
@@ -878,6 +930,11 @@ async def create_constraint_evidence(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    require_safe_content(
+        body.excerpt,
+        json.dumps(body.locator, default=str),
+        json.dumps(body.source_metadata, default=str),
+    )
     constraint = await session.scalar(
         select(ProjectConstraint).where(
             ProjectConstraint.id == body.constraint_id,
@@ -1227,7 +1284,24 @@ async def rebuild_artifact_chunks(
         )
     created = 0
     embedded = 0
+    skipped_sensitive: list[dict[str, Any]] = []
     for artifact in artifacts:
+        findings = find_sensitive_artifact(
+            artifact.logical_path,
+            artifact.content,
+            artifact.title,
+            artifact.source_uri,
+            json.dumps(artifact.artifact_metadata, ensure_ascii=False, default=str),
+        )
+        if findings:
+            skipped_sensitive.append(
+                {
+                    "artifact_id": str(artifact.id),
+                    "logical_path": artifact.logical_path,
+                    "findings": findings,
+                }
+            )
+            continue
         if not body.missing_only:
             await session.execute(
                 delete(ArtifactChunk).where(ArtifactChunk.artifact_id == artifact.id)
@@ -1249,6 +1323,8 @@ async def rebuild_artifact_chunks(
         "has_more": has_more,
         "missing_only": body.missing_only,
         "rebuildable": True,
+        "sensitive_skipped_count": len(skipped_sensitive),
+        "skipped_sensitive": skipped_sensitive,
     }
 
 
@@ -1306,16 +1382,31 @@ async def rebuild_constraint_embeddings(
         raise HTTPException(
             status_code=422, detail="All constraints must be active and in the project"
         )
-    generated = await get_embeddings([constraint_document(item) for item in constraints])
-    if generated is None and constraints:
+    safe_constraints: list[ProjectConstraint] = []
+    safe_documents: list[str] = []
+    skipped_sensitive: list[dict[str, Any]] = []
+    for item in constraints:
+        document = constraint_document(item)
+        findings = find_sensitive_content(document)
+        if findings:
+            skipped_sensitive.append(
+                {"constraint_id": str(item.id), "findings": findings}
+            )
+            continue
+        safe_constraints.append(item)
+        safe_documents.append(document)
+    generated = await get_embeddings(safe_documents) if safe_documents else []
+    if generated is None and safe_documents:
         raise HTTPException(status_code=503, detail="Embedding service is unavailable")
-    for item, embedding in zip(constraints, generated or [], strict=False):
+    for item, embedding in zip(safe_constraints, generated or [], strict=False):
         item.embedding = embedding
     return {
         "project_id": body.project_id,
         "constraint_count": len(constraints),
         "embedded_count": len(generated or []),
         "rebuildable": True,
+        "sensitive_skipped_count": len(skipped_sensitive),
+        "skipped_sensitive": skipped_sensitive,
     }
 
 
@@ -1331,6 +1422,29 @@ async def list_context_runs(
         project = await _require_project(session, project_id, user_id)
         query = query.where(ContextRun.project_id == project.id)
     result = await session.execute(query.order_by(ContextRun.created_at.desc()).limit(limit))
+    runs = list(result.scalars().all())
+    outcome_result = await session.execute(
+        select(ContextOutcome)
+        .where(
+            ContextOutcome.user_id == user_id,
+            ContextOutcome.context_run_id.in_([item.id for item in runs]),
+        )
+        .order_by(ContextOutcome.created_at)
+    ) if runs else None
+    outcomes_by_run: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    if outcome_result is not None:
+        for outcome in outcome_result.scalars().all():
+            outcomes_by_run.setdefault(outcome.context_run_id, []).append(
+                {
+                    "id": str(outcome.id),
+                    "outcome": outcome.outcome,
+                    "policy_effect": outcome.policy_effect,
+                    "reported_by": outcome.reported_by,
+                    "source": outcome.source,
+                    "note": outcome.note,
+                    "created_at": outcome.created_at.isoformat(),
+                }
+            )
     items = [
         {
             "id": str(item.id),
@@ -1352,8 +1466,9 @@ async def list_context_runs(
             "fallback": item.fallback,
             "error_code": item.error_code,
             "created_at": item.created_at.isoformat(),
+            "outcomes": outcomes_by_run.get(item.id, []),
         }
-        for item in result.scalars().all()
+        for item in runs
     ]
     return {"total": len(items), "items": items}
 
@@ -1366,6 +1481,11 @@ async def create_knowledge_view(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    require_safe_content(
+        body.query,
+        body.content,
+        json.dumps(body.source_watermark, default=str),
+    )
     source_refs: list[dict[str, Any]] = []
     plural_keys = {
         "artifact_ids": "artifact_id",
@@ -1411,6 +1531,263 @@ async def create_knowledge_view(
     return _view_payload(view)
 
 
+@router.post("/views/reflect/prepare")
+async def prepare_knowledge_reflection(
+    body: ReflectionPrepareRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """Prepare a read-only, evidence-complete reflection contract for a capable client AI."""
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
+    require_safe_content(body.query)
+    previous = None
+    if body.supersedes_id:
+        previous = await session.scalar(
+            select(KnowledgeView).where(
+                KnowledgeView.id == body.supersedes_id,
+                KnowledgeView.user_id == user_id,
+                KnowledgeView.project_id == project.id,
+                KnowledgeView.status == "current",
+            )
+        )
+        if previous is None:
+            raise HTTPException(status_code=409, detail="Reflection base view is no longer current")
+
+    event_token_budget = min(4000, body.token_budget // 3, max(0, body.token_budget - 512))
+    context_token_budget = body.token_budget - event_token_budget
+    context = await compile_project_context(
+        session,
+        project,
+        ProjectContextRequest(
+            project_id=project.id,
+            task=body.query,
+            changed_paths=body.changed_paths,
+            limit=body.limit,
+            mode="local",
+            token_budget=context_token_budget,
+            record_run=False,
+            shadow=True,
+            policy_mode="shadow",
+        ),
+        user_id,
+        include_source_versions=True,
+    )
+    context_source_versions = context.pop("_source_versions", {})
+    event_result = await session.execute(
+        select(ProjectEvent)
+        .where(
+            ProjectEvent.user_id == user_id,
+            ProjectEvent.project_id == project.id,
+        )
+        .order_by(ProjectEvent.occurred_at.desc())
+        .limit(min(500, body.limit * 5))
+    )
+    events = list(event_result.scalars().all())
+    query_terms = _tokens(body.query)
+    events.sort(
+        key=lambda item: (
+            len(query_terms & _tokens(f"{item.title} {item.content}")),
+            item.occurred_at,
+        ),
+        reverse=True,
+    )
+    selected_events: list[ProjectEvent] = []
+    event_payloads: list[dict[str, Any]] = []
+    event_tokens = 0
+    for item in events:
+        payload = _event_payload(item)
+        payload_tokens = count_tokens(json.dumps(payload, ensure_ascii=False, default=str))
+        if event_tokens + payload_tokens > event_token_budget:
+            continue
+        selected_events.append(item)
+        event_payloads.append(payload)
+        event_tokens += payload_tokens
+        if len(selected_events) >= body.limit:
+            break
+    source_ids = source_ids_from_context(context)
+    source_ids["event_ids"] = [str(item.id) for item in selected_events]
+    prepared_source_versions = {
+        **context_source_versions,
+        **{
+            f"event:{item.id}": source_version_token("event", item)
+            for item in selected_events
+        },
+    }
+    try:
+        source_watermark = await build_source_watermark(
+            session,
+            user_id=user_id,
+            project_id=project.id,
+            source_ids=source_ids,
+        )
+    except ReflectionSourceChangedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if source_watermark["source_versions"] != prepared_source_versions:
+        raise HTTPException(
+            status_code=409,
+            detail="Reflection sources changed during prepare; retry the read-only prepare step",
+        )
+    client_watermark = {
+        key: value for key, value in source_watermark.items() if key != "source_versions"
+    }
+
+    current_views_result = await session.execute(
+        select(KnowledgeView)
+        .where(
+            KnowledgeView.user_id == user_id,
+            KnowledgeView.project_id == project.id,
+            KnowledgeView.status == "current",
+        )
+        .order_by(KnowledgeView.created_at.desc())
+        .limit(20)
+    )
+    return {
+        "schema_version": "echome.reflect-prepare.v1",
+        "read_only": True,
+        "project": context["project"],
+        "query": body.query,
+        "context": context,
+        "events": event_payloads,
+        "current_views": [
+            {
+                "id": str(item.id),
+                "kind": item.kind,
+                "query": item.query,
+                "producer": item.producer,
+                "source_count": item.source_watermark.get("source_count"),
+                "source_fingerprint": item.source_watermark.get("source_fingerprint"),
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in current_views_result.scalars().all()
+        ],
+        "base_view": _view_payload(previous) if previous else None,
+        "source_watermark": client_watermark,
+        "submission_contract": {
+            "tool": "echome_reflect_submit",
+            "requires_fresh_fingerprint": True,
+            "claim_evidence_required": True,
+            "content_rendered_from_claims": True,
+            "idempotency_key_required": True,
+            "allowed_evidence_relations": ["supports", "contradicts", "context"],
+            "mutation": "creates a derived knowledge view; source facts remain unchanged",
+        },
+        "token_budget": body.token_budget,
+        "token_used": int(context.get("token_used", 0)) + event_tokens,
+    }
+
+
+@router.post("/views/reflect/submit", status_code=status.HTTP_201_CREATED)
+async def submit_knowledge_reflection(
+    body: ReflectionSubmitRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """Persist an evidence-backed reflection only while its prepared sources are unchanged."""
+    project = await _require_project(session, body.project_id, user_id)
+    body.project_id = project.id
+    require_safe_content(
+        body.query,
+        json.dumps([item.model_dump(mode="json") for item in body.claims], default=str),
+        json.dumps(body.source_watermark, default=str),
+        body.idempotency_key,
+    )
+    request_fingerprint = reflection_request_fingerprint(
+        project_id=project.id,
+        kind=body.kind,
+        query=body.query,
+        claims=body.claims,
+        source_fingerprint=body.source_watermark.get("source_fingerprint"),
+        supersedes_id=body.supersedes_id,
+    )
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {
+            "lock_key": (
+                f"reflect-submit:{user_id}:{project.id}:{body.idempotency_key}"
+            )
+        },
+    )
+    existing = await session.scalar(
+        select(KnowledgeView).where(
+            KnowledgeView.user_id == user_id,
+            KnowledgeView.project_id == project.id,
+            KnowledgeView.source_watermark.contains(
+                {"idempotency_key": body.idempotency_key}
+            ),
+        )
+    )
+    if existing is not None:
+        if existing.source_watermark.get("request_fingerprint") != request_fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="Reflection idempotency key was already used with another payload",
+            )
+        return {
+            **_view_payload(existing),
+            "claim_count": len(existing.source_watermark.get("claims", [])),
+            "source_fingerprint_verified": True,
+            "idempotent_replay": True,
+        }
+    try:
+        current_watermark = await verify_source_watermark(
+            session,
+            user_id=user_id,
+            project_id=project.id,
+            source_watermark=body.source_watermark,
+        )
+        validate_claim_sources(body.claims, current_watermark)
+    except ReflectionSourceChangedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    previous = None
+    if body.supersedes_id:
+        previous = await session.scalar(
+            select(KnowledgeView)
+            .where(
+                KnowledgeView.id == body.supersedes_id,
+                KnowledgeView.user_id == user_id,
+                KnowledgeView.project_id == project.id,
+            )
+            .with_for_update()
+        )
+        if previous is None:
+            raise HTTPException(status_code=422, detail="Superseded view must belong to project")
+        if previous.status != "current":
+            raise HTTPException(status_code=409, detail="Only current views can be superseded")
+
+    stored_watermark = {
+        **current_watermark,
+        "claims": [item.model_dump(mode="json") for item in body.claims],
+        "idempotency_key": body.idempotency_key,
+        "request_fingerprint": request_fingerprint,
+    }
+    content = render_reflection_claims(body.claims)
+    view = KnowledgeView(
+        user_id=user_id,
+        project_id=project.id,
+        kind=body.kind,
+        query=body.query,
+        content=content,
+        source_watermark=stored_watermark,
+        refresh_mode="derived",
+        token_count=count_tokens(content),
+        producer="client_ai",
+        supersedes_id=body.supersedes_id,
+    )
+    session.add(view)
+    await session.flush()
+    if previous:
+        previous.status = "superseded"
+        previous.stale_at = datetime.now(timezone.utc)
+    return {
+        **_view_payload(view),
+        "claim_count": len(body.claims),
+        "source_fingerprint_verified": True,
+        "idempotent_replay": False,
+    }
+
+
 @router.get("/views")
 async def list_knowledge_views(
     project_id: str = Query(...),
@@ -1440,6 +1817,11 @@ async def create_revalidation_proposal(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    require_safe_content(
+        body.reason,
+        json.dumps(body.proposal, default=str),
+        json.dumps(body.source_refs, default=str),
+    )
     constraint = await session.scalar(
         select(ProjectConstraint).where(
             ProjectConstraint.id == body.constraint_id,
@@ -1541,6 +1923,11 @@ async def apply_revalidation_proposal(
     changes.pop("expected_version", None)
     changes.pop("superseded_by", None)
     changes.setdefault("last_verified_at", datetime.now(timezone.utc))
+    require_safe_content(
+        changes.get("title", constraint.title),
+        changes.get("statement", constraint.statement),
+        changes.get("rationale", constraint.rationale),
+    )
     revision = await _create_constraint_revision(session, constraint, changes, user_id)
     proposal.status = "applied"
     proposal.applied_constraint_id = revision.id
@@ -1579,6 +1966,13 @@ async def append_project_event(
 ) -> dict[str, Any]:
     project = await _require_project(session, body.project_id, user_id)
     body.project_id = project.id
+    require_safe_content(
+        body.title,
+        body.content,
+        body.source_ref,
+        json.dumps(body.metadata, default=str),
+        json.dumps([item.model_dump(mode="json") for item in body.links], default=str),
+    )
     await _validate_event_links(session, body.links, body.project_id, user_id)
     event_id = uuid.uuid4()
     values = body.model_dump(exclude={"links", "metadata"})

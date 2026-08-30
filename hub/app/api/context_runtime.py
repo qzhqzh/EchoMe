@@ -24,7 +24,9 @@ from app.core.database import async_session_factory, get_session
 from app.models.project_knowledge import ContextRun
 from app.schemas.context_runtime import UnifiedContextRequest
 from app.schemas.project_knowledge import ProjectContextRequest, ProjectPreflightRequest
+from app.services.content_safety import find_sensitive_content
 from app.services.context_compiler import compile_project_context
+from app.services.context_completion import completion_contract
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import resolve_project
@@ -124,6 +126,8 @@ async def _record_failed_context(
     project_id: str | None = None,
 ) -> None:
     """Persist a failure outside the request transaction without masking it."""
+    if not body.record_run:
+        return
     try:
         async with async_session_factory() as audit_session:
             run_mode = route if route in {"personal", "impact", "temporal"} else "local"
@@ -260,6 +264,7 @@ async def _personal_context(
         session.add(run)
         await session.flush()
         context["context_run_id"] = str(run.id)
+        context["completion_contract"] = completion_contract(str(run.id))
     return context
 
 
@@ -352,6 +357,8 @@ async def get_unified_context(
     """Return one evidence-first context envelope and audit failed attempts."""
     request_id = body.request_id or str(uuid.uuid4())
     body.request_id = request_id
+    if find_sensitive_content(body.task):
+        body.record_run = False
     route = _runtime_route(body)
     audit: dict[str, str | None] = {"project_id": None}
     try:

@@ -4,16 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.context_quality_eval import context_quality_thresholds
+
 QUALITY_THRESHOLDS = {
-    "recall_at_10": ("min", 0.90),
-    "evidence_precision": ("min", 0.90),
-    "stale_answer_rate": ("max", 0.05),
-    "conflict_surfacing_rate": ("min", 0.80),
-    "abstention_accuracy": ("min", 0.80),
-    "constraint_adherence": ("min", 0.95),
-    "impact_coverage": ("min", 0.80),
-    "preflight_precision": ("min", 0.80),
-    "preflight_recall": ("min", 0.80),
+    metric: next(iter(bounds.items()))
+    for metric, bounds in context_quality_thresholds(10).items()
 }
 
 
@@ -38,7 +33,7 @@ def evaluate_automation_gate(
         failures.append({"reason": "mixed_dataset_versions"})
     for snapshot in considered:
         if not snapshot.passed:
-            failures.append({"snapshot_id": str(snapshot.id), "reason": "snapshot_recall_failed"})
+            failures.append({"snapshot_id": str(snapshot.id), "reason": "snapshot_behavior_failed"})
         for metric, (comparison, threshold) in QUALITY_THRESHOLDS.items():
             value = snapshot.metrics.get(metric)
             metric_failed = (

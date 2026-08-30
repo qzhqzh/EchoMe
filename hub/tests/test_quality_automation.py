@@ -6,6 +6,13 @@ from types import SimpleNamespace
 from app.services.quality_automation import QUALITY_THRESHOLDS, evaluate_automation_gate
 
 
+def test_automation_uses_the_strict_eval_threshold_contract() -> None:
+    assert QUALITY_THRESHOLDS["stale_answer_rate"] == ("max", 0.0)
+    assert QUALITY_THRESHOLDS["conflict_surfacing_rate"] == ("min", 1.0)
+    assert QUALITY_THRESHOLDS["case_success_rate"] == ("min", 0.9)
+    assert QUALITY_THRESHOLDS["sensitive_path_leak_rate"] == ("max", 0.0)
+
+
 def _snapshot(*, passed: bool = True, overrides: dict | None = None) -> SimpleNamespace:
     metrics = {
         metric: threshold if comparison == "min" else 0.0

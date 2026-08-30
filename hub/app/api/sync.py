@@ -1,5 +1,6 @@
 """Sync and render API routes."""
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
@@ -20,6 +21,7 @@ from app.schemas.memory import (
     SyncPushRequest,
     SyncPushResponse,
 )
+from app.services.content_safety import require_safe_content
 from app.services.project_identity import canonicalize_project_scopes, project_scope_ids
 from app.services.renderer import render_memories
 from app.services.token_counter import count_tokens
@@ -42,6 +44,7 @@ async def push_sync(
     affected_ids: list[str] = []
 
     for item in body.memories:
+        require_safe_content(json.dumps(item.model_dump(mode="json"), ensure_ascii=False))
         scope_projects = await canonicalize_project_scopes(
             session, user_id, item.scope.projects
         )

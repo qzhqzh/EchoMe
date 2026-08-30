@@ -17,6 +17,7 @@ from app.schemas.retrieval_debug import (
     RetrievalLogResponse,
     RetrievalReplayRequest,
 )
+from app.services.content_safety import require_safe_content
 from app.services.memory_retrieval import retrieve_memories
 from app.services.retrieval_replay import build_replay_report, compare_retrieval_replay
 
@@ -119,6 +120,7 @@ async def _save_log(
     user_id: str,
     payload: RetrievalLogCreate,
 ) -> RetrievalLog:
+    require_safe_content(payload.query)
     top_results = [_sanitize_log_record(item, _RESULT_LOG_FIELDS) for item in payload.top_results]
     steps = [_sanitize_log_record(item, _STEP_LOG_FIELDS) for item in payload.steps]
     log = RetrievalLog(
@@ -149,6 +151,7 @@ async def debug_query(
     user_id: str = Depends(verify_token),
 ) -> RetrievalLogResponse:
     """Run a retrieval debug query and persist the intermediate steps."""
+    require_safe_content(body.query)
     retrieval = await retrieve_memories(
         session,
         user_id=user_id,

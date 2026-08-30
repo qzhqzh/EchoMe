@@ -264,6 +264,34 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def prepare_reflection(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Prepare an evidence-complete, read-only project reflection contract."""
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers,
+            timeout=PROJECT_CONTEXT_TIMEOUT,
+        ) as client:
+            resp = await client.post(
+                "/api/v1/project-knowledge/views/reflect/prepare",
+                json=data,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def submit_reflection(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Submit an evidence-linked reflection against its prepared source fingerprint."""
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers,
+            timeout=PROJECT_CONTEXT_TIMEOUT,
+        ) as client:
+            resp = await client.post(
+                "/api/v1/project-knowledge/views/reflect/submit",
+                json=data,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
     async def unified_context(self, data: dict[str, Any]) -> dict[str, Any]:
         """Get one routed personal or project context envelope."""
         async with httpx.AsyncClient(

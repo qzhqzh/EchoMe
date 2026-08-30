@@ -4,17 +4,59 @@ from __future__ import annotations
 
 import json
 import math
+from collections import defaultdict
 from pathlib import Path
 from statistics import mean
 from typing import Any
 
 DEFAULT_CASES_PATH = Path(__file__).resolve().parent.parent / "evals" / "context_quality_cases.json"
+ABILITY_BY_CATEGORY = {
+    "single_fact": "static_state_recall",
+    "evidence_precision": "static_state_recall",
+    "temporal_state": "dynamic_state_tracking",
+    "supersession": "dynamic_state_tracking",
+    "inactive_exclusion": "dynamic_state_tracking",
+    "workflow": "workflow_knowledge",
+    "cross_source_reasoning": "workflow_knowledge",
+    "workflow_failure": "environment_gotchas",
+    "changed_path_impact": "environment_gotchas",
+    "environment_gotcha": "environment_gotchas",
+    "conflict": "premise_awareness",
+    "abstention": "premise_awareness",
+    "implicit_constraint": "premise_awareness",
+    "premise_awareness": "premise_awareness",
+}
+REQUIRED_ABILITIES = {
+    "static_state_recall",
+    "dynamic_state_tracking",
+    "workflow_knowledge",
+    "environment_gotchas",
+    "premise_awareness",
+}
+BASE_QUALITY_THRESHOLDS = {
+    "case_success_rate": {"min": 0.90},
+    "evidence_precision": {"min": 0.90},
+    "stale_answer_rate": {"max": 0.0},
+    "conflict_surfacing_rate": {"min": 1.0},
+    "abstention_accuracy": {"min": 1.0},
+    "constraint_adherence": {"min": 1.0},
+    "impact_coverage": {"min": 0.90},
+    "preflight_precision": {"min": 0.90},
+    "preflight_recall": {"min": 0.90},
+    "sensitive_path_leak_rate": {"max": 0.0},
+}
+ABILITY_QUALITY_THRESHOLDS = {"case_success_rate": {"min": 0.90}}
+
+
+def context_quality_thresholds(k: int = 10) -> dict[str, dict[str, float]]:
+    """Return the single strict threshold contract shared by eval and automation."""
+    return {f"recall_at_{k}": {"min": 0.90}, **BASE_QUALITY_THRESHOLDS}
 
 
 def load_context_quality_cases(path: Path = DEFAULT_CASES_PATH) -> dict[str, Any]:
     """Load and minimally validate the versioned fixed evaluation dataset."""
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") not in {1, 2}:
         raise ValueError("Unsupported context quality case schema")
     cases = payload.get("cases")
     if not isinstance(cases, list) or len(cases) < 20:
@@ -22,6 +64,19 @@ def load_context_quality_cases(path: Path = DEFAULT_CASES_PATH) -> dict[str, Any
     ids = [item.get("id") for item in cases]
     if len(ids) != len(set(ids)) or any(not item for item in ids):
         raise ValueError("Context quality case IDs must be non-empty and unique")
+    for item in cases:
+        inferred = ABILITY_BY_CATEGORY.get(str(item.get("category")))
+        ability = item.get("ability") or inferred
+        if ability not in REQUIRED_ABILITIES:
+            raise ValueError(f"Context quality case {item['id']} has no supported ability")
+        if item.get("ability") and inferred and item["ability"] != inferred:
+            raise ValueError(f"Context quality case {item['id']} has inconsistent ability")
+        item["ability"] = ability
+    if payload.get("schema_version") == 2:
+        if len(cases) < 30:
+            raise ValueError("Context quality dataset v2 must contain at least 30 cases")
+        if {item["ability"] for item in cases} != REQUIRED_ABILITIES:
+            raise ValueError("Context quality dataset v2 must cover every required ability")
     return payload
 
 
@@ -159,14 +214,27 @@ def evaluate_context_quality(
     token_values: list[float] = []
     sleep_total = 0
     sleep_accepted = 0
+    sensitive_path_total = 0
+    sensitive_path_leaks = 0
+    successful_cases = 0
+    ability_counts: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"case_count": 0, "evaluated_count": 0, "expected_items": 0, "hits": 0, "passed": 0}
+    )
     case_reports: list[dict[str, Any]] = []
 
     for case in cases:
+        ability = str(case["ability"])
+        ability_counts[ability]["case_count"] += 1
         result = result_by_id.get(case["id"])
         if result is None:
-            case_reports.append({"case_id": case["id"], "status": "missing"})
+            case_reports.append(
+                {"case_id": case["id"], "ability": ability, "status": "missing"}
+            )
             continue
         retrieval = _case_retrieval(case, result, k=k)
+        ability_counts[ability]["evaluated_count"] += 1
+        ability_counts[ability]["expected_items"] += retrieval["expected"]
+        ability_counts[ability]["hits"] += retrieval["hits"]
         total_expected += retrieval["expected"]
         total_hits += retrieval["hits"]
         if retrieval["expected"]:
@@ -175,6 +243,7 @@ def evaluate_context_quality(
         context = result.get("context") or {}
         preflight = result.get("preflight") or {}
         expected = case.get("expected", {})
+        case_passed = retrieval["expected"] == 0 or retrieval["hits"] == retrieval["expected"]
         selected_constraint_ids = {
             str(item.get("id"))
             for item in context.get("constraints", [])
@@ -197,14 +266,32 @@ def evaluate_context_quality(
             stale_total += 1
             if not context.get("stale_warnings"):
                 stale_failures += 1
+                case_passed = False
         if expected.get("require_conflict"):
             conflict_total += 1
             if context.get("conflicts"):
                 conflicts_surfaced += 1
+            else:
+                case_passed = False
         if expected.get("require_abstention"):
             abstention_total += 1
             if context.get("unknowns") and not context.get("must_include"):
                 abstentions_correct += 1
+            else:
+                case_passed = False
+
+        forbidden_paths = set(expected.get("forbidden_artifact_paths", []))
+        if forbidden_paths:
+            sensitive_path_total += 1
+            selected_paths = set(retrieval["paths"])
+            leaked = any(
+                selected == forbidden or selected.endswith(f"/{forbidden}")
+                for selected in selected_paths
+                for forbidden in forbidden_paths
+            )
+            if leaked:
+                sensitive_path_leaks += 1
+                case_passed = False
 
         statuses = _statuses(context)
         constraint_statuses = [
@@ -216,15 +303,21 @@ def evaluate_context_quality(
         allowed = set(expected.get("allowed_statuses", []))
         if forbidden or allowed:
             adherence_total += 1
-            if not (forbidden & set(statuses)) and (
+            adheres = not (forbidden & set(statuses)) and (
                 not allowed or set(constraint_statuses) <= allowed
-            ):
+            )
+            if adheres:
                 adherence_passed += 1
+            else:
+                case_passed = False
 
         if case.get("mode") == "impact":
             expected_titles = set(expected.get("constraint_titles", []))
             impact_expected += len(expected_titles)
-            impact_hits += len(expected_titles & set(retrieval["titles"]))
+            case_impact_hits = len(expected_titles & set(retrieval["titles"]))
+            impact_hits += case_impact_hits
+            if case_impact_hits != len(expected_titles):
+                case_passed = False
 
         if case.get("mode") == "preflight":
             warnings = preflight.get("warnings", [])
@@ -244,7 +337,10 @@ def evaluate_context_quality(
                 if isinstance(item, dict)
             )
             preflight_expected += len(expected_event_types)
-            preflight_hits += len(expected_event_types & actual_event_types)
+            case_preflight_hits = len(expected_event_types & actual_event_types)
+            preflight_hits += case_preflight_hits
+            if case_preflight_hits != len(expected_event_types):
+                case_passed = False
 
         if isinstance(result.get("latency_ms"), (int, float)):
             latency_values.append(float(result["latency_ms"]))
@@ -256,13 +352,19 @@ def evaluate_context_quality(
             sleep_total += 1
             sleep_accepted += bool(sleep_signal["accepted"])
 
+        if case_passed:
+            successful_cases += 1
+            ability_counts[ability]["passed"] += 1
+
         case_reports.append(
             {
                 "case_id": case["id"],
+                "ability": ability,
                 "status": "evaluated",
                 "expected_items": retrieval["expected"],
                 "hits_at_k": retrieval["hits"],
                 "reciprocal_rank": round(retrieval["reciprocal_rank"], 4),
+                "passed": case_passed,
             }
         )
 
@@ -282,8 +384,42 @@ def evaluate_context_quality(
         "latency_p95_ms": _percentile(latency_values, 0.95),
         "average_token_cost": round(mean(token_values), 3) if token_values else None,
         "sleep_proposal_acceptance_rate": _ratio(sleep_accepted, sleep_total),
+        "sensitive_path_leak_rate": _ratio(sensitive_path_leaks, sensitive_path_total),
+        "case_success_rate": _ratio(successful_cases, evaluated_count),
     }
     recall = metrics[f"recall_at_{k}"]
+    ability_metrics = {
+        ability: {
+            **counts,
+            f"recall_at_{k}": _ratio(counts["hits"], counts["expected_items"]),
+            "case_success_rate": _ratio(counts["passed"], counts["evaluated_count"]),
+        }
+        for ability, counts in sorted(ability_counts.items())
+    }
+    thresholds = context_quality_thresholds(k)
+
+    def threshold_passed(metric: str, bounds: dict[str, float]) -> bool:
+        value = metrics.get(metric)
+        if value is None:
+            return False
+        if "min" in bounds and value < bounds["min"]:
+            return False
+        return "max" not in bounds or value <= bounds["max"]
+
+    behavior_passed = all(
+        threshold_passed(metric, bounds) for metric, bounds in thresholds.items()
+    )
+    abilities_passed = all(
+        ability in ability_metrics
+        and all(
+            value is not None
+            and ("min" not in bounds or value >= bounds["min"])
+            and ("max" not in bounds or value <= bounds["max"])
+            for metric, bounds in ABILITY_QUALITY_THRESHOLDS.items()
+            for value in [ability_metrics[ability].get(metric)]
+        )
+        for ability in REQUIRED_ABILITIES
+    )
     return {
         "schema_version": cases_payload.get("schema_version"),
         "project_id": cases_payload.get("project_id"),
@@ -294,8 +430,16 @@ def evaluate_context_quality(
         ],
         "unknown_result_ids": unknown_results,
         "metrics": metrics,
-        "thresholds": {f"recall_at_{k}": 0.90},
-        "passed": evaluated_count == len(cases) and recall is not None and recall >= 0.90,
+        "ability_metrics": ability_metrics,
+        "thresholds": {f"recall_at_{k}": thresholds[f"recall_at_{k}"]["min"]},
+        "threshold_bounds": thresholds,
+        "ability_threshold_bounds": ABILITY_QUALITY_THRESHOLDS,
+        "passed": (
+            evaluated_count == len(cases)
+            and recall is not None
+            and behavior_passed
+            and abilities_passed
+        ),
         "cases": case_reports,
     }
 

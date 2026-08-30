@@ -5,6 +5,7 @@ import logging
 import httpx
 
 from app.core.config import settings
+from app.services.content_safety import find_sensitive_content
 
 logger = logging.getLogger("embedding_client")
 
@@ -17,6 +18,12 @@ async def get_embeddings(
     Returns None if the service is unavailable (graceful degradation).
     """
     if not texts:
+        return None
+    blocked = sum(bool(find_sensitive_content(text)) for text in texts)
+    if blocked:
+        logger.warning(
+            "Embedding request blocked by content safety for %d document(s)", blocked
+        )
         return None
 
     try:

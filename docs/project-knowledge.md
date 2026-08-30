@@ -8,6 +8,10 @@ EchoMe keeps two separate but cooperating domains:
 Project constraints do not alter the behavior of Memory retrieval or Memory Sleep. The task-aware
 project context endpoint combines both domains only when an AI explicitly asks for project context.
 
+The current deployed application version is `1.7.1`, and the current production Alembic revision is `017`.
+Repository metadata and authoritative documentation are checked together by
+`scripts/check_project_truth.py`; historical version plans are not current operational guidance.
+
 ## Artifact synchronization
 
 Project artifacts remain authoritative in their repository or issue system. EchoMe stores indexed,
@@ -67,9 +71,18 @@ project advisory lock makes concurrent or resumed backfills idempotent.
 ## Freshness and time
 
 `knowledge_views` are derived summaries or mental models. Their `source_watermark` identifies the
-authoritative memories, artifact revisions, constraints, and events used to produce them. A new artifact
-revision marks dependent views stale and creates a pending revalidation proposal for affected
-constraints; it never rewrites the old evidence.
+authoritative memories, artifact revisions, constraints, and events used to produce them. Reflect uses a
+prepare/submit contract: the server supplies a source fingerprint, the stronger client AI writes explicit
+claims with evidence references, and the Hub rejects submission if those sources changed. A new artifact
+revision marks dependent views stale and creates a pending revalidation proposal for affected constraints;
+it never rewrites the old evidence.
+
+Reflect prepare verifies that the returned context and its watermark describe the same source versions.
+Submit is idempotent, the server renders the stored body only from evidence-bound claims, and the producer
+label is server-owned. Existing REST v1 clients may continue creating `refresh_mode=derived` views, which
+retain legacy artifact-ID freshness behavior and surface as
+`freshness_contract=legacy_artifact_ids` in compiled context; new clients should use Reflect for strict
+per-source freshness checks.
 
 Context queries accept `as_of` and `valid_at`. Constraints, edges, and evidence retain observed time,
 valid time, invalidation time, and source metadata. Applying an approved revalidation creates a new
@@ -85,14 +98,27 @@ but does not block edits, commits, or deployments.
 
 ## Quality and automation
 
-The fixed quality dataset contains 26 cases covering retrieval, historical state, supersession,
-conflicts, abstention, implicit constraints, project failures, changed-path impact, and inactive-content
-exclusion. The Web **Eval** menu can execute the suite and store immutable quality snapshots.
+The 31-case fixed quality dataset groups cases by agent-memory ability: static state recall, dynamic state
+tracking, workflow knowledge, environment gotchas, and premise awareness. It also measures conflicts,
+abstention, evidence precision, stale answers, sensitive path leaks, latency, and token cost. The Web
+**Eval** menu exposes each ability separately and can store immutable quality snapshots.
+Each ability also has its own hard case-success gate, so a strong aggregate score cannot hide one weak
+memory capability.
 
 Proposal automation requires the latest three snapshots of the same dataset version to pass every
 behavior threshold. `ECHOME_PROJECT_AUTOMATION_ENABLED` defaults to `false`. Even when enabled, an
 automation run only creates pending revalidation proposals and exposes Sleep candidates for a stronger
 client AI to turn into the existing validated Sleep JSON plan; it never applies either plan.
+
+## Sensitive content boundary
+
+Hub validates secret-bearing shapes on authoritative write paths instead of trusting every MCP, CLI, or
+Web client to filter correctly. Private key material, sensitive artifact paths, Bearer/JWT credentials,
+provider token shapes, credential assignments, and credentials embedded in URLs are rejected without
+echoing the matched value. Documented placeholders remain valid. Sensitive-looking retrieval text stays
+on lexical retrieval and is not sent to the embedding provider or persisted as a Context Run. The
+embedding client repeats this check at the final outbound boundary; historical rebuilds skip and report
+sensitive records without deleting or rewriting them.
 
 ## Isolated acceptance
 
@@ -131,11 +157,12 @@ configured Hub.
 
 ## Production rollout
 
-1. Obtain separate authorization for commit/push/PR and production deployment.
-2. Create and verify a PostgreSQL custom-format backup; restore it into an isolated database.
-3. On the copy, rehearse `010 -> 012 -> 010 -> 012` and compare authoritative row counts and hashes.
-4. Deploy code with proposal automation disabled, then run Alembic upgrade to `012`.
-5. Run read-only smoke against production.
-6. Backfill artifact chunks in small resumable batches with a checkpoint and monitor Hub/embedding load.
-7. Run three full fixed eval snapshots. Inspect the quality gate and a dry-run proposal plan.
-8. Enable proposal automation only after review; keep apply in the existing explicit validation flow.
+1. Treat the repository's single Alembic head and `scripts/check_project_truth.py` as the expected runtime
+   contract; compare it with `echome_runtime_health` before deployment.
+2. Obtain separate authorization for commit/push/PR and production deployment.
+3. Create and verify a PostgreSQL custom-format backup, then restore it into an isolated database.
+4. Rehearse the exact current-production-to-head upgrade on the copy and compare authoritative row counts
+   and hashes. Never reuse a historical migration range from an old version plan.
+5. Deploy with proposal automation and Context Policy enforce disabled, then run read-only smoke.
+6. Run fixed eval snapshots and inspect Context Outcomes, policy effects, source mutation violations, and
+   readiness. A passing readiness report never enables enforce automatically.

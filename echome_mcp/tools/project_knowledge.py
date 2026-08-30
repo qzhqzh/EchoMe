@@ -17,13 +17,13 @@ SENSITIVE_NAME_PATTERN = re.compile(
     r"(?:^|[._-])(credentials?|secrets?|tokens?|service[-_]account)(?:[._-]|$)"
 )
 PRIVATE_MATERIAL_MARKERS = (
-    "-----BEGIN PRIVATE KEY-----",
-    "-----BEGIN ENCRYPTED PRIVATE KEY-----",
-    "-----BEGIN RSA PRIVATE KEY-----",
-    "-----BEGIN DSA PRIVATE KEY-----",
-    "-----BEGIN OPENSSH PRIVATE KEY-----",
-    "-----BEGIN EC PRIVATE KEY-----",
-    "-----BEGIN CERTIFICATE-----",
+    "-----BEGIN " "PRIVATE KEY-----",
+    "-----BEGIN " "ENCRYPTED PRIVATE KEY-----",
+    "-----BEGIN " "RSA PRIVATE KEY-----",
+    "-----BEGIN " "DSA PRIVATE KEY-----",
+    "-----BEGIN " "OPENSSH PRIVATE KEY-----",
+    "-----BEGIN " "EC PRIVATE KEY-----",
+    "-----BEGIN " "CERTIFICATE-----",
 )
 
 
@@ -125,6 +125,54 @@ async def echome_project_context(
         record_run,
         shadow,
         policy_mode,
+    )
+    return _json(result)
+
+
+async def echome_reflect_prepare(
+    project_id: str,
+    query: str,
+    changed_paths: list[str] | None = None,
+    limit: int = 30,
+    token_budget: int = 12_000,
+    supersedes_id: str | None = None,
+) -> str:
+    """Prepare all server-owned evidence needed for a client-generated reflection."""
+    client = MCPHubClient()
+    result = await client.prepare_reflection(
+        {
+            "project_id": project_id,
+            "query": query,
+            "changed_paths": changed_paths or [],
+            "limit": limit,
+            "token_budget": token_budget,
+            "supersedes_id": supersedes_id,
+        }
+    )
+    return _json(result)
+
+
+async def echome_reflect_submit(
+    project_id: str,
+    query: str,
+    claims: list[dict[str, Any]],
+    source_watermark: dict[str, Any],
+    idempotency_key: str,
+    kind: str = "mental_model",
+    supersedes_id: str | None = None,
+) -> str:
+    """Persist a derived view after the Hub revalidates sources and claim citations."""
+    client = MCPHubClient()
+    result = await client.submit_reflection(
+        {
+            "project_id": project_id,
+            "kind": kind,
+            "query": query,
+            "claims": claims,
+            "source_watermark": source_watermark,
+            "idempotency_key": idempotency_key,
+            "supersedes_id": supersedes_id,
+        }
     )
     return _json(result)
 

@@ -12,6 +12,7 @@ from sqlalchemy import String, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
+from app.services.content_safety import find_sensitive_content
 from app.services.embedding import get_embedding
 
 ACTIVE_MEMORY_STATUSES = ("active", "ai_review")
@@ -139,13 +140,17 @@ async def retrieve_memories(
     query_tokens = set(query_token_list)
 
     vector_scores: dict[uuid.UUID, tuple[Memory, float]] = {}
-    try:
-        query_embedding = await asyncio.wait_for(
-            get_embedding(query[:8000]),
-            timeout=embedding_timeout_seconds,
-        )
-    except TimeoutError:
+    sensitive_query = bool(find_sensitive_content(query))
+    if sensitive_query:
         query_embedding = None
+    else:
+        try:
+            query_embedding = await asyncio.wait_for(
+                get_embedding(query[:8000]),
+                timeout=embedding_timeout_seconds,
+            )
+        except TimeoutError:
+            query_embedding = None
     if query_embedding is not None:
         vector_query = (
             select(
@@ -234,6 +239,7 @@ async def retrieve_memories(
         trace={
             "strategy": "hybrid_memory",
             "vector_available": query_embedding is not None,
+            "sensitive_query_embedding_skipped": sensitive_query,
             "vector_count": len(vector_scores),
             "lexical_candidate_count": len(candidates),
             "lexical_count": len(lexical_scores),

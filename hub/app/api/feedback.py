@@ -16,6 +16,7 @@ from app.schemas.feedback import (
     MemoryFeedbackCreateResponse,
     MemoryFeedbackSummary,
 )
+from app.services.content_safety import require_safe_content
 
 router = APIRouter(prefix="/memory-feedback", tags=["memory-feedback"])
 
@@ -64,6 +65,7 @@ async def _create_feedback(
     body: MemoryFeedbackCreate,
     user_id: str,
 ) -> MemoryFeedbackCreateResponse:
+    require_safe_content(body.note, body.task_context)
     await _ensure_memory(session, body.memory_id, user_id)
     feedback = MemoryFeedback(
         user_id=user_id,

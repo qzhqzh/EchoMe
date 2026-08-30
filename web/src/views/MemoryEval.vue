@@ -74,6 +74,23 @@ const projectRunning = ref(false)
 const projectProgress = ref(0)
 const projectError = ref<string | null>(null)
 
+const abilityLabels: Record<string, string> = {
+  static_state_recall: 'Static state',
+  dynamic_state_tracking: 'Dynamic state',
+  workflow_knowledge: 'Workflow',
+  environment_gotchas: 'Environment gotchas',
+  premise_awareness: 'Premise awareness',
+}
+
+const abilityEntries = computed(() => {
+  const metrics = projectSnapshots.value[0]?.ability_metrics || {}
+  return Object.entries(abilityLabels).map(([key, label]) => ({
+    key,
+    label,
+    metrics: metrics[key],
+  }))
+})
+
 const summary = computed(() => {
   const values = Object.values(results.value).filter(result => result.executed)
   const passed = values.filter(result => result.expectedRank !== null && result.expectedRank <= 3).length
@@ -399,6 +416,22 @@ onMounted(loadProjectQuality)
         <div class="rounded border border-slate-700 bg-slate-800 p-3">
           <div class="text-xs text-slate-500">p95 latency</div>
           <div class="mt-1 text-lg font-semibold text-slate-100">{{ metric(projectSnapshots[0], 'latency_p95_ms') }} ms</div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div
+          v-for="ability in abilityEntries"
+          :key="ability.key"
+          class="rounded border border-slate-700 bg-slate-900/40 p-3"
+        >
+          <div class="text-xs text-slate-500">{{ ability.label }}</div>
+          <div class="mt-1 text-lg font-semibold text-slate-100">
+            {{ ability.metrics?.case_success_rate == null ? '—' : `${(ability.metrics.case_success_rate * 100).toFixed(1)}%` }}
+          </div>
+          <div class="mt-1 text-xs text-slate-500">
+            {{ ability.metrics ? `${ability.metrics.passed}/${ability.metrics.evaluated_count} cases` : 'No snapshot' }}
+          </div>
         </div>
       </div>
 

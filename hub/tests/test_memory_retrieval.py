@@ -135,6 +135,42 @@ async def test_embedding_timeout_degrades_to_lexical_retrieval() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sensitive_query_is_never_sent_to_embedding_service() -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[_count_result(0), _scalar_result([])])
+    embedding = AsyncMock()
+
+    with patch("app.services.memory_retrieval.get_embedding", new=embedding):
+        result = await retrieve_memories(
+            session,
+            user_id="user",
+            query="password=" + "V3ry-Private-Password-9081",
+            limit=5,
+        )
+
+    embedding.assert_not_awaited()
+    assert result.trace["sensitive_query_embedding_skipped"] is True
+
+
+@pytest.mark.asyncio
+async def test_bearer_query_is_never_sent_to_embedding_service() -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[_count_result(0), _scalar_result([])])
+    embedding = AsyncMock()
+
+    with patch("app.services.memory_retrieval.get_embedding", new=embedding):
+        result = await retrieve_memories(
+            session,
+            user_id="user",
+            query="Authorization: Bearer " + "prodTokenABC1234567890",
+            limit=5,
+        )
+
+    embedding.assert_not_awaited()
+    assert result.trace["sensitive_query_embedding_skipped"] is True
+
+
+@pytest.mark.asyncio
 async def test_default_query_filters_active_and_ai_review_in_sql() -> None:
     active = _memory("Active policy", "git workflow", status="active")
     review = _memory("Review policy", "git workflow", status="ai_review")

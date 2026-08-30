@@ -81,11 +81,18 @@ v1.7 延续 `echome_context` 与 `echome_project_context` 的 `policy_mode`：
 - `off` 跳过策略计算。
 - `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
 
-`echome_capabilities` 当前契约版本为 `echome.capabilities.v5`。core profile 仍保持 8 个工具；AI 可通过
+`echome_capabilities` 当前契约版本为 `echome.capabilities.v6`。core profile 仍保持 8 个工具；AI 可通过
 `echome_runtime_health(include_policy_readiness=true)` 读取校准门禁，无需扩大默认工具面。
 `echome_sleep_candidates` 默认返回
 `memory_sleep_plan.v2`，也可显式请求 v1；v2 proposal 由 Hub 生成 server-owned simulation，并在
 apply 前重新验证。
+
+full profile 还提供 evidence-backed Reflect：
+
+- `echome_reflect_prepare` 只读返回完整来源集合、相关事件、当前视图和服务端 freshness fingerprint。
+- `echome_reflect_submit` 要求每条 claim 引用 prepare 返回的来源 ID，并提供幂等键；来源变化或越界引用会被 Hub 拒绝。
+- Hub 只从已验证 claims 渲染派生正文，并由服务端写入 producer；客户端不能提交独立的无证据正文。
+- submit 只新增派生 `knowledge_view`，不会修改 Memory、Constraint、Artifact 或 Event。
 
 readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不得把它解释为已经开启 enforce，
 也不得自动修改 Hub feature flag。

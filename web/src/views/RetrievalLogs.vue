@@ -38,6 +38,16 @@ interface ContextRun {
   selected: Record<string, string[]>
   trace: Record<string, any>
   status: string
+  shadow: boolean
+  outcomes: Array<{
+    id: string
+    outcome: 'success' | 'partial' | 'failed' | 'corrected' | 'no_signal'
+    policy_effect: 'helpful' | 'neutral' | 'harmful' | 'uncertain' | null
+    reported_by: string
+    source: string
+    note: string | null
+    created_at: string
+  }>
   created_at: string
 }
 
@@ -509,6 +519,30 @@ function formatRate(value: number | null): string {
                 </span>
               </div>
             </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-200">Task Outcomes</h3>
+            <div v-if="selectedContextRun.outcomes.length" class="mt-2 space-y-2">
+              <div
+                v-for="outcome in selectedContextRun.outcomes"
+                :key="outcome.id"
+                class="rounded border border-slate-700 bg-slate-900 p-3 text-xs"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold text-slate-100">{{ outcome.outcome.replace('_', ' ') }}</span>
+                  <span v-if="outcome.policy_effect" class="rounded bg-slate-700 px-2 py-0.5 text-slate-300">
+                    policy {{ outcome.policy_effect }}
+                  </span>
+                  <span class="text-slate-500">{{ formatDate(outcome.created_at) }}</span>
+                </div>
+                <p v-if="outcome.note" class="mt-2 whitespace-pre-wrap text-slate-300">{{ outcome.note }}</p>
+                <div class="mt-2 text-slate-500">{{ outcome.reported_by }} via {{ outcome.source }}</div>
+              </div>
+            </div>
+            <p v-else class="mt-2 rounded border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">
+              No task outcome has been reported for this run.
+            </p>
           </div>
 
           <div>

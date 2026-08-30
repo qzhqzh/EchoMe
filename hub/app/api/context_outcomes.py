@@ -12,6 +12,7 @@ from app.core.auth import verify_token
 from app.core.database import get_session
 from app.models.project_knowledge import ContextOutcome, ContextRun, ProjectEvent
 from app.schemas.context_outcome import ContextOutcomeBatchCreate, ContextOutcomeCreate
+from app.services.content_safety import require_safe_content
 
 router = APIRouter(prefix="/context-outcomes", tags=["context-outcomes"])
 
@@ -36,6 +37,7 @@ async def _append(
     body: ContextOutcomeCreate,
     user_id: str,
 ) -> ContextOutcome:
+    require_safe_content(body.note)
     run = await session.scalar(
         select(ContextRun).where(
             ContextRun.id == body.context_run_id, ContextRun.user_id == user_id
