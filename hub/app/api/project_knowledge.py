@@ -288,9 +288,7 @@ def _quality_snapshot_payload(item: ContextQualitySnapshot) -> dict[str, Any]:
         "ability_metrics": (item.report or {}).get("ability_metrics", {}),
         "thresholds": item.thresholds,
         "threshold_bounds": (item.report or {}).get("threshold_bounds", {}),
-        "ability_threshold_bounds": (item.report or {}).get(
-            "ability_threshold_bounds", {}
-        ),
+        "ability_threshold_bounds": (item.report or {}).get("ability_threshold_bounds", {}),
         "idempotency_key": item.idempotency_key,
         "created_at": item.created_at.isoformat(),
     }
@@ -1389,9 +1387,7 @@ async def rebuild_constraint_embeddings(
         document = constraint_document(item)
         findings = find_sensitive_content(document)
         if findings:
-            skipped_sensitive.append(
-                {"constraint_id": str(item.id), "findings": findings}
-            )
+            skipped_sensitive.append({"constraint_id": str(item.id), "findings": findings})
             continue
         safe_constraints.append(item)
         safe_documents.append(document)
@@ -1423,14 +1419,18 @@ async def list_context_runs(
         query = query.where(ContextRun.project_id == project.id)
     result = await session.execute(query.order_by(ContextRun.created_at.desc()).limit(limit))
     runs = list(result.scalars().all())
-    outcome_result = await session.execute(
-        select(ContextOutcome)
-        .where(
-            ContextOutcome.user_id == user_id,
-            ContextOutcome.context_run_id.in_([item.id for item in runs]),
+    outcome_result = (
+        await session.execute(
+            select(ContextOutcome)
+            .where(
+                ContextOutcome.user_id == user_id,
+                ContextOutcome.context_run_id.in_([item.id for item in runs]),
+            )
+            .order_by(ContextOutcome.created_at)
         )
-        .order_by(ContextOutcome.created_at)
-    ) if runs else None
+        if runs
+        else None
+    )
     outcomes_by_run: dict[uuid.UUID, list[dict[str, Any]]] = {}
     if outcome_result is not None:
         for outcome in outcome_result.scalars().all():
@@ -1609,10 +1609,7 @@ async def prepare_knowledge_reflection(
     source_ids["event_ids"] = [str(item.id) for item in selected_events]
     prepared_source_versions = {
         **context_source_versions,
-        **{
-            f"event:{item.id}": source_version_token("event", item)
-            for item in selected_events
-        },
+        **{f"event:{item.id}": source_version_token("event", item) for item in selected_events},
     }
     try:
         source_watermark = await build_source_watermark(
@@ -1702,19 +1699,13 @@ async def submit_knowledge_reflection(
     )
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-        {
-            "lock_key": (
-                f"reflect-submit:{user_id}:{project.id}:{body.idempotency_key}"
-            )
-        },
+        {"lock_key": (f"reflect-submit:{user_id}:{project.id}:{body.idempotency_key}")},
     )
     existing = await session.scalar(
         select(KnowledgeView).where(
             KnowledgeView.user_id == user_id,
             KnowledgeView.project_id == project.id,
-            KnowledgeView.source_watermark.contains(
-                {"idempotency_key": body.idempotency_key}
-            ),
+            KnowledgeView.source_watermark.contains({"idempotency_key": body.idempotency_key}),
         )
     )
     if existing is not None:

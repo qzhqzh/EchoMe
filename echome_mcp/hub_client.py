@@ -276,7 +276,10 @@ class MCPHubClient:
                 json=data,
             )
             resp.raise_for_status()
-            return resp.json()
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Reflection prepare response must be an object")
+            return payload
 
     async def submit_reflection(self, data: dict[str, Any]) -> dict[str, Any]:
         """Submit an evidence-linked reflection against its prepared source fingerprint."""
@@ -290,7 +293,10 @@ class MCPHubClient:
                 json=data,
             )
             resp.raise_for_status()
-            return resp.json()
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Reflection submit response must be an object")
+            return payload
 
     async def unified_context(self, data: dict[str, Any]) -> dict[str, Any]:
         """Get one routed personal or project context envelope."""

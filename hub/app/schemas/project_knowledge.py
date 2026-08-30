@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -182,7 +182,7 @@ class ReflectionSubmitRequest(BaseModel):
     kind: Literal["summary", "mental_model", "community"] = "mental_model"
     query: str = Field(..., min_length=1, max_length=20_000)
     claims: list[ReflectionClaim] = Field(..., min_length=1, max_length=50)
-    source_watermark: dict = Field(...)
+    source_watermark: dict[str, Any] = Field(...)
     idempotency_key: str = Field(..., min_length=1, max_length=128)
     supersedes_id: uuid.UUID | None = None
 

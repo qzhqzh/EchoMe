@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from sqlalchemy import or_, select
@@ -99,8 +99,7 @@ def render_reflection_claims(claims: Iterable[Any]) -> str:
     sections: list[str] = []
     for index, claim in enumerate(claims, 1):
         references = ", ".join(
-            f"`{ref.target_type}:{ref.target_id}` ({ref.relation})"
-            for ref in claim.evidence_refs
+            f"`{ref.target_type}:{ref.target_id}` ({ref.relation})" for ref in claim.evidence_refs
         )
         sections.append(
             f"## Claim {index}\n\n{claim.statement}\n\n"
@@ -183,32 +182,36 @@ async def _load_sources(
 
     artifact_ids = source_ids["artifact_ids"]
     if artifact_ids:
-        statement = select(ProjectArtifact).where(
+        artifact_statement = select(ProjectArtifact).where(
             ProjectArtifact.id.in_(artifact_ids),
             ProjectArtifact.user_id == user_id,
             ProjectArtifact.project_id == project_id,
         )
-        statement = statement.execution_options(populate_existing=True)
-        result = await session.execute(statement.with_for_update() if lock else statement)
+        artifact_statement = artifact_statement.execution_options(populate_existing=True)
+        result = await session.execute(
+            artifact_statement.with_for_update() if lock else artifact_statement
+        )
         rows = list(result.scalars().all())
         states.extend(source_state("artifact", item) for item in rows)
 
     constraint_ids = source_ids["constraint_ids"]
     if constraint_ids:
-        statement = select(ProjectConstraint).where(
+        constraint_statement = select(ProjectConstraint).where(
             ProjectConstraint.id.in_(constraint_ids),
             ProjectConstraint.user_id == user_id,
             ProjectConstraint.project_id == project_id,
         )
-        statement = statement.execution_options(populate_existing=True)
-        result = await session.execute(statement.with_for_update() if lock else statement)
+        constraint_statement = constraint_statement.execution_options(populate_existing=True)
+        result = await session.execute(
+            constraint_statement.with_for_update() if lock else constraint_statement
+        )
         rows = list(result.scalars().all())
         states.extend(source_state("constraint", item) for item in rows)
 
     memory_ids = source_ids["memory_ids"]
     if memory_ids:
         scope_ids = await project_scope_ids(session, user_id, project_id)
-        statement = select(Memory).where(
+        memory_statement = select(Memory).where(
             Memory.id.in_(memory_ids),
             Memory.user_id == user_id,
             or_(
@@ -216,20 +219,24 @@ async def _load_sources(
                 *(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids),
             ),
         )
-        statement = statement.execution_options(populate_existing=True)
-        result = await session.execute(statement.with_for_update() if lock else statement)
+        memory_statement = memory_statement.execution_options(populate_existing=True)
+        result = await session.execute(
+            memory_statement.with_for_update() if lock else memory_statement
+        )
         rows = list(result.scalars().all())
         states.extend(source_state("memory", item) for item in rows)
 
     event_ids = source_ids["event_ids"]
     if event_ids:
-        statement = select(ProjectEvent).where(
+        event_statement = select(ProjectEvent).where(
             ProjectEvent.id.in_(event_ids),
             ProjectEvent.user_id == user_id,
             ProjectEvent.project_id == project_id,
         )
-        statement = statement.execution_options(populate_existing=True)
-        result = await session.execute(statement.with_for_update() if lock else statement)
+        event_statement = event_statement.execution_options(populate_existing=True)
+        result = await session.execute(
+            event_statement.with_for_update() if lock else event_statement
+        )
         rows = list(result.scalars().all())
         states.extend(source_state("event", item) for item in rows)
 
@@ -240,7 +247,9 @@ async def _load_sources(
     }
     actual = {(item["type"], item["id"]) for item in states}
     if actual != expected:
-        raise ReflectionSourceChangedError("one or more reflection sources are missing or out of scope")
+        raise ReflectionSourceChangedError(
+            "one or more reflection sources are missing or out of scope"
+        )
     return sorted(states, key=lambda item: (item["type"], item["id"]))
 
 
@@ -249,7 +258,7 @@ async def build_source_watermark(
     *,
     user_id: str,
     project_id: str,
-    source_ids: dict[str, Iterable[str | uuid.UUID]],
+    source_ids: Mapping[str, Iterable[str | uuid.UUID]],
     lock_sources: bool = False,
 ) -> dict[str, Any]:
     """Build a server-owned fingerprint over exact source versions and statuses."""

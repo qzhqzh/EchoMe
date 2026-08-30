@@ -635,10 +635,7 @@ async def compile_project_context(
             )
             if generated:
                 constraint_embeddings.update(
-                    {
-                        item.id: vector
-                        for item, vector in zip(safe_missing, generated, strict=False)
-                    }
+                    {item.id: vector for item, vector in zip(safe_missing, generated, strict=False)}
                 )
         constraint_vector_rank = []
         for item in constraints:
@@ -816,13 +813,17 @@ async def compile_project_context(
             event_ids.add(uuid.UUID(raw_id))
         except ValueError:
             continue
-    event_result = await session.execute(
-        select(ProjectEvent).where(
-            ProjectEvent.user_id == user_id,
-            ProjectEvent.project_id == body.project_id,
-            ProjectEvent.id.in_(event_ids),
+    event_result = (
+        await session.execute(
+            select(ProjectEvent).where(
+                ProjectEvent.user_id == user_id,
+                ProjectEvent.project_id == body.project_id,
+                ProjectEvent.id.in_(event_ids),
+            )
         )
-    ) if event_ids else None
+        if event_ids
+        else None
+    )
     source_items: dict[tuple[str, str], Any] = {
         **{("artifact", str(item.id)): item for item in all_artifacts},
         **{("constraint", str(item.id)): item for item in all_constraints},
@@ -835,9 +836,9 @@ async def compile_project_context(
     current_source_versions = {}
     for key in expected_source_keys:
         source_type, separator, item_id = key.partition(":")
-        item = source_items.get((source_type, item_id)) if separator else None
-        if item is not None:
-            current_source_versions[key] = source_version_token(source_type, item)
+        source_item = source_items.get((source_type, item_id)) if separator else None
+        if source_item is not None:
+            current_source_versions[key] = source_version_token(source_type, source_item)
     fresh_views = [
         item for item in views if _view_is_fresh(item, current_ids, current_source_versions)
     ]
@@ -995,7 +996,7 @@ async def compile_project_context(
 
     if include_source_versions:
         selected_source_ids = source_ids_from_context(pack)
-        source_rows = {
+        source_rows: dict[str, dict[str, Any]] = {
             "artifact": {str(item.id): item for item in all_artifacts},
             "constraint": {str(item.id): item for item in all_constraints},
             "memory": {str(item.id): item for item in memories},
