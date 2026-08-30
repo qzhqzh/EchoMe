@@ -1,3 +1,7 @@
+## v1.8.0
+
+- 6a46ae3 feat: add trusted memory feedback loop (#94)
+
 ## v1.7.1
 
 - 373ef04 docs: record v1.7 rollout completion

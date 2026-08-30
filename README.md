@@ -11,7 +11,7 @@
 
 EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它统一保存工作习惯、技术偏好、项目文档、约束关系、历史决策和验证证据，让 Codex、Claude Code、Cursor 等客户端通过 MCP 获得一致、可追溯、可演进的上下文。
 
-当前稳定版本为 **v1.7.1**，包含 Trusted Context Policy、Sleep v2 和策略校准门禁；
+当前稳定版本为 **v1.8.0**，包含 Trusted Context Policy、Sleep v2 和策略校准门禁；
 生产策略默认仍保持 shadow，不会由 readiness 自动开启 enforce。
 
 ## 核心架构
