@@ -1,5 +1,6 @@
 """Memory CRUD and search API routes."""
 
+import json
 import uuid
 from typing import Any, cast
 
@@ -22,6 +23,7 @@ from app.schemas.memory import (
     SearchResponse,
     SearchResultItem,
 )
+from app.services.content_safety import require_safe_content
 from app.services.embedding import get_embedding
 from app.services.memory_retrieval import memory_query_tokens, retrieve_memories
 from app.services.project_identity import (
@@ -197,6 +199,7 @@ async def create_memory(
     user_id: str = Depends(verify_token),
 ) -> Memory:
     """Create a new memory."""
+    require_safe_content(json.dumps(body.model_dump(mode="json"), ensure_ascii=False))
     # Validate: project type must have project association
     memory_type = body.type.value
     if memory_type == "project" and not body.scope.projects:
@@ -249,6 +252,7 @@ async def update_memory(
     user_id: str = Depends(verify_token),
 ) -> Memory:
     """Full update of a memory."""
+    require_safe_content(json.dumps(body.model_dump(mode="json"), ensure_ascii=False))
     result = await session.execute(
         select(Memory).where(Memory.id == memory_id, Memory.user_id == user_id)
     )
@@ -314,6 +318,7 @@ async def patch_memory(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    require_safe_content(json.dumps(update_data, ensure_ascii=False, default=str))
     if "scope" in update_data and update_data["scope"] is not None:
         scope = update_data.pop("scope")
         memory.scope_global = scope.get("global", memory.scope_global)

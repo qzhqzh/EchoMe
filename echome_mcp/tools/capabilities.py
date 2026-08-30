@@ -10,7 +10,7 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v5",
+    "capabilities_version": "echome.capabilities.v6",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
@@ -55,6 +55,16 @@ CAPABILITIES: dict[str, Any] = {
             "when": "When a requirement, API, architecture, code, or test change may propagate through constraints.",
         },
         {
+            "step": "reflect_prepare",
+            "tool": "echome_reflect_prepare",
+            "when": "When cross-source evidence is stable enough to justify a durable summary or mental model.",
+        },
+        {
+            "step": "reflect_submit",
+            "tool": "echome_reflect_submit",
+            "when": "After prepare, submit only claims that cite the returned source IDs and unchanged fingerprint.",
+        },
+        {
             "step": "record",
             "tool": "echome_project_event_append",
             "when": "After a durable failure, fix, decision, test result, or deploy; link source evidence when available.",
@@ -79,7 +89,7 @@ CAPABILITIES: dict[str, Any] = {
             },
             {
                 "tool": "echome_context_outcome",
-                "when": "After a completed context run when task or policy-effect evidence is explicit; never infer missing signals.",
+                "when": "At the end of every recorded non-shadow context run. Use no_signal when usefulness cannot be judged.",
                 "mutates_state": True,
             },
         ],
@@ -137,6 +147,18 @@ CAPABILITIES: dict[str, Any] = {
                 "tool": "echome_project_preflight",
                 "when": "Before project actions; recalls evidence-backed failures and validation requirements without blocking the action.",
                 "mutates_state": False,
+            },
+            {
+                "tool": "echome_reflect_prepare",
+                "when": "Prepare a complete source pack and freshness fingerprint before synthesizing a durable project view.",
+                "mutates_state": False,
+            },
+            {
+                "tool": "echome_reflect_submit",
+                "when": "Persist a prepared reflection whose claims cite exact source IDs; stale fingerprints are rejected.",
+                "mutates_state": True,
+                "source_mutation": False,
+                "default_status": "current_derived_view",
             },
             {
                 "tool": "echome_project_event_append",
@@ -205,7 +227,8 @@ CAPABILITIES: dict[str, Any] = {
         "Use memory tools for user behavior and working preferences; use project-intelligence tools for requirements, implementation constraints, evidence, and impact analysis.",
         "For project work, call echome_project_preflight before material actions and echome_project_context for the evidence-first context pack; do not ask the user to choose between memory and graph search.",
         "Project events and inferred constraints remain proposals/evidence. They do not silently become active constraints or mutate memories.",
-        "Context outcomes are append-only evidence for completed non-shadow runs; policy_effect is optional and must be explicit. Missing feedback is unknown, never an inferred failure.",
+        "Use echome_reflect_prepare before echome_reflect_submit. Every derived claim must cite a prepared source, and a changed source fingerprint requires preparing again.",
+        "Follow the completion_contract returned by a recorded non-shadow context run. Outcomes are append-only; use no_signal instead of inventing success or failure, and set policy_effect only when explicit.",
         "Context reliability defaults to shadow mode: decisions are observable but source memories and constraints are never rewritten. Enforce mode also requires an explicit Hub feature flag.",
         "Before any enforce canary, call echome_runtime_health with include_policy_readiness=true. eligible_for_canary never enables enforce automatically.",
     ],
@@ -261,7 +284,8 @@ def capabilities_payload() -> dict[str, Any]:
         "Use echome_memory_explain when a key memory may be stale, replaced, or conflicting.",
         "Archived/deprecated memories are provenance, not active facts.",
         "Use echome_remember only for durable context and never store secrets.",
-        "Record feedback only when usefulness or a correction is clear; missing feedback is unknown.",
+        "When echome_context returns a completion_contract, close that recorded run exactly once; use no_signal when usefulness is unknown.",
+        "Record memory feedback only when usefulness or a correction is clear; missing feedback is unknown.",
     ]
     return payload
 
@@ -280,7 +304,9 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
             f"{project_hint}\n\n"
             "Call echome_context first with the current task, project hint, and changed paths when known. "
             "Use echome_memory_explain before relying on a key memory whose provenance or freshness matters. "
-            "After the task, record context outcome or memory feedback only when the signal is clear. "
+            "When echome_context returns a completion_contract, call echome_context_outcome exactly once "
+            "at task end and use no_signal when usefulness is unknown. Record memory feedback only when its "
+            "signal is clear. "
             "Use echome_remember only for durable, reusable context and never store secrets. "
             "Do not ask the user to remember tool names; infer the needed EchoMe call from the task."
         )
@@ -297,10 +323,12 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
         "3. If a selected memory is important for a project decision, deployment, version, historical assumption, "
         "or could be stale, call echome_memory_explain on that memory.\n"
         "4. If neighboring context matters, call echome_memory_neighbors with include_inactive=true for provenance.\n"
-        "5. At task end, if the unified context or policy intervention clearly affected task success, call echome_context_outcome once with an idempotency key and optional policy_effect; otherwise leave it unknown.\n"
+        "5. At task end, follow completion_contract and call echome_context_outcome once. Use its idempotency key; report no_signal when usefulness is unknown and set policy_effect only with explicit evidence.\n"
         "6. If individual memory usefulness is clear or the user corrected a memory, call echome_memory_feedback or echome_memory_feedback_batch.\n"
         "7. Treat archived/deprecated memories as non-active facts unless graph provenance explains why they matter.\n"
         "8. Use echome_remember only for durable preferences, decisions, conventions, or reusable project context.\n\n"
+        "9. When durable cross-source synthesis would help future project work, call echome_reflect_prepare, "
+        "build claims only from its evidence IDs, then call echome_reflect_submit with the unchanged source watermark.\n\n"
         "Do not ask the user to remember tool names. Infer the needed EchoMe tools from the task."
     )
 

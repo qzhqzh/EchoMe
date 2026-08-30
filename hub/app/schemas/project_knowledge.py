@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 ArtifactKind = Literal[
     "requirement", "design", "document", "issue", "code", "test", "pr", "commit", "memory"
@@ -151,6 +151,39 @@ class KnowledgeViewCreate(BaseModel):
     source_watermark: dict = Field(default_factory=dict)
     refresh_mode: Literal["manual", "derived"] = "manual"
     producer: str = Field("client", min_length=1, max_length=64)
+    supersedes_id: uuid.UUID | None = None
+
+
+class ReflectionEvidenceRef(BaseModel):
+    target_type: Literal["memory", "constraint", "artifact", "event"]
+    target_id: uuid.UUID
+    relation: Literal["supports", "contradicts", "context"] = "supports"
+
+
+class ReflectionClaim(BaseModel):
+    statement: str = Field(..., min_length=1, max_length=20_000)
+    confidence: float = Field(..., ge=0, le=1)
+    evidence_refs: list[ReflectionEvidenceRef] = Field(..., min_length=1, max_length=20)
+
+
+class ReflectionPrepareRequest(BaseModel):
+    project_id: str = Field(..., min_length=1, max_length=128)
+    query: str = Field(..., min_length=1, max_length=20_000)
+    changed_paths: list[str] = Field(default_factory=list, max_length=200)
+    limit: int = Field(30, ge=1, le=100)
+    token_budget: int = Field(12_000, ge=512, le=50_000)
+    supersedes_id: uuid.UUID | None = None
+
+
+class ReflectionSubmitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str = Field(..., min_length=1, max_length=128)
+    kind: Literal["summary", "mental_model", "community"] = "mental_model"
+    query: str = Field(..., min_length=1, max_length=20_000)
+    claims: list[ReflectionClaim] = Field(..., min_length=1, max_length=50)
+    source_watermark: dict[str, Any] = Field(...)
+    idempotency_key: str = Field(..., min_length=1, max_length=128)
     supersedes_id: uuid.UUID | None = None
 
 

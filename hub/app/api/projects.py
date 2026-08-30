@@ -23,6 +23,7 @@ from app.models.project_knowledge import (
     ProjectConstraint,
     ProjectEvent,
 )
+from app.services.content_safety import require_safe_content
 from app.services.project_identity import normalize_project_hint, resolve_project
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -102,6 +103,7 @@ async def create_project(
     user_id: str = Depends(verify_token),
 ) -> Project:
     """Create a new project."""
+    require_safe_content(body.id, body.name, body.description, body.git_remote)
     # Check if exists
     existing = await session.get(Project, body.id)
     if existing:
@@ -161,6 +163,7 @@ async def create_project_alias(
     user_id: str = Depends(verify_token),
 ) -> dict[str, object]:
     """Create an auditable alias proposal for later explicit review."""
+    require_safe_content(body.alias_value)
     project = (await resolve_project(session, user_id, body.canonical_project_id)).project
     try:
         normalized = normalize_project_hint(body.alias_value, body.alias_type)
@@ -231,6 +234,7 @@ async def update_project(
     user_id: str = Depends(verify_token),
 ) -> Project:
     """Update a canonical project addressed by ID or active alias."""
+    require_safe_content(body.id, body.name, body.description, body.git_remote)
     project = (await resolve_project(session, user_id, project_id)).project
 
     project.name = body.name

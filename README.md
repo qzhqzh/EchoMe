@@ -57,6 +57,7 @@ AI 默认调用 `echome_context`，由运行时自动完成：
 - Project Events 记录 issue、failure、fix、test、decision 和 deploy
 - Context Compiler 按任务与改动路径生成证据优先的上下文包
 - Impact 与 Preflight 在修改、测试、提交和部署前提供历史约束
+- Evidence-backed Reflect 允许强客户端 AI 生成带逐条证据和来源指纹的派生视图
 - canonical project aliases 避免目录名、Git remote 和历史 ID 分裂上下文
 
 ### Memory Sleep
@@ -78,7 +79,7 @@ Web Console 提供：
 - Context Runs、fallback、错误与选入证据
 - Reliability/intervention shadow trace 与真实 Retrieval Log replay
 - Policy Readiness 汇总显式 policy effect，并且只授予 canary 评估资格，不自动开启 enforce
-- Memory Quality Eval 与 Project Context Eval
+- Memory Quality Eval 与五能力 Project Context Eval
 - Sleep session 和变更审计
 
 Context Outcome 与 Memory Feedback 均为 append-only 信号，不会直接、静默地改变生产排序。
@@ -90,8 +91,10 @@ Context Outcome 与 Memory Feedback 均为 append-only 信号，不会直接、�
 1. 首次接触时调用 `echome_capabilities` 发现能力。
 2. 普通任务优先调用 `echome_context`。
 3. 关键历史决策调用 `echome_memory_explain` 检查来源、替代关系和时效性。
-4. 任务结束后，仅在证据明确时追加 feedback 或 context outcome。
+4. 任务结束后，为已记录的 context run 追加一次 outcome；有明确证据时记录
+   `success / partial / failed / corrected`，无法判断时记录 `no_signal`，不打断用户。
 5. 在 `full` profile 中，宽泛问题可使用 summary-first，项目修改可使用 preflight/impact 专业工具。
+6. 需要形成长期项目 mental model 时，先调用 `echome_reflect_prepare`，再以原始 watermark 和逐条证据调用 `echome_reflect_submit`。
 
 EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，暴露 8 个高频入口；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
 
@@ -204,7 +207,7 @@ Sleep apply 需要先提交并确认合法 JSON 预案，不会直接批量重�
 ## 数据安全原则
 
 - PostgreSQL + pgvector 是唯一权威服务端数据层。
-- 数据库迁移采用 Alembic；当前生产 schema revision 为 `015`，v1.7 release candidate 目标为 additive `017`。
+- 数据库迁移采用 Alembic；当前生产 schema revision 为 `017`，后续迁移继续保持 additive-only。
 - archived 和 deprecated 记忆不会作为当前有效事实参与默认检索。
 - Sleep、项目重关联和约束复核采用 `proposal → validate → apply`。
 - 原始记忆、制品版本、约束版本、事件和关系证据不被静默删除。
@@ -240,6 +243,7 @@ CI 对 CLI/MCP、Hub 和 Web 分别执行 lockfile 安装、Ruff、pytest 与 pr
 - [v1.5 规划与验收](docs/next-version-plan-v1.5.md)
 - [v1.6 Trusted Context Policy 历史基线](docs/next-version-plan-v1.6.md)
 - [v1.7 Trusted Context Calibration 计划](docs/next-version-plan-v1.7.md)
+- [v1.8 可信记忆闭环候选计划](docs/next-version-plan-v1.8.md)
 - [记忆模型](docs/memory-model.md)
 - [记忆检索设计](docs/memory-retrieval.md)
 - [Memory Sleep](docs/memory-sleep.md)

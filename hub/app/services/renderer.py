@@ -21,7 +21,7 @@ EchoMe 存储了我的个人习惯、开发规范、技术偏好和项目约定�
 4. **后续按需触发**：同一会话不要每轮重复查询。只有当用户提到偏好、规范、历史决策或项目约定，任务跨模块或高风险，出现不确定约定，或用户说“按老规矩/继续/记住/以后/永远/always”时，再调用 `echome_context`。
 5. **没有命中就停止**：如果 context 没有相关记忆或明确返回 unknowns，不要为了凑结果扩大搜索；说明未找到相关记忆并以当前仓库事实继续。
 6. **图解释与可靠性**：当某条记忆影响项目决策、部署、版本、历史方案或可能过时时，调用 `echome_memory_explain` 检查来源、替代关系、相邻记忆、temporal assessment 和 feedback summary。
-7. **使用后反馈**：当用户纠正了记忆、某条记忆明显有用/过时/冲突/错误，或任务结束时可判断有效性，调用 `echome_memory_feedback`；有 context run 且结果明确时可调用 `echome_context_outcome`。不要每轮打扰用户。
+7. **完成闭环**：`echome_context` 返回 `completion_contract` 时，保留其中的 run id 和幂等键；任务结束后调用一次 `echome_context_outcome`。有测试、提交、部署或用户纠正等证据时记录实际结果；无法判断上下文是否有效时记录 `no_signal`。不要为了评分打断用户，也不要给缓存降级结果回报 outcome。
 8. 用户说"记住/以后/永远/always"时，必须调用 MCP tool `echome_remember`。
 9. 写入记忆时 type 只能是：identity, guardrail, reasoning, method, stack, style, decision, context, template, project。写入前判断记忆范围：通用型不传 project；项目相关必须指定已存在的 canonical project，`suggested_layer="L1"`，状态默认为 ai_review。不要猜测或静默创建项目。
 10. **记忆格式规范**：写入记忆时使用 Markdown 格式，内容必须结构化：

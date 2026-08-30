@@ -1,11 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "project_id": "qzhqzh/EchoMe",
   "description": "Fixed evidence-first project context and preflight evaluation cases.",
   "cases": [
     {
       "id": "fact-domain-boundary",
       "category": "single_fact",
+      "ability": "static_state_recall",
       "query": "Memory 和 Project Knowledge 的领域边界是什么？",
       "mode": "local",
       "expected": {
@@ -16,6 +17,7 @@
     {
       "id": "fact-context-entrypoint",
       "category": "single_fact",
+      "ability": "static_state_recall",
       "query": "AI 做项目开发时默认调用哪个项目上下文入口？",
       "mode": "local",
       "expected": {
@@ -26,6 +28,7 @@
     {
       "id": "fact-sleep-all-candidates",
       "category": "single_fact",
+      "ability": "static_state_recall",
       "query": "Sleep 候选是否可以用 top-k 截断？",
       "mode": "local",
       "expected": {
@@ -36,6 +39,7 @@
     {
       "id": "fact-provenance-preserved",
       "category": "single_fact",
+      "ability": "static_state_recall",
       "query": "记忆整理后原始来源应该怎样处理？",
       "mode": "local",
       "expected": {
@@ -46,6 +50,7 @@
     {
       "id": "cross-source-api-change",
       "category": "cross_source_reasoning",
+      "ability": "workflow_knowledge",
       "query": "修改 Project Knowledge API 时有哪些跨客户端约束？",
       "mode": "impact",
       "changed_paths": ["hub/app/api/project_knowledge.py"],
@@ -60,6 +65,7 @@
     {
       "id": "cross-source-mcp-context",
       "category": "cross_source_reasoning",
+      "ability": "workflow_knowledge",
       "query": "MCP context 如何同时使用约束、制品和记忆？",
       "mode": "overview",
       "changed_paths": ["echome_mcp/server.py"],
@@ -74,6 +80,7 @@
     {
       "id": "temporal-current-revision",
       "category": "temporal_state",
+      "ability": "dynamic_state_tracking",
       "query": "当前制品 revision 是否比约束证据引用的 revision 更新？",
       "mode": "local",
       "expected": {
@@ -84,6 +91,7 @@
     {
       "id": "temporal-historical-query",
       "category": "temporal_state",
+      "ability": "dynamic_state_tracking",
       "query": "在指定 as_of 时间点哪些约束和证据有效？",
       "mode": "overview",
       "as_of": "2026-07-12T16:00:00Z",
@@ -94,6 +102,7 @@
     {
       "id": "supersession-current-only",
       "category": "supersession",
+      "ability": "dynamic_state_tracking",
       "query": "制品同步规则的当前版本是什么？",
       "mode": "local",
       "expected": {
@@ -104,6 +113,7 @@
     {
       "id": "supersession-old-excluded",
       "category": "supersession",
+      "ability": "dynamic_state_tracking",
       "query": "已经被替代的旧约束是否应作为当前事实返回？",
       "mode": "local",
       "expected": {
@@ -114,6 +124,7 @@
     {
       "id": "conflict-surfacing",
       "category": "conflict",
+      "ability": "premise_awareness",
       "query": "列出当前相关约束之间的冲突，不要静默选择一边。",
       "mode": "impact",
       "expected": {
@@ -123,6 +134,7 @@
     {
       "id": "conflict-proposed-labelled",
       "category": "conflict",
+      "ability": "premise_awareness",
       "query": "AI 推断的项目约束是否已经被用户确认？",
       "mode": "local",
       "expected": {
@@ -133,6 +145,7 @@
     {
       "id": "abstain-unknown-secret",
       "category": "abstention",
+      "ability": "premise_awareness",
       "query": "EchoMe 生产数据库的 root 密码是什么？",
       "mode": "local",
       "expected": {
@@ -143,6 +156,7 @@
     {
       "id": "abstain-unknown-future-release",
       "category": "abstention",
+      "ability": "premise_awareness",
       "query": "下个月 EchoMe 一定会发布哪个版本？",
       "mode": "overview",
       "expected": {
@@ -152,6 +166,7 @@
     {
       "id": "implicit-no-silent-delete",
       "category": "implicit_constraint",
+      "ability": "premise_awareness",
       "query": "实现新的记忆整理逻辑，并直接删除归档来源。",
       "mode": "impact",
       "expected": {
@@ -161,6 +176,7 @@
     {
       "id": "implicit-additive-migration",
       "category": "implicit_constraint",
+      "ability": "premise_awareness",
       "query": "为 Project Knowledge 增加数据表，应该怎样迁移？",
       "mode": "impact",
       "changed_paths": ["hub/alembic/versions/011_context_compiler_and_project_events.py"],
@@ -172,6 +188,7 @@
     {
       "id": "workflow-index-manifest",
       "category": "workflow",
+      "ability": "workflow_knowledge",
       "query": "本地项目制品同步到 Hub 的顺序是什么？",
       "mode": "local",
       "expected": {
@@ -182,6 +199,7 @@
     {
       "id": "workflow-ai-proposal",
       "category": "workflow",
+      "ability": "workflow_knowledge",
       "query": "AI 从代码推断出约束后能否直接设为 active？",
       "mode": "local",
       "expected": {
@@ -191,6 +209,7 @@
     {
       "id": "preflight-migration-failure",
       "category": "workflow_failure",
+      "ability": "environment_gotchas",
       "query": "准备运行数据库迁移，回忆相似失败和验证要求。",
       "mode": "preflight",
       "changed_paths": ["hub/alembic/versions/011_context_compiler_and_project_events.py"],
@@ -203,6 +222,7 @@
     {
       "id": "preflight-web-build",
       "category": "workflow_failure",
+      "ability": "environment_gotchas",
       "query": "准备构建 Web，检查历史构建失败和验证要求。",
       "mode": "preflight",
       "changed_paths": ["web/package.json"],
@@ -214,6 +234,7 @@
     {
       "id": "impact-mcp-server",
       "category": "changed_path_impact",
+      "ability": "environment_gotchas",
       "query": "修改 MCP server 的 project context 输出会影响什么？",
       "mode": "impact",
       "changed_paths": ["echome_mcp/server.py"],
@@ -228,6 +249,7 @@
     {
       "id": "impact-memory-model",
       "category": "changed_path_impact",
+      "ability": "environment_gotchas",
       "query": "修改 Memory model 时哪些项目边界必须保持？",
       "mode": "impact",
       "changed_paths": ["hub/app/models/memory.py"],
@@ -242,6 +264,7 @@
     {
       "id": "inactive-constraint-exclusion",
       "category": "inactive_exclusion",
+      "ability": "dynamic_state_tracking",
       "query": "检索当前约束时排除哪些状态？",
       "mode": "local",
       "expected": {
@@ -252,6 +275,7 @@
     {
       "id": "inactive-memory-exclusion",
       "category": "inactive_exclusion",
+      "ability": "dynamic_state_tracking",
       "query": "归档或废弃记忆能否混入当前项目事实？",
       "mode": "local",
       "expected": {
@@ -262,6 +286,7 @@
     {
       "id": "artifact-authority",
       "category": "evidence_precision",
+      "ability": "static_state_recall",
       "query": "仓库代码和文档与索引副本冲突时以谁为准？",
       "mode": "local",
       "expected": {
@@ -272,12 +297,67 @@
     {
       "id": "api-compatible-output",
       "category": "evidence_precision",
+      "ability": "static_state_recall",
       "query": "给 MCP 增加 structuredContent 时如何保持旧客户端可用？",
       "mode": "impact",
       "changed_paths": ["echome_mcp/server.py"],
       "expected": {
         "constraint_titles": ["Published API response contracts remain backward compatible"],
         "artifact_paths": ["docs/api-spec.md", "echome_mcp/server.py"]
+      }
+    },
+    {
+      "id": "state-current-release-baseline",
+      "category": "temporal_state",
+      "ability": "dynamic_state_tracking",
+      "query": "EchoMe 当前稳定版本和生产 schema revision 分别是什么？",
+      "mode": "overview",
+      "expected": {
+        "artifact_paths": ["README.md", "docs/roadmap.md"]
+      }
+    },
+    {
+      "id": "premise-old-production-revision",
+      "category": "premise_awareness",
+      "ability": "premise_awareness",
+      "query": "旧记忆说生产数据库还是 revision 012，所以现在迁移应从 012 开始，对吗？",
+      "mode": "overview",
+      "expected": {
+        "constraint_titles": ["Production database evolution is additive and migration-backed"],
+        "require_stale_warning": true
+      }
+    },
+    {
+      "id": "gotcha-mcp-error-output-schema",
+      "category": "environment_gotcha",
+      "ability": "environment_gotchas",
+      "query": "给 MCP 专用工具声明严格 outputSchema 时，Hub 错误返回需要避免什么兼容问题？",
+      "mode": "impact",
+      "changed_paths": ["echome_mcp/server.py"],
+      "expected": {
+        "constraint_titles": ["Published API response contracts remain backward compatible"],
+        "artifact_paths": ["echome_mcp/server.py"]
+      }
+    },
+    {
+      "id": "workflow-context-completion",
+      "category": "workflow",
+      "ability": "workflow_knowledge",
+      "query": "AI 使用 echome_context 完成任务后，怎样在不打扰用户的情况下关闭结果反馈闭环？",
+      "mode": "local",
+      "expected": {
+        "artifact_paths": ["docs/mcp-spec.md", "hub/app/services/context_completion.py"]
+      }
+    },
+    {
+      "id": "state-derived-view-source-change",
+      "category": "temporal_state",
+      "ability": "dynamic_state_tracking",
+      "query": "Reflect 形成的 mental model 所引用来源更新后应该怎样处理？",
+      "mode": "overview",
+      "expected": {
+        "artifact_paths": ["docs/project-knowledge.md"],
+        "require_stale_warning": true
       }
     }
   ]

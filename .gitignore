@@ -38,6 +38,7 @@ node_modules/
 # Local test and backup artifacts
 .playwright-mcp/
 backups/
+echome-project-workspace.png
 docs/*.visual-check.*
 docs/*.same-json-*.html
 

@@ -1,5 +1,6 @@
 """Tests for project constraint graph selection and sync schemas."""
 
+import hashlib
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,8 +12,12 @@ from app.api.project_knowledge import (
     _context_shadow_comparison,
     _create_artifact_chunks,
     _select_impact_ids,
+    apply_artifact_sync,
     apply_revalidation_proposal,
+    rebuild_artifact_chunks,
+    rebuild_constraint_embeddings,
 )
+from app.models.memory import Project
 from app.models.project_knowledge import (
     ConstraintEdge,
     ConstraintEvidence,
@@ -20,6 +25,9 @@ from app.models.project_knowledge import (
     ProjectConstraint,
 )
 from app.schemas.project_knowledge import (
+    ArtifactChunkRebuildRequest,
+    ArtifactSyncApplyRequest,
+    ConstraintEmbeddingRebuildRequest,
     ConstraintPatch,
     ProjectImpactRequest,
     RevalidationApplyRequest,
@@ -96,6 +104,122 @@ def test_impact_selection_starts_from_changed_artifact_and_traverses_edges() -> 
     assert selected == {first_id, second_id}
     assert "linked_to_changed_artifact:implemented_by" in reasons[first_id]
     assert "graph:impacts:depth_1" in reasons[second_id]
+
+
+@pytest.mark.asyncio
+async def test_artifact_sync_rejects_secret_in_metadata_before_database_write() -> None:
+    project = Project(id="EchoMe", user_id="user", name="EchoMe")
+    content = "safe"
+    body = ArtifactSyncApplyRequest(
+        project_id=project.id,
+        artifacts=[
+            {
+                "logical_path": "docs/deploy.md",
+                "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+                "size_bytes": len(content),
+                "title": "Deploy",
+                "content": content,
+                "metadata": {
+                    "password": "V3ry-" + "Private-Password-9081",
+                },
+            }
+        ],
+    )
+    session = MagicMock()
+    session.add = MagicMock()
+
+    with (
+        patch(
+            "app.api.project_knowledge._require_project",
+            new=AsyncMock(return_value=project),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await apply_artifact_sync(body, session=session, user_id="user")
+
+    assert exc_info.value.status_code == 422
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sensitive_historical_artifact_is_skipped_without_deleting_chunks() -> None:
+    project = Project(id="EchoMe", user_id="user", name="EchoMe")
+    artifact = ProjectArtifact(
+        id=uuid.uuid4(),
+        user_id="user",
+        project_id=project.id,
+        logical_path="deploy/.env.production",
+        kind="document",
+        title="Legacy config",
+        content="DEBUG=false",
+        content_hash="a" * 64,
+        size_bytes=11,
+        status="current",
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [artifact]
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=[MagicMock(), result])
+    create_chunks = AsyncMock()
+
+    with (
+        patch(
+            "app.api.project_knowledge._require_project",
+            new=AsyncMock(return_value=project),
+        ),
+        patch("app.api.project_knowledge._create_artifact_chunks", new=create_chunks),
+    ):
+        report = await rebuild_artifact_chunks(
+            ArtifactChunkRebuildRequest(
+                project_id=project.id,
+                include_embeddings=True,
+                missing_only=False,
+            ),
+            session=session,
+            user_id="user",
+        )
+
+    assert report["sensitive_skipped_count"] == 1
+    assert session.execute.await_count == 2
+    create_chunks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sensitive_historical_constraint_is_not_reembedded() -> None:
+    project = Project(id="EchoMe", user_id="user", name="EchoMe")
+    constraint = ProjectConstraint(
+        id=uuid.uuid4(),
+        user_id="user",
+        project_id=project.id,
+        title="Legacy credential note",
+        statement="Use Authorization: Bearer " + "prodTokenABC1234567890",
+        kind="security",
+        status="active",
+        stability="temporary",
+        confidence=0.5,
+        source="manual",
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [constraint]
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=result)
+    embeddings = AsyncMock()
+
+    with (
+        patch(
+            "app.api.project_knowledge._require_project",
+            new=AsyncMock(return_value=project),
+        ),
+        patch("app.api.project_knowledge.get_embeddings", new=embeddings),
+    ):
+        report = await rebuild_constraint_embeddings(
+            ConstraintEmbeddingRebuildRequest(project_id=project.id),
+            session=session,
+            user_id="user",
+        )
+
+    assert report["sensitive_skipped_count"] == 1
+    embeddings.assert_not_awaited()
 
 
 def test_inactive_constraint_is_not_selected_by_text_alone() -> None:

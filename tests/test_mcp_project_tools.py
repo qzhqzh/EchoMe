@@ -17,9 +17,11 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     by_name = {tool.name: tool for tool in tools}
 
     assert by_name["echome_project_context"].outputSchema is not None
+    assert "anyOf" in by_name["echome_project_context"].outputSchema
     assert by_name["echome_project_context"].annotations.readOnlyHint is False
     assert by_name["echome_project_context"].annotations.idempotentHint is False
     assert by_name["echome_project_preflight"].outputSchema is not None
+    assert "anyOf" in by_name["echome_project_preflight"].outputSchema
     assert by_name["echome_project_event_append"].annotations.readOnlyHint is False
     assert by_name["echome_project_event_append"].annotations.idempotentHint is False
     assert by_name["echome_context"].outputSchema is not None
@@ -43,6 +45,11 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     )
     assert by_name["echome_context_outcome"].annotations.idempotentHint is True
     assert "policy_effect" in by_name["echome_context_outcome"].inputSchema["properties"]
+    assert by_name["echome_reflect_prepare"].annotations.readOnlyHint is True
+    assert by_name["echome_reflect_submit"].annotations.readOnlyHint is False
+    assert by_name["echome_reflect_submit"].annotations.idempotentHint is True
+    assert by_name["echome_reflect_submit"].inputSchema["properties"]["claims"]["minItems"] == 1
+    assert "content" not in by_name["echome_reflect_submit"].inputSchema["properties"]
 
 
 def test_project_context_returns_text_and_structured_content(monkeypatch) -> None:
@@ -124,6 +131,54 @@ def test_project_context_failure_sets_protocol_error(monkeypatch) -> None:
     assert "hub unavailable" in result.content[0].text
     assert result.structuredContent["error"]["code"] == "INTERNAL_ERROR"
     assert result.structuredContent["error"]["request_id"]
+
+
+def test_reflection_tools_forward_prepare_contract_and_claims(monkeypatch) -> None:
+    captured: dict[str, dict] = {}
+
+    async def fake_prepare(**kwargs) -> str:
+        captured["prepare"] = kwargs
+        return json.dumps({"read_only": True, "source_watermark": {"source_fingerprint": "fp"}})
+
+    async def fake_submit(**kwargs) -> str:
+        captured["submit"] = kwargs
+        return json.dumps({"source_fingerprint_verified": True})
+
+    monkeypatch.setattr(server_module, "echome_reflect_prepare", fake_prepare)
+    monkeypatch.setattr(server_module, "echome_reflect_submit", fake_submit)
+    source_id = "11111111-1111-1111-1111-111111111111"
+    watermark = {"schema_version": "echome.reflect.v1", "source_fingerprint": "fp"}
+    claims = [
+        {
+            "statement": "Supported claim",
+            "confidence": 0.9,
+            "evidence_refs": [{"target_type": "memory", "target_id": source_id}],
+        }
+    ]
+
+    asyncio.run(
+        server_module.call_tool(
+            "echome_reflect_prepare",
+            {"project_id": "demo", "query": "architecture"},
+        )
+    )
+    asyncio.run(
+        server_module.call_tool(
+            "echome_reflect_submit",
+            {
+                "project_id": "demo",
+                "query": "architecture",
+                "claims": claims,
+                "source_watermark": watermark,
+                "idempotency_key": "reflect-task-1",
+            },
+        )
+    )
+
+    assert captured["prepare"]["token_budget"] == 12000
+    assert captured["submit"]["claims"] == claims
+    assert captured["submit"]["source_watermark"] == watermark
+    assert captured["submit"]["idempotency_key"] == "reflect-task-1"
 
 
 def test_legacy_text_error_gets_structured_contract(monkeypatch) -> None:
@@ -216,6 +271,8 @@ def test_unified_context_returns_cached_read_only_result_on_hub_failure(
     assert second["runtime"]["degraded"] is True
     assert second["runtime"]["fallback"] == "last_known_good"
     assert second["degradation_error"]["code"] == "HUB_UNAVAILABLE"
+    assert second["completion_contract"]["report_outcome"] is False
+    assert second["completion_contract"]["required_at_task_end"] is False
 
 
 def test_unified_context_does_not_use_cache_for_auth_failure(monkeypatch, tmp_path) -> None:
@@ -329,6 +386,8 @@ def test_full_profile_preserves_specialized_tools(monkeypatch) -> None:
 
     assert "echome_search_summary" in names
     assert "echome_project_preflight" in names
+    assert "echome_reflect_prepare" in names
+    assert "echome_reflect_submit" in names
     assert "echome_sleep_candidates" in names
 
 

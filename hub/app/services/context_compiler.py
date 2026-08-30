@@ -24,11 +24,20 @@ from app.models.project_knowledge import (
     KnowledgeView,
     ProjectArtifact,
     ProjectConstraint,
+    ProjectEvent,
 )
 from app.schemas.project_knowledge import ProjectContextRequest
+from app.services.content_safety import find_sensitive_content
+from app.services.context_completion import completion_contract
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.embedding import get_embedding, get_embeddings
 from app.services.project_identity import project_scope_ids
+from app.services.reflection import (
+    REFLECTION_SCHEMA_VERSION,
+    SOURCE_ID_KEYS,
+    source_ids_from_context,
+    source_version_token,
+)
 from app.services.token_counter import count_tokens
 
 ACTIVE_CONSTRAINT_STATUSES = {"active", "proposed", "uncertain"}
@@ -249,11 +258,29 @@ def _is_temporally_active(
     )
 
 
-def _view_is_fresh(view: KnowledgeView, current_ids: set[str]) -> bool:
+def _view_is_fresh(
+    view: KnowledgeView,
+    current_ids: set[str],
+    current_source_versions: dict[str, str] | None = None,
+) -> bool:
     if view.status != "current":
         return False
     source_ids = set(view.source_watermark.get("artifact_ids", []))
-    return not source_ids or source_ids <= current_ids
+    if source_ids and not source_ids <= current_ids:
+        return False
+    expected_versions = view.source_watermark.get("source_versions")
+    if isinstance(expected_versions, dict) and expected_versions:
+        current_versions = current_source_versions or {}
+        return all(current_versions.get(key) == value for key, value in expected_versions.items())
+    return True
+
+
+def _view_freshness_contract(view: KnowledgeView) -> str:
+    if view.source_watermark.get("schema_version") == REFLECTION_SCHEMA_VERSION:
+        return "reflect_v1"
+    if view.refresh_mode == "derived":
+        return "legacy_artifact_ids"
+    return "manual"
 
 
 def _add_rank(
@@ -372,9 +399,14 @@ async def compile_project_context(
     project: Project,
     body: ProjectContextRequest,
     user_id: str,
+    *,
+    include_source_versions: bool = False,
 ) -> dict[str, Any]:
     """Compile memory, constraints, chunks, graph signals, and freshness warnings."""
     body = body.model_copy(update={"project_id": project.id})
+    sensitive_query = bool(find_sensitive_content(body.task))
+    if sensitive_query and body.record_run:
+        body = body.model_copy(update={"record_run": False, "shadow": True})
     now = datetime.now(timezone.utc)
     as_of = body.as_of or now
     valid_at = body.valid_at or as_of
@@ -581,7 +613,7 @@ async def compile_project_context(
         )
 
     semantic_scores: dict[str, float] = {}
-    query_embedding = await get_embedding(expand_query(query))
+    query_embedding = None if sensitive_query else await get_embedding(expand_query(query))
     if query_embedding is not None:
         constraint_embeddings: dict[uuid.UUID, list[float]] = {}
         missing_constraints = []
@@ -591,15 +623,19 @@ async def compile_project_context(
             else:
                 missing_constraints.append(item)
         if missing_constraints:
-            generated = await get_embeddings(
-                [constraint_document(item) for item in missing_constraints]
+            safe_missing = [
+                item
+                for item in missing_constraints
+                if not find_sensitive_content(constraint_document(item))
+            ]
+            generated = (
+                await get_embeddings([constraint_document(item) for item in safe_missing])
+                if safe_missing
+                else []
             )
             if generated:
                 constraint_embeddings.update(
-                    {
-                        item.id: vector
-                        for item, vector in zip(missing_constraints, generated, strict=False)
-                    }
+                    {item.id: vector for item, vector in zip(safe_missing, generated, strict=False)}
                 )
         constraint_vector_rank = []
         for item in constraints:
@@ -762,7 +798,50 @@ async def compile_project_context(
     )
     views = list(view_result.scalars().all())
     current_ids = {str(item.id) for item in current_artifacts}
-    fresh_views = [item for item in views if _view_is_fresh(item, current_ids)]
+    expected_source_keys = {
+        key
+        for view in views
+        for key in (view.source_watermark.get("source_versions") or {})
+        if isinstance(key, str)
+    }
+    event_ids: set[uuid.UUID] = set()
+    for key in expected_source_keys:
+        source_type, separator, raw_id = key.partition(":")
+        if source_type != "event" or not separator:
+            continue
+        try:
+            event_ids.add(uuid.UUID(raw_id))
+        except ValueError:
+            continue
+    event_result = (
+        await session.execute(
+            select(ProjectEvent).where(
+                ProjectEvent.user_id == user_id,
+                ProjectEvent.project_id == body.project_id,
+                ProjectEvent.id.in_(event_ids),
+            )
+        )
+        if event_ids
+        else None
+    )
+    source_items: dict[tuple[str, str], Any] = {
+        **{("artifact", str(item.id)): item for item in all_artifacts},
+        **{("constraint", str(item.id)): item for item in all_constraints},
+        **{("memory", str(item.id)): item for item in memories},
+        **{
+            ("event", str(item.id)): item
+            for item in (event_result.scalars().all() if event_result is not None else [])
+        },
+    }
+    current_source_versions = {}
+    for key in expected_source_keys:
+        source_type, separator, item_id = key.partition(":")
+        source_item = source_items.get((source_type, item_id)) if separator else None
+        if source_item is not None:
+            current_source_versions[key] = source_version_token(source_type, source_item)
+    fresh_views = [
+        item for item in views if _view_is_fresh(item, current_ids, current_source_versions)
+    ]
     stale_views = [item for item in views if item not in fresh_views]
     stale_warnings.extend(
         {
@@ -785,6 +864,7 @@ async def compile_project_context(
                     "source_watermark": view.source_watermark,
                     "schema_version": view.schema_version,
                     "producer": view.producer,
+                    "freshness_contract": _view_freshness_contract(view),
                 },
             )
 
@@ -826,6 +906,8 @@ async def compile_project_context(
     ) and any(marker in lowered_query for marker in ("一定", "保证", "guarantee", "definitely"))
     if sensitive_question:
         unknowns.append("Sensitive credentials are not available from project context.")
+    if sensitive_query:
+        unknowns.append("Sensitive-looking query text was not embedded or recorded.")
     if uncertain_future:
         unknowns.append("Available evidence cannot guarantee a future release outcome.")
     if not selected:
@@ -859,6 +941,11 @@ async def compile_project_context(
         "ranking_sources": {name: len(keys) for name, keys in rankings.items()},
         "selection_reasons": {item.key: item.reasons for item in selected},
         "temporal": {"as_of": as_of.isoformat(), "valid_at": valid_at.isoformat()},
+        "sensitive_query_embedding_skipped": sensitive_query,
+        "sensitive_constraint_embedding_skipped": sum(
+            item.embedding is None and bool(find_sensitive_content(constraint_document(item)))
+            for item in constraints
+        ),
     }
     run_id = uuid.uuid4() if body.record_run else None
     pack: dict[str, Any] = {
@@ -907,6 +994,23 @@ async def compile_project_context(
     )
     record_policy_diagnostic_overhead(pack)
 
+    if include_source_versions:
+        selected_source_ids = source_ids_from_context(pack)
+        source_rows: dict[str, dict[str, Any]] = {
+            "artifact": {str(item.id): item for item in all_artifacts},
+            "constraint": {str(item.id): item for item in all_constraints},
+            "memory": {str(item.id): item for item in memories},
+        }
+        pack["_source_versions"] = {
+            f"{source_type}:{item_id}": source_version_token(
+                source_type, source_rows[source_type][item_id]
+            )
+            for source_type, key in SOURCE_ID_KEYS.items()
+            if source_type != "event"
+            for item_id in selected_source_ids[key]
+            if item_id in source_rows[source_type]
+        }
+
     if body.record_run:
         assert run_id is not None
         run = ContextRun(
@@ -935,4 +1039,5 @@ async def compile_project_context(
         )
         session.add(run)
         await session.flush()
+        pack["completion_contract"] = completion_contract(str(run_id), shadow=body.shadow)
     return pack

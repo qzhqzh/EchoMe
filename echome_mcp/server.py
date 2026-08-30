@@ -57,6 +57,8 @@ from echome_mcp.tools.project_knowledge import (
     echome_project_impact,
     echome_project_index,
     echome_project_preflight,
+    echome_reflect_prepare,
+    echome_reflect_submit,
 )
 from echome_mcp.tools.remember import echome_remember
 from echome_mcp.tools.search import echome_search
@@ -105,6 +107,21 @@ PREFLIGHT_OUTPUT_SCHEMA = {
     "required": ["project_id", "task", "read_only", "decision", "warnings", "unknowns"],
     "additionalProperties": True,
 }
+
+ERROR_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"const": "echome.error.v1"},
+        "error": {"type": "object"},
+    },
+    "required": ["schema_version", "error"],
+    "additionalProperties": True,
+}
+
+
+def _with_error_output(success_schema: dict[str, Any]) -> dict[str, Any]:
+    """Allow structured MCP failures without violating a strict success schema."""
+    return {"anyOf": [success_schema, ERROR_OUTPUT_SCHEMA]}
 
 
 @server.list_tools()
@@ -774,11 +791,123 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["project_id", "task"],
             },
-            outputSchema=PROJECT_CONTEXT_OUTPUT_SCHEMA,
+            outputSchema=_with_error_output(PROJECT_CONTEXT_OUTPUT_SCHEMA),
             annotations=ToolAnnotations(
                 readOnlyHint=False,
                 destructiveHint=False,
                 idempotentHint=False,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_reflect_prepare",
+            description=(
+                "Prepare a read-only evidence pack for a project summary or mental model. Use when "
+                "durable cross-source synthesis would improve future work; the response includes every "
+                "allowed source ID and a server-owned freshness fingerprint for submit."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "query": {"type": "string", "minLength": 1},
+                    "changed_paths": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "default": 30, "minimum": 1, "maximum": 100},
+                    "token_budget": {
+                        "type": "integer",
+                        "default": 12000,
+                        "minimum": 512,
+                        "maximum": 50000,
+                    },
+                    "supersedes_id": {"type": "string", "format": "uuid"},
+                },
+                "required": ["project_id", "query"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=True,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
+            name="echome_reflect_submit",
+            description=(
+                "Submit a client-generated project reflection after echome_reflect_prepare. Every claim "
+                "must cite prepared memory, constraint, artifact, or event IDs; the Hub rejects stale "
+                "fingerprints and creates only a derived view without rewriting source facts."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["summary", "mental_model", "community"],
+                        "default": "mental_model",
+                    },
+                    "query": {"type": "string", "minLength": 1},
+                    "claims": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "statement": {"type": "string", "minLength": 1},
+                                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                                "evidence_refs": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": 20,
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "target_type": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "memory",
+                                                    "constraint",
+                                                    "artifact",
+                                                    "event",
+                                                ],
+                                            },
+                                            "target_id": {"type": "string", "format": "uuid"},
+                                            "relation": {
+                                                "type": "string",
+                                                "enum": ["supports", "contradicts", "context"],
+                                                "default": "supports",
+                                            },
+                                        },
+                                        "required": ["target_type", "target_id"],
+                                    },
+                                },
+                            },
+                            "required": ["statement", "confidence", "evidence_refs"],
+                        },
+                    },
+                    "source_watermark": {"type": "object"},
+                    "idempotency_key": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                    },
+                    "supersedes_id": {"type": "string", "format": "uuid"},
+                },
+                "required": [
+                    "project_id",
+                    "query",
+                    "claims",
+                    "source_watermark",
+                    "idempotency_key",
+                ],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=True,
                 openWorldHint=False,
             ),
         ),
@@ -843,7 +972,7 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["project_id", "task"],
             },
-            outputSchema=PREFLIGHT_OUTPUT_SCHEMA,
+            outputSchema=_with_error_output(PREFLIGHT_OUTPUT_SCHEMA),
             annotations=ToolAnnotations(
                 readOnlyHint=True,
                 destructiveHint=False,
@@ -1256,6 +1385,25 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 record_run=arguments.get("record_run", True),
                 shadow=arguments.get("shadow", False),
                 policy_mode=arguments.get("policy_mode", "shadow"),
+            )
+        elif name == "echome_reflect_prepare":
+            result = await echome_reflect_prepare(
+                project_id=arguments["project_id"],
+                query=arguments["query"],
+                changed_paths=arguments.get("changed_paths"),
+                limit=arguments.get("limit", 30),
+                token_budget=arguments.get("token_budget", 12000),
+                supersedes_id=arguments.get("supersedes_id"),
+            )
+        elif name == "echome_reflect_submit":
+            result = await echome_reflect_submit(
+                project_id=arguments["project_id"],
+                query=arguments["query"],
+                claims=arguments["claims"],
+                source_watermark=arguments["source_watermark"],
+                idempotency_key=arguments["idempotency_key"],
+                kind=arguments.get("kind", "mental_model"),
+                supersedes_id=arguments.get("supersedes_id"),
             )
         elif name == "echome_project_impact":
             result = await echome_project_impact(

@@ -12,6 +12,7 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_session
 from app.models.memory import Memory
 from app.schemas.memory import MemoryResponse, MemoryType, Visibility
+from app.services.content_safety import require_safe_content
 from app.services.embedding import get_embedding
 
 router = APIRouter(prefix="/market", tags=["market"])
@@ -169,6 +170,7 @@ async def fork_memory(
         )
 
     # Create a copy for the current user
+    require_safe_content(source.title, source.content)
     forked = Memory(
         user_id=user_id,
         title=source.title,

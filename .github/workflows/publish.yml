@@ -107,6 +107,8 @@ jobs:
           sed -i 's/__version__ = "${{ steps.current.outputs.version }}"/__version__ = "${{ steps.bump.outputs.version }}"/' echome_mcp/__init__.py
           sed -i 's/app_version: str = "${{ steps.current.outputs.version }}"/app_version: str = "${{ steps.bump.outputs.version }}"/' hub/app/core/config.py
           sed -Ei 's/当前稳定版本为 \*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*/当前稳定版本为 **v${{ steps.bump.outputs.version }}**/' README.md
+          sed -Ei 's/\*\*当前稳定版本\*\*：`echome v[0-9]+\.[0-9]+\.[0-9]+`/**当前稳定版本**：`echome v${{ steps.bump.outputs.version }}`/' docs/roadmap.md
+          sed -Ei 's/current deployed application version is `[0-9]+\.[0-9]+\.[0-9]+`/current deployed application version is `${{ steps.bump.outputs.version }}`/' docs/project-knowledge.md
 
       - name: Synchronize lockfile
         run: |
@@ -139,11 +141,16 @@ jobs:
               in Path("hub/app/core/config.py").read_text(encoding="utf-8"),
               "README.md": f"当前稳定版本为 **v{version}**"
               in Path("README.md").read_text(encoding="utf-8"),
+              "docs/roadmap.md": f"**当前稳定版本**：`echome v{version}`"
+              in Path("docs/roadmap.md").read_text(encoding="utf-8"),
+              "docs/project-knowledge.md": f"current deployed application version is `{version}`"
+              in Path("docs/project-knowledge.md").read_text(encoding="utf-8"),
           }
           failed = [path for path, passed in checks.items() if not passed]
           if failed:
               raise SystemExit(f"release version update failed: {', '.join(failed)}")
           PY
+          python scripts/check_project_truth.py
 
       - name: Generate changelog
         id: changelog
@@ -188,7 +195,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml uv.lock echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md CHANGELOG.md
+          git add pyproject.toml uv.lock echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md docs/roadmap.md docs/project-knowledge.md CHANGELOG.md
           git commit -m "release: v${{ steps.bump.outputs.version }}"
 
       - name: Create tag

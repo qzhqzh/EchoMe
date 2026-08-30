@@ -292,6 +292,7 @@ export interface ProjectWorkspaceSummary {
 export interface ProjectQualityCase {
   id: string
   category: string
+  ability: 'static_state_recall' | 'dynamic_state_tracking' | 'workflow_knowledge' | 'environment_gotchas' | 'premise_awareness'
   query: string
   mode: 'local' | 'overview' | 'impact' | 'preflight'
   changed_paths?: string[]
@@ -316,7 +317,18 @@ export interface ProjectQualitySnapshot {
   dry_run: boolean
   passed: boolean
   metrics: Record<string, number | null>
+  ability_metrics: Record<string, {
+    case_count: number
+    evaluated_count: number
+    expected_items: number
+    hits: number
+    passed: number
+    recall_at_10: number | null
+    case_success_rate: number | null
+  }>
   thresholds: Record<string, number>
+  threshold_bounds?: Record<string, { min?: number; max?: number }>
+  ability_threshold_bounds?: Record<string, { min?: number; max?: number }>
   idempotency_key: string
   created_at: string
 }

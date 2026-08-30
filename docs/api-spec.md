@@ -489,9 +489,18 @@ Project Knowledge 与个人 Memory 独立存储，并通过 Project Context Comp
 | `POST` | `/api/v1/project-knowledge/impact` | 沿约束图分析变更影响 |
 | `POST` | `/api/v1/project-knowledge/preflight` | 编辑、测试、提交或部署前的只读证据检查 |
 | `GET` | `/api/v1/project-knowledge/context-runs` | 查询检索运行与选择轨迹 |
+| `POST` | `/api/v1/project-knowledge/views/reflect/prepare` | 只读准备可引用的项目证据及服务端来源指纹 |
+| `POST` | `/api/v1/project-knowledge/views/reflect/submit` | 校验来源未变化和逐条 claim 证据后新增派生 view |
 
 `context` 请求支持 `task`、`changed_paths`、`mode`、`token_budget`、`as_of`、`valid_at`、
 `record_run` 和 `shadow`。`shadow=true` 返回旧检索结果，只旁路记录编译器差异。
+
+Reflect `prepare` 接受 `project_id`、`query`、可选 `changed_paths`、`limit`、`token_budget`
+和 `supersedes_id`，返回 `source_watermark` 与提交契约。`submit` 必须携带同一 watermark、
+至少一条带 `memory/constraint/artifact/event` 引用的 claim，以及 `idempotency_key`；成功返回
+`201`，来源变化或幂等键复用冲突返回 `409`，敏感内容或无效请求返回 `422`。既有
+`POST /project-knowledge/views` 继续接受 `refresh_mode=derived` 以保持 REST v1 兼容，但此类
+view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflect 获得逐来源版本校验。
 
 ### Artifacts And Constraints
 

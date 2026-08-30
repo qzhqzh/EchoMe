@@ -73,6 +73,9 @@ async def test_personal_context_records_actual_selected_memories() -> None:
     assert context["retrieval_trace"]["selected_count"] == 1
     assert context["token_used"] <= context["token_budget"]
     assert context["context_policy"]["diagnostic_token_overhead"] > 0
+    assert context["completion_contract"]["report_outcome"] is True
+    assert context["completion_contract"]["context_run_id"] == context["context_run_id"]
+    assert context["completion_contract"]["idempotency_key"].endswith(":completion")
     run = session.add.call_args.args[0]
     assert run.project_id is None
     assert run.route == "personal"

@@ -282,6 +282,65 @@ class TestCreateMemory:
         # Background task should be scheduled for embedding
         mock_background.add_task.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_create_memory_rejects_secret_before_database_write(
+        self,
+        test_user_id: str,
+        sample_memory_data: dict,
+    ):
+        from starlette.requests import Request
+
+        from app.api.memories import create_memory
+        from app.schemas.memory import MemoryCreate
+
+        payload = {**sample_memory_data, "content": "password=" + "V3ry-Private-Password-9081"}
+        body = MemoryCreate(**payload)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_memory(
+                request=MagicMock(spec=Request),
+                body=body,
+                background_tasks=MagicMock(),
+                session=mock_session,
+                user_id=test_user_id,
+            )
+
+        assert exc_info.value.status_code == 422
+        mock_session.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_memory_rejects_secret_in_tags_before_database_write(
+        self,
+        test_user_id: str,
+        sample_memory_data: dict,
+    ):
+        from starlette.requests import Request
+
+        from app.api.memories import create_memory
+        from app.schemas.memory import MemoryCreate
+
+        payload = {
+            **sample_memory_data,
+            "tags": ["Authorization: Bearer " + "prodTokenABC1234567890"],
+        }
+        body = MemoryCreate(**payload)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_memory(
+                request=MagicMock(spec=Request),
+                body=body,
+                background_tasks=MagicMock(),
+                session=mock_session,
+                user_id=test_user_id,
+            )
+
+        assert exc_info.value.status_code == 422
+        mock_session.add.assert_not_called()
+
 
 class TestUpdateMemory:
     """Tests for PUT /api/v1/memories/{memory_id}."""

@@ -86,7 +86,16 @@ def test_fixed_dataset_has_required_coverage() -> None:
     payload = load_context_quality_cases()
 
     categories = {item["category"] for item in payload["cases"]}
-    assert len(payload["cases"]) >= 20
+    abilities = {item["ability"] for item in payload["cases"]}
+    assert payload["schema_version"] == 2
+    assert len(payload["cases"]) >= 30
+    assert abilities == {
+        "static_state_recall",
+        "dynamic_state_tracking",
+        "workflow_knowledge",
+        "environment_gotchas",
+        "premise_awareness",
+    }
     assert {
         "single_fact",
         "cross_source_reasoning",
@@ -118,6 +127,19 @@ def test_perfect_snapshot_passes_recall_and_reports_all_metrics() -> None:
     assert report["metrics"]["impact_coverage"] == 1.0
     assert report["metrics"]["preflight_precision"] == 1.0
     assert report["metrics"]["preflight_recall"] == 1.0
+    assert report["metrics"]["case_success_rate"] == 1.0
+    assert report["metrics"]["sensitive_path_leak_rate"] == 0.0
+    assert set(report["ability_metrics"]) == {
+        "static_state_recall",
+        "dynamic_state_tracking",
+        "workflow_knowledge",
+        "environment_gotchas",
+        "premise_awareness",
+    }
+    assert all(
+        item["case_success_rate"] == 1.0
+        for item in report["ability_metrics"].values()
+    )
     assert report["metrics"]["latency_p95_ms"] is not None
     assert report["metrics"]["average_token_cost"] is not None
     assert report["metrics"]["sleep_proposal_acceptance_rate"] is None
@@ -134,8 +156,60 @@ def test_missing_and_stale_failure_do_not_pass() -> None:
 
     report = evaluate_context_quality(payload, [result])
 
-    assert report["metrics"]["stale_answer_rate"] == 1.0
+    assert report["metrics"]["stale_answer_rate"] > 0.0
     assert len(report["missing_case_ids"]) == len(payload["cases"]) - 1
+    assert report["passed"] is False
+
+
+def test_stale_answer_fails_full_snapshot_even_with_perfect_recall() -> None:
+    payload = load_context_quality_cases()
+    results = [_perfect_result(case, index) for index, case in enumerate(payload["cases"])]
+    stale_case = next(
+        item for item in payload["cases"] if item.get("expected", {}).get("require_stale_warning")
+    )
+    stale_result = next(item for item in results if item["case_id"] == stale_case["id"])
+    stale_result["context"]["stale_warnings"] = []
+
+    report = evaluate_context_quality(payload, results)
+
+    assert report["metrics"]["recall_at_10"] == 1.0
+    assert report["metrics"]["stale_answer_rate"] > 0.0
+    assert report["passed"] is False
+
+
+def test_one_weak_ability_fails_even_when_global_metrics_still_pass() -> None:
+    payload = load_context_quality_cases()
+    results = [_perfect_result(case, index) for index, case in enumerate(payload["cases"])]
+    case = next(
+        item
+        for item in payload["cases"]
+        if item["ability"] == "workflow_knowledge"
+        and item.get("expected", {}).get("constraint_titles")
+    )
+    result = next(item for item in results if item["case_id"] == case["id"])
+    result["context"]["constraints"] = []
+
+    report = evaluate_context_quality(payload, results)
+
+    assert report["metrics"]["case_success_rate"] >= 0.90
+    assert report["ability_metrics"]["workflow_knowledge"]["case_success_rate"] < 0.90
+    assert report["passed"] is False
+
+
+def test_sensitive_artifact_path_fails_full_snapshot() -> None:
+    payload = load_context_quality_cases()
+    results = [_perfect_result(case, index) for index, case in enumerate(payload["cases"])]
+    protected_case = next(
+        item
+        for item in payload["cases"]
+        if item.get("expected", {}).get("forbidden_artifact_paths")
+    )
+    protected_result = next(item for item in results if item["case_id"] == protected_case["id"])
+    protected_result["context"]["artifacts"] = [{"logical_path": ".env"}]
+
+    report = evaluate_context_quality(payload, results)
+
+    assert report["metrics"]["sensitive_path_leak_rate"] == 1.0
     assert report["passed"] is False
 
 
