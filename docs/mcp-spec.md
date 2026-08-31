@@ -58,12 +58,12 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ### 4.0 v1.7 默认入口与运行契约
 
-- `echome_context`：任务默认入口；可推断当前 Git remote，解析 canonical project，并返回统一 context envelope。
+- `echome_context`：任务默认入口；可同时推断当前 Git remote 与 repository root，解析 canonical project，并返回统一 context envelope。
 - `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界；传
   `include_policy_readiness=true` 时返回只读策略门禁。
 - `echome_context_outcome`：对 completed、non-shadow Context Run 追加幂等结果信号；可附带显式
   `policy_effect`，缺失信号不等于失败。
-- 新安装配置默认显式使用 `core`：仅暴露 capability、context、health、graph explain、remember、outcome 和 memory feedback 等 8 个高频入口。
+- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback 与安全项目创建等 9 个高频入口。
 - `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
 - 为保持升级兼容，未配置 `ECHOME_MCP_PROFILE` 的历史客户端继续使用 `full`。
 
@@ -75,14 +75,23 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `message`、`retryable`、
 `request_id`、`degraded` 和 `suggested_action`。
 
+项目身份恢复使用 `echome.project-resolution.v1`：
+
+- `resolved`：精确匹配，或唯一且高置信的确定性候选；候选只用于本次只读 context，不写 alias。
+- `needs_confirmation` / `ambiguous`：返回 canonical ID 候选和可直接重试的参数，Agent 必须继续选择或询问。
+- `not_found`：返回 `echome_create_project` 参数预案；只有用户明确确认是新项目后才允许创建。
+- `scope=project_resolution` 是正常 MCP 结果，不设置 protocol error，也不进入 last-known-good 缓存。
+- 因为尚未生成可使用的 context，该结果不返回 completion contract；Hub 可将诊断 run 记为
+  `failed/PROJECT_RESOLUTION_REQUIRED`，与传输或编译错误分开统计。
+
 v1.7 延续 `echome_context` 与 `echome_project_context` 的 `policy_mode`：
 
 - 默认 `shadow`，返回 reliability、intervention 和 policy trace，但不改变选入结果。
 - `off` 跳过策略计算。
 - `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
 
-`echome_capabilities` 当前契约版本为 `echome.capabilities.v6`。core profile 仍保持 8 个工具；AI 可通过
-`echome_runtime_health(include_policy_readiness=true)` 读取校准门禁，无需扩大默认工具面。
+`echome_capabilities` 当前契约版本为 `echome.capabilities.v7`。core profile 包含 9 个工具；AI 可通过
+`echome_runtime_health(include_policy_readiness=true)` 读取校准门禁。
 `echome_sleep_candidates` 默认返回
 `memory_sleep_plan.v2`，也可显式请求 v1；v2 proposal 由 Hub 生成 server-owned simulation，并在
 apply 前重新验证。

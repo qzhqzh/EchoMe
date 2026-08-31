@@ -10,6 +10,7 @@ CORE_TOOL_NAMES = frozenset(
         "echome_context_outcome",
         "echome_memory_explain",
         "echome_remember",
+        "echome_create_project",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
     }

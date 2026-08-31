@@ -1,7 +1,7 @@
 """Project CRUD and canonical identity API routes."""
 
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -25,7 +25,11 @@ from app.models.project_knowledge import (
     ProjectRelation,
 )
 from app.services.content_safety import require_safe_content
-from app.services.project_identity import normalize_project_hint, resolve_project
+from app.services.project_identity import (
+    discover_projects,
+    normalize_project_hint,
+    resolve_project,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -56,6 +60,15 @@ class ProjectResponse(BaseModel):
 class ProjectResolveRequest(BaseModel):
     hint: str = Field(..., min_length=1, max_length=2048)
     alias_type: Literal["legacy_id", "name", "git_remote", "path", "client_hint"] | None = None
+
+
+class ProjectDiscoverRequest(BaseModel):
+    hints: list[Annotated[str, Field(min_length=1, max_length=2048)]] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+    )
+    limit: int = Field(5, ge=1, le=20)
 
 
 class ProjectAliasCreate(BaseModel):
@@ -171,6 +184,18 @@ async def resolve_project_hint(
         "project": ProjectResponse.model_validate(resolution.project).model_dump(),
         "resolution": resolution.payload(body.hint),
     }
+
+
+@router.post("/discover")
+async def discover_project_hints(
+    body: ProjectDiscoverRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, object]:
+    """Return deterministic recovery candidates without changing project identity."""
+    require_safe_content(*body.hints)
+    discovery = await discover_projects(session, user_id, body.hints, body.limit)
+    return discovery.payload()
 
 
 @router.get("/aliases")

@@ -192,15 +192,26 @@ def error_contract(exc: Exception, request_id: str | None = None) -> dict[str, A
         try:
             response_payload = exc.response.json()
             detail = response_payload.get("detail")
-            if not detail and isinstance(response_payload.get("error"), dict):
-                detail = response_payload["error"].get("message")
+            response_error = response_payload.get("error")
+            if isinstance(response_error, dict):
+                if response_error.get("code"):
+                    code = str(response_error["code"])
+                if response_error.get("suggested_action"):
+                    action = str(response_error["suggested_action"])
+                if not detail:
+                    detail = response_error.get("message")
+            if isinstance(detail, dict) and detail.get("code"):
+                code = str(detail["code"])
             if detail:
                 message = (
                     detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
                 )
         except (ValueError, AttributeError):
             pass
-        action = "Check the request and EchoMe authentication." if status < 500 else "Retry later."
+        if action == "Inspect the EchoMe runtime logs.":
+            action = (
+                "Check the request and EchoMe authentication." if status < 500 else "Retry later."
+            )
     return {
         "schema_version": ERROR_SCHEMA_VERSION,
         "error": {
@@ -214,13 +225,15 @@ def error_contract(exc: Exception, request_id: str | None = None) -> dict[str, A
     }
 
 
-async def _local_project_hint() -> str | None:
-    """Read the current Git remote or repository root without mutating it."""
+async def _local_project_hints() -> list[str]:
+    """Read all available Git identity signals without mutating the repository."""
     commands = [
         ("config", "--get", "remote.origin.url"),
         ("rev-parse", "--show-toplevel"),
     ]
+    hints: list[str] = []
     for arguments in commands:
+        process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 "git",
@@ -230,16 +243,27 @@ async def _local_project_hint() -> str | None:
             )
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=2)
         except (OSError, TimeoutError):
-            return None
+            if process is not None and process.returncode is None:
+                process.kill()
+                with suppress(OSError):
+                    await process.wait()
+            continue
         value = stdout.decode().strip()
-        if value:
-            return value
-    return None
+        if process.returncode == 0 and value and value not in hints:
+            hints.append(value)
+    return hints
+
+
+async def _local_project_hint() -> str | None:
+    """Backward-compatible primary local project hint."""
+    hints = await _local_project_hints()
+    return hints[0] if hints else None
 
 
 async def echome_context(
     task: str,
     project_hint: str | None = None,
+    project_hints: list[str] | None = None,
     changed_paths: list[str] | None = None,
     mode: str = "auto",
     token_budget: int = 6000,
@@ -252,12 +276,20 @@ async def echome_context(
 ) -> str:
     """Call the unified Hub route and degrade only to an exact last-known-good read."""
     request_id = str(uuid.uuid4())
-    inferred_hint = project_hint
-    if inferred_hint is None and mode != "personal":
-        inferred_hint = await _local_project_hint()
+    inferred_hints = list(
+        dict.fromkeys(
+            hint.strip()
+            for hint in ([project_hint] if project_hint else []) + (project_hints or [])
+            if hint.strip()
+        )
+    )
+    if not inferred_hints and mode != "personal":
+        inferred_hints = await _local_project_hints()
+    inferred_hint = inferred_hints[0] if inferred_hints else None
     payload: dict[str, Any] = {
         "task": task,
         "project_hint": inferred_hint,
+        "project_hints": inferred_hints[1:],
         "changed_paths": changed_paths or [],
         "mode": mode,
         "token_budget": token_budget,
@@ -300,8 +332,13 @@ async def echome_context(
             }
             return json.dumps(cached, ensure_ascii=False, indent=2)
         return json.dumps(failure, ensure_ascii=False, indent=2)
-    with suppress(OSError, TypeError):
-        _write_cache(payload, context, cache_namespace, cache_encryption_key)
+    runtime = context.get("runtime") if isinstance(context, dict) else None
+    resolution_required = (
+        bool(runtime.get("resolution_required")) if isinstance(runtime, dict) else False
+    )
+    if not resolution_required:
+        with suppress(OSError, TypeError):
+            _write_cache(payload, context, cache_namespace, cache_encryption_key)
     return json.dumps(context, ensure_ascii=False, indent=2)
 
 

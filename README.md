@@ -33,7 +33,8 @@ EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它�
 AI 默认调用 `echome_context`，由运行时自动完成：
 
 - personal / project / impact / temporal 路由选择
-- canonical project 与 alias 解析
+- canonical project 与 alias 解析；同时使用 Git remote、repository root 等多个身份信号
+- 未命中时返回可继续重试、选择或确认创建的结构化 project resolution，不以一次 404 终止
 - 记忆、约束、制品、事件和图关系召回
 - 冲突、未知项、时效性和 answerability 判断
 - token budget 控制与检索 trace 记录
@@ -96,7 +97,7 @@ Context Outcome 与 Memory Feedback 均为 append-only 信号，不会直接、�
 5. 在 `full` profile 中，宽泛问题可使用 summary-first，项目修改可使用 preflight/impact 专业工具。
 6. 需要形成长期项目 mental model 时，先调用 `echome_reflect_prepare`，再以原始 watermark 和逐条证据调用 `echome_reflect_submit`。
 
-EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，暴露 8 个高频入口；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
+EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，暴露 9 个高频入口（包含仅在明确确认新项目后使用的安全创建工具）；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
 
 ## 系统组件
 
@@ -107,7 +108,7 @@ EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `
 | Embedding | BAAI/bge-m3 | 语义向量生成与召回 |
 | Web Console | Vue 3 + Nginx | 管理、观测、图分析和质量评估 |
 | CLI | Typer + Rich + httpx | 初始化、同步、审核、Sleep 与环境诊断 |
-| MCP Server | 官方 Python MCP SDK | 默认 8 个核心工具，可切换完整专业工具集 |
+| MCP Server | 官方 Python MCP SDK | 默认 9 个核心工具，可切换完整专业工具集 |
 
 默认 Docker Compose 端口：
 

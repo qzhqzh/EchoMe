@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 
 from app.api.context_runtime import (
     _answerability,
+    _build_unified_context,
     _personal_context,
     get_unified_context,
     router,
@@ -21,11 +22,23 @@ from app.core.auth import verify_token
 from app.core.database import get_session
 from app.models.memory import Memory
 from app.schemas.context_runtime import UnifiedContextRequest
+from app.services.project_identity import ProjectDiscovery
 
 
 def test_answerability_does_not_hide_conflicts() -> None:
     assert _answerability({"conflicts": [{"id": "conflict"}], "unknowns": []}) == "conflicted"
     assert _answerability({"conflicts": [], "unknowns": ["missing"]}) == "insufficient_evidence"
+
+
+def test_explicit_project_mode_accepts_multiple_identity_hints() -> None:
+    body = UnifiedContextRequest(
+        task="inspect project",
+        project_hints=["git@example.com:owner/repo.git", "/srv/repo"],
+        mode="project",
+    )
+
+    assert body.project_hint is None
+    assert len(body.project_hints) == 2
 
 
 @pytest.mark.asyncio
@@ -170,6 +183,39 @@ async def test_context_http_errors_use_runtime_contract(monkeypatch) -> None:
     assert payload["schema_version"] == "echome.error.v1"
     assert payload["error"]["code"] == "PROJECT_NOT_FOUND"
     assert payload["error"]["request_id"]
+
+
+@pytest.mark.asyncio
+async def test_unresolved_project_returns_non_terminal_recovery_envelope(monkeypatch) -> None:
+    body = UnifiedContextRequest(
+        task="inspect new project",
+        project_hints=["git@example.com:owner/new-repo.git", "/srv/new-repo"],
+        mode="project",
+    )
+    discovery = ProjectDiscovery(
+        status="not_found",
+        hints=tuple(body.project_hints),
+        candidates=(),
+    )
+    monkeypatch.setattr(
+        "app.api.context_runtime.discover_projects",
+        AsyncMock(return_value=discovery),
+    )
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    payload = await _build_unified_context(body, session, "user", {"project_id": None})
+
+    assert payload["scope"] == "project_resolution"
+    assert payload["answerability"] == "insufficient_evidence"
+    assert payload["project_resolution"]["status"] == "not_found"
+    assert payload["project_resolution"]["create_proposal"]["project_id"] == "owner/new-repo"
+    assert payload["runtime"]["resolution_required"] is True
+    assert "completion_contract" not in payload
+    run = session.add.call_args.args[0]
+    assert run.status == "failed"
+    assert run.error_code == "PROJECT_RESOLUTION_REQUIRED"
 
 
 @pytest.mark.asyncio

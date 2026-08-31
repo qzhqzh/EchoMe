@@ -474,6 +474,23 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def discover_projects(
+        self,
+        hints: list[str],
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        """Resolve or suggest projects without modifying project identity."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.post(
+                "/api/v1/projects/discover",
+                json={"hints": hints, "limit": limit},
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Project discovery response must be an object")
+            return payload
+
     async def get_project(self, project_id: str) -> dict[str, Any] | None:
         """Get a project by ID. Returns None if not found."""
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
@@ -489,14 +506,17 @@ class MCPHubClient:
         name: str,
         description: str | None = None,
         git_remote: str | None = None,
+        kind: str = "repository",
+        path_patterns: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create a new project."""
         data = {
             "id": id,
             "name": name,
+            "kind": kind,
             "description": description,
             "git_remote": git_remote,
-            "path_patterns": [],
+            "path_patterns": path_patterns or [],
         }
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
             resp = await client.post("/api/v1/projects", json=data)

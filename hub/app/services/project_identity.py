@@ -7,6 +7,8 @@ import posixpath
 import re
 import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
+from typing import Literal
 from urllib.parse import unquote, urlsplit
 
 from fastapi import HTTPException
@@ -18,6 +20,22 @@ from app.models.project_knowledge import ProjectAlias, ProjectRelation
 
 ALIAS_TYPES = {"legacy_id", "name", "git_remote", "path", "client_hint"}
 HISTORY_SCOPE_ALIAS_TYPES = {"legacy_id", "name", "client_hint"}
+ENVIRONMENT_SUFFIXES = {
+    "dev",
+    "development",
+    "local",
+    "prod",
+    "production",
+    "qa",
+    "stage",
+    "staging",
+    "test",
+    "testing",
+    "uat",
+}
+WORKSPACE_GENERIC_TOKENS = {"ecosystem", "suite", "workspace"}
+AUTO_RESOLVE_CONFIDENCE = 0.86
+AUTO_RESOLVE_MARGIN = 0.08
 
 
 @dataclass(frozen=True)
@@ -49,6 +67,100 @@ class ProjectContextScope:
     inherited_project_ids: tuple[str, ...]
     selected_child_project_ids: tuple[str, ...]
     scope_ids_by_project: dict[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
+class ProjectCandidate:
+    """A non-binding project suggestion with deterministic matching evidence."""
+
+    project: Project
+    confidence: float
+    matched_by: tuple[str, ...]
+    matched_hints: tuple[str, ...]
+    workspace_parents: tuple[str, ...] = ()
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "project": {
+                "id": self.project.id,
+                "name": self.project.name,
+                "kind": self.project.kind,
+            },
+            "confidence": self.confidence,
+            "matched_by": list(self.matched_by),
+            "matched_hints": list(self.matched_hints),
+            "workspace_parents": list(self.workspace_parents),
+        }
+
+
+@dataclass(frozen=True)
+class ProjectDiscovery:
+    """Read-only recovery result for project hints that did not resolve exactly."""
+
+    status: Literal["resolved", "needs_confirmation", "ambiguous", "not_found"]
+    hints: tuple[str, ...]
+    candidates: tuple[ProjectCandidate, ...]
+    resolution: ProjectResolution | None = None
+
+    def payload(self) -> dict[str, object]:
+        candidate_payloads = [candidate.payload() for candidate in self.candidates]
+        next_actions: list[dict[str, object]] = []
+        if self.status in {"needs_confirmation", "ambiguous"}:
+            next_actions.extend(
+                {
+                    "action": "retry_context",
+                    "description": "Retry echome_context with this canonical project ID.",
+                    "arguments": {"project_hint": candidate.project.id},
+                }
+                for candidate in self.candidates
+            )
+            candidate_ids = {candidate.project.id for candidate in self.candidates}
+            workspace_parent_ids = sorted(
+                {
+                    parent_id
+                    for candidate in self.candidates
+                    for parent_id in candidate.workspace_parents
+                    if parent_id not in candidate_ids
+                }
+            )
+            next_actions.extend(
+                {
+                    "action": "retry_context",
+                    "description": "Retry echome_context with the parent workspace ID.",
+                    "arguments": {"project_hint": parent_id},
+                }
+                for parent_id in workspace_parent_ids
+            )
+        create_proposal = (
+            _project_create_proposal(self.hints) if self.status == "not_found" else None
+        )
+        if create_proposal is not None:
+            next_actions.append(
+                {
+                    "action": "confirm_then_create_project",
+                    "description": "Confirm this is a new project before calling echome_create_project.",
+                    "arguments": create_proposal,
+                }
+            )
+        return {
+            "schema_version": "echome.project-resolution.v1",
+            "status": self.status,
+            "input_hints": list(self.hints),
+            "auto_resolved": self.resolution is not None,
+            "resolution": (
+                self.resolution.payload(
+                    self.candidates[0].matched_hints[0]
+                    if self.candidates and self.candidates[0].matched_hints
+                    else self.hints[0]
+                )
+                if self.resolution is not None
+                else None
+            ),
+            "candidates": candidate_payloads,
+            "create_proposal": create_proposal,
+            "requires_confirmation": self.status != "resolved",
+            "next_actions": next_actions,
+        }
 
 
 def _normalized_text(value: str) -> str:
@@ -86,16 +198,172 @@ def normalize_project_hint(value: str, alias_type: str) -> str:
     return normalized
 
 
+def _looks_like_git_remote(value: str) -> bool:
+    return "://" in value or value.startswith("git@") or value.endswith(".git")
+
+
+def _looks_like_path(value: str) -> bool:
+    return value.startswith(("/", "./", "../", "~", "\\")) or bool(
+        re.match(r"^[A-Za-z]:[\\/]", value)
+    )
+
+
 def infer_alias_types(hint: str) -> list[str]:
     """Return bounded lookup strategies for an untyped client hint."""
     value = hint.strip()
-    if "://" in value or value.startswith("git@") or value.endswith(".git"):
+    if _looks_like_git_remote(value):
         return ["git_remote", "client_hint"]
-    if value.startswith(("/", "./", "../", "~", "\\")) or re.match(
-        r"^[A-Za-z]:[\\/]", value
-    ):
+    if _looks_like_path(value):
         return ["path", "client_hint"]
     return ["legacy_id", "name", "client_hint"]
+
+
+def _identity_tokens(value: str) -> tuple[str, ...]:
+    return tuple(
+        part.casefold()
+        for part in re.findall(r"[^\W_]+", unicodedata.normalize("NFKC", value))
+        if part
+    )
+
+
+def _identity_variants(value: str, alias_type: str | None = None) -> set[str]:
+    clean_value = _normalized_text(value)
+    variants = {clean_value}
+    if alias_type == "git_remote" or _looks_like_git_remote(clean_value):
+        normalized_remote = _normalize_git_remote(clean_value)
+        remote_path = normalized_remote.partition("/")[2]
+        variants.update({normalized_remote, remote_path, posixpath.basename(remote_path)})
+    if alias_type == "path" or _looks_like_path(clean_value):
+        path = clean_value.replace("\\", "/")
+        wildcard_indexes = [path.find(marker) for marker in ("*", "?", "[")]
+        wildcard_indexes = [index for index in wildcard_indexes if index >= 0]
+        path = path[: min(wildcard_indexes, default=len(path))].rstrip("/")
+        variants.add(posixpath.basename(path))
+    elif "/" in clean_value:
+        variants.add(posixpath.basename(clean_value.rstrip("/")))
+    return {variant for variant in variants if variant}
+
+
+def _identity_keys(value: str, alias_type: str | None = None) -> set[str]:
+    """Build separator-insensitive identity keys without semantic/vector matching."""
+    variants = _identity_variants(value, alias_type)
+    keys = {"".join(_identity_tokens(item)) for item in variants}
+    return {key for key in keys if key}
+
+
+def _environment_key(value: str) -> str:
+    tokens = list(_identity_tokens(value))
+    while len(tokens) > 1 and tokens[-1] in ENVIRONMENT_SUFFIXES:
+        tokens.pop()
+    return "".join(tokens)
+
+
+def _environment_keys(value: str, alias_type: str | None = None) -> set[str]:
+    return {
+        key
+        for variant in _identity_variants(value, alias_type)
+        if (key := _environment_key(variant))
+    }
+
+
+def _score_identity_match(
+    hint: str,
+    candidate_value: str,
+    *,
+    candidate_type: str | None = None,
+) -> tuple[float, str] | None:
+    hint_keys = _identity_keys(hint)
+    candidate_keys = _identity_keys(candidate_value, candidate_type)
+    if not hint_keys or not candidate_keys:
+        return None
+    exact_matches = hint_keys & candidate_keys
+    if exact_matches:
+        if max(len(key) for key in exact_matches) >= 4:
+            return 0.9, "derived_identity"
+        return 0.76, "short_derived_identity"
+
+    environment_hint_keys = _environment_keys(hint)
+    environment_candidate_keys = _environment_keys(candidate_value, candidate_type)
+    environment_matches = {
+        key for key in environment_hint_keys & environment_candidate_keys if len(key) >= 4
+    }
+    if environment_matches:
+        return 0.87, "environment_variant"
+
+    ratios = [
+        SequenceMatcher(None, hint_key, candidate_key).ratio()
+        for hint_key in hint_keys
+        for candidate_key in candidate_keys
+        if min(len(hint_key), len(candidate_key)) >= 4
+    ]
+    best_ratio = max(ratios, default=0.0)
+    if best_ratio < 0.72:
+        return None
+    return round(0.55 + (best_ratio * 0.25), 3), "similar_identity"
+
+
+def _score_workspace_hint(hint: str, project: Project) -> tuple[float, str] | None:
+    if project.kind != "workspace":
+        return None
+    hint_tokens = {
+        token
+        for variant in _identity_variants(hint)
+        for token in _identity_tokens(variant)
+    }
+    workspace_tokens = {
+        token
+        for value in (project.id, project.name)
+        for variant in _identity_variants(value)
+        for token in _identity_tokens(variant)
+        if token not in WORKSPACE_GENERIC_TOKENS and len(token) >= 3
+    }
+    shared_tokens = hint_tokens & workspace_tokens
+    if not shared_tokens:
+        return None
+    score = 0.7 if max(len(token) for token in shared_tokens) >= 4 else 0.69
+    return score, "workspace_identity_token"
+
+
+def _project_create_proposal(hints: tuple[str, ...]) -> dict[str, object] | None:
+    if not hints:
+        return None
+    preferred = hints[0]
+    remote = next(
+        (
+            hint
+            for hint in hints
+            if _looks_like_git_remote(hint)
+        ),
+        None,
+    )
+    path = next(
+        (hint for hint in hints if _looks_like_path(hint)),
+        None,
+    )
+    if remote:
+        normalized_remote = _normalize_git_remote(remote)
+        remote_path = normalized_remote.partition("/")[2]
+        project_id = remote_path or posixpath.basename(normalized_remote)
+        name = posixpath.basename(project_id)
+    elif path:
+        clean_path = path.replace("\\", "/").rstrip("/")
+        project_id = name = posixpath.basename(clean_path)
+    else:
+        name = _normalized_text(preferred)
+        project_id = re.sub(r"\s+", "-", name)
+    if not project_id or not name:
+        return None
+    proposal: dict[str, object] = {
+        "project_id": project_id[:128],
+        "name": name[:256],
+        "kind": "repository",
+        "git_remote": remote,
+        "path_patterns": [],
+    }
+    if path:
+        clean_path = path.replace("\\", "/").rstrip("/")
+        proposal["path_patterns"] = [f"{clean_path}/**"]
+    return proposal
 
 
 async def _all_user_projects(session: AsyncSession, user_id: str) -> list[Project]:
@@ -103,11 +371,257 @@ async def _all_user_projects(session: AsyncSession, user_id: str) -> list[Projec
     return list(result.scalars().all())
 
 
+async def discover_projects(
+    session: AsyncSession,
+    user_id: str,
+    hints: list[str],
+    limit: int = 5,
+) -> ProjectDiscovery:
+    """Resolve or suggest canonical projects without creating aliases or projects."""
+    clean_hints = tuple(dict.fromkeys(hint.strip() for hint in hints if hint.strip()))
+    if not clean_hints:
+        raise HTTPException(status_code=422, detail="At least one project hint is required")
+
+    projects = await _all_user_projects(session, user_id)
+    projects_by_id = {project.id: project for project in projects}
+    exact_by_project: dict[str, tuple[ProjectResolution, list[str]]] = {}
+    ambiguous_ids: set[str] = set()
+    unresolved_hints: list[str] = []
+    for hint in clean_hints:
+        try:
+            resolution = await resolve_project(
+                session,
+                user_id,
+                hint,
+                project_candidates=projects,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                unresolved_hints.append(hint)
+                continue
+            if exc.status_code == 409 and isinstance(exc.detail, dict):
+                ambiguous_ids.update(str(item) for item in exc.detail.get("candidates", []))
+                continue
+            raise
+        existing = exact_by_project.get(resolution.project.id)
+        if existing is None:
+            exact_by_project[resolution.project.id] = (resolution, [hint])
+        else:
+            existing[1].append(hint)
+
+    exact_ids = set(exact_by_project)
+    conflicting_ids = exact_ids | ambiguous_ids
+    if (
+        len(exact_by_project) == 1
+        and not unresolved_hints
+        and not (ambiguous_ids - exact_ids)
+    ):
+        resolution, resolved_hints = next(iter(exact_by_project.values()))
+        candidate = ProjectCandidate(
+            project=resolution.project,
+            confidence=resolution.confidence,
+            matched_by=(resolution.matched_by,),
+            matched_hints=tuple(resolved_hints),
+        )
+        return ProjectDiscovery(
+            status="resolved",
+            hints=clean_hints,
+            candidates=(candidate,),
+            resolution=resolution,
+        )
+
+    if len(conflicting_ids) > 1:
+        conflict_candidates = tuple(
+            ProjectCandidate(
+                project=projects_by_id[project_id],
+                confidence=(
+                    exact_by_project[project_id][0].confidence
+                    if project_id in exact_by_project
+                    else 0.75
+                ),
+                matched_by=(
+                    (exact_by_project[project_id][0].matched_by,)
+                    if project_id in exact_by_project
+                    else ("ambiguous_exact_match",)
+                ),
+                matched_hints=(
+                    tuple(exact_by_project[project_id][1])
+                    if project_id in exact_by_project
+                    else clean_hints
+                ),
+            )
+            for project_id in sorted(conflicting_ids)
+            if project_id in projects_by_id
+        )
+        return ProjectDiscovery(
+            status="ambiguous",
+            hints=clean_hints,
+            candidates=conflict_candidates[: max(2, limit)],
+        )
+
+    alias_result = await session.execute(
+        select(ProjectAlias).where(
+            ProjectAlias.user_id == user_id,
+            ProjectAlias.status.in_(["active", "proposed"]),
+        )
+    )
+    aliases = list(alias_result.scalars().all())
+    relation_result = await session.execute(
+        select(ProjectRelation).where(
+            ProjectRelation.user_id == user_id,
+            ProjectRelation.status == "active",
+        )
+    )
+    parent_ids_by_child: dict[str, set[str]] = {}
+    for relation in relation_result.scalars().all():
+        parent_ids_by_child.setdefault(relation.child_project_id, set()).add(
+            relation.parent_project_id
+        )
+
+    values_by_project: dict[str, list[tuple[str, str | None, str, float]]] = {
+        project.id: [
+            (project.id, None, "project_id", 1.0),
+            (project.name, None, "project_name", 1.0),
+        ]
+        for project in projects
+    }
+    for project in projects:
+        if project.git_remote:
+            values_by_project[project.id].append(
+                (project.git_remote, "git_remote", "project_git_remote", 1.0)
+            )
+        values_by_project[project.id].extend(
+            (pattern, "path", "project_path_pattern", 1.0)
+            for pattern in project.path_patterns or []
+        )
+    for alias in aliases:
+        if alias.canonical_project_id not in values_by_project:
+            continue
+        confidence_cap = 0.88 if alias.status == "active" else 0.79
+        values_by_project[alias.canonical_project_id].append(
+            (
+                alias.alias_value,
+                alias.alias_type,
+                f"{alias.status}_alias:{alias.alias_type}",
+                confidence_cap,
+            )
+        )
+
+    match_hints = tuple(unresolved_hints) if exact_by_project else clean_hints
+    heuristic_candidates: list[ProjectCandidate] = []
+    for project in projects:
+        best_score = 0.0
+        reasons: set[str] = set()
+        candidate_hints: set[str] = set()
+        for hint in match_hints:
+            hint_best = 0.0
+            hint_reason = ""
+            for value, value_type, source, confidence_cap in values_by_project[project.id]:
+                match = _score_identity_match(hint, value, candidate_type=value_type)
+                if match is None:
+                    continue
+                score, reason = match
+                score = min(score, confidence_cap)
+                if score > hint_best:
+                    hint_best = score
+                    hint_reason = f"{source}:{reason}"
+            workspace_match = _score_workspace_hint(hint, project)
+            if workspace_match is not None and workspace_match[0] > hint_best:
+                hint_best, hint_reason = workspace_match
+            if hint_best:
+                best_score = max(best_score, hint_best)
+                reasons.add(hint_reason)
+                candidate_hints.add(hint)
+        if len(candidate_hints) > 1:
+            best_score = min(0.95, best_score + 0.02)
+        if best_score < 0.68:
+            continue
+        heuristic_candidates.append(
+            ProjectCandidate(
+                project=project,
+                confidence=round(best_score, 3),
+                matched_by=tuple(sorted(reasons)),
+                matched_hints=tuple(hint for hint in match_hints if hint in candidate_hints),
+                workspace_parents=tuple(sorted(parent_ids_by_child.get(project.id, set()))),
+            )
+        )
+
+    heuristic_candidates.sort(key=lambda candidate: (-candidate.confidence, candidate.project.id))
+    if exact_by_project:
+        exact_resolution, resolved_hints = next(iter(exact_by_project.values()))
+        exact_candidate = ProjectCandidate(
+            project=exact_resolution.project,
+            confidence=exact_resolution.confidence,
+            matched_by=(exact_resolution.matched_by,),
+            matched_hints=tuple(resolved_hints),
+            workspace_parents=tuple(
+                sorted(parent_ids_by_child.get(exact_resolution.project.id, set()))
+            ),
+        )
+        strong_conflicts = [
+            candidate
+            for candidate in heuristic_candidates
+            if candidate.project.id != exact_resolution.project.id
+            and candidate.confidence >= AUTO_RESOLVE_CONFIDENCE
+        ]
+        if strong_conflicts:
+            return ProjectDiscovery(
+                status="ambiguous",
+                hints=clean_hints,
+                candidates=tuple([exact_candidate, *strong_conflicts][: max(2, limit)]),
+            )
+        supporting_candidates = [
+            candidate
+            for candidate in heuristic_candidates
+            if candidate.project.id != exact_resolution.project.id
+        ]
+        return ProjectDiscovery(
+            status="resolved",
+            hints=clean_hints,
+            candidates=tuple([exact_candidate, *supporting_candidates][:limit]),
+            resolution=exact_resolution,
+        )
+    if not heuristic_candidates:
+        return ProjectDiscovery(status="not_found", hints=clean_hints, candidates=())
+
+    top = heuristic_candidates[0]
+    runner_up = heuristic_candidates[1].confidence if len(heuristic_candidates) > 1 else 0.0
+    if (
+        top.confidence >= AUTO_RESOLVE_CONFIDENCE
+        and top.confidence - runner_up >= AUTO_RESOLVE_MARGIN
+    ):
+        resolution = ProjectResolution(
+            project=top.project,
+            matched_by=f"discovery:{top.matched_by[0]}",
+            confidence=top.confidence,
+        )
+        return ProjectDiscovery(
+            status="resolved",
+            hints=clean_hints,
+            candidates=tuple(heuristic_candidates[:limit]),
+            resolution=resolution,
+        )
+
+    status: Literal["needs_confirmation", "ambiguous"] = (
+        "ambiguous"
+        if len(heuristic_candidates) > 1 and top.confidence - runner_up < AUTO_RESOLVE_MARGIN
+        else "needs_confirmation"
+    )
+    return ProjectDiscovery(
+        status=status,
+        hints=clean_hints,
+        candidates=tuple(
+            heuristic_candidates[: max(2, limit) if status == "ambiguous" else limit]
+        ),
+    )
+
+
 async def resolve_project(
     session: AsyncSession,
     user_id: str,
     hint: str,
     alias_type: str | None = None,
+    project_candidates: list[Project] | None = None,
 ) -> ProjectResolution:
     """Resolve a hint to one project, refusing ambiguous or cross-user matches."""
     clean_hint = hint.strip()
@@ -170,7 +684,11 @@ async def resolve_project(
                 str(alias.id),
             )
 
-    projects = await _all_user_projects(session, user_id)
+    projects = (
+        project_candidates
+        if project_candidates is not None
+        else await _all_user_projects(session, user_id)
+    )
     fallback: list[tuple[Project, str, float]] = []
     for project in projects:
         if (

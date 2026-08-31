@@ -8,6 +8,7 @@ import httpx
 from echome_mcp import hub_client
 from echome_mcp import runtime as runtime_module
 from echome_mcp import server as server_module
+from echome_mcp.tools import project as project_tools_module
 from echome_mcp.tools.capabilities import capabilities_payload
 
 
@@ -27,6 +28,7 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     assert by_name["echome_project_event_append"].annotations.readOnlyHint is False
     assert by_name["echome_project_event_append"].annotations.idempotentHint is False
     assert by_name["echome_context"].outputSchema is not None
+    assert "project_hints" in by_name["echome_context"].inputSchema["properties"]
     assert by_name["echome_context"].inputSchema["properties"]["policy_mode"]["default"] == "shadow"
     assert (
         by_name["echome_project_context"].inputSchema["properties"]["policy_mode"]["default"]
@@ -52,6 +54,83 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     assert by_name["echome_reflect_submit"].annotations.idempotentHint is True
     assert by_name["echome_reflect_submit"].inputSchema["properties"]["claims"]["minItems"] == 1
     assert "content" not in by_name["echome_reflect_submit"].inputSchema["properties"]
+    assert (
+        by_name["echome_create_project"].inputSchema["properties"]["confirmed_distinct_project"][
+            "default"
+        ]
+        is False
+    )
+    assert (
+        by_name["echome_create_project"].inputSchema["properties"]["confirmed_new_project"][
+            "default"
+        ]
+        is False
+    )
+
+
+def test_create_project_stops_when_discovery_finds_existing_candidate(monkeypatch) -> None:
+    class CandidateClient:
+        async def discover_projects(self, _hints):
+            return {
+                "status": "needs_confirmation",
+                "candidates": [{"project": {"id": "owner/existing"}}],
+            }
+
+        async def get_project(self, _project_id):
+            raise AssertionError("exact lookup must not run after a discovery match")
+
+        async def create_project(self, **_kwargs):
+            raise AssertionError("project must not be created while a candidate exists")
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", CandidateClient)
+
+    result = asyncio.run(
+        project_tools_module.echome_create_project(
+            name="existing-dev",
+            git_remote="git@example.com:owner/existing.git",
+        )
+    )
+
+    assert "未创建项目" in result
+    assert "owner/existing" in result
+
+
+def test_create_project_requires_explicit_new_project_confirmation(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class NewProjectClient:
+        async def discover_projects(self, _hints):
+            return {"status": "not_found", "candidates": []}
+
+        async def get_project(self, _project_id):
+            return None
+
+        async def create_project(self, **kwargs):
+            calls.append(kwargs)
+            return {"id": kwargs["id"], "name": kwargs["name"], "kind": kwargs["kind"]}
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", NewProjectClient)
+
+    blocked = asyncio.run(project_tools_module.echome_create_project(name="new-repo"))
+    created = asyncio.run(
+        project_tools_module.echome_create_project(
+            name="new-repo",
+            confirmed_new_project=True,
+        )
+    )
+
+    assert "需要用户明确确认" in blocked
+    assert calls == [
+        {
+            "id": "new-repo",
+            "name": "new-repo",
+            "description": None,
+            "git_remote": None,
+            "kind": "repository",
+            "path_patterns": [],
+        }
+    ]
+    assert "项目创建成功" in created
 
 
 def test_all_structured_tool_outputs_have_object_root_for_client_compatibility(
@@ -89,6 +168,33 @@ def test_project_context_returns_text_and_structured_content(monkeypatch) -> Non
     assert json.loads(result.content[0].text) == payload
 
 
+def test_project_resolution_envelope_is_not_a_protocol_error(monkeypatch) -> None:
+    payload = {
+        "schema_version": "echome.context.v1",
+        "scope": "project_resolution",
+        "project_resolution": {
+            "schema_version": "echome.project-resolution.v1",
+            "status": "not_found",
+            "next_actions": [{"action": "confirm_then_create_project"}],
+        },
+        "runtime": {"resolution_required": True},
+    }
+
+    async def fake_context(**_kwargs) -> str:
+        return json.dumps(payload)
+
+    monkeypatch.setattr(server_module, "echome_context", fake_context)
+    result = asyncio.run(
+        server_module.call_tool(
+            "echome_context",
+            {"task": "inspect unknown project", "project_hint": "unknown"},
+        )
+    )
+
+    assert result.isError is False
+    assert result.structuredContent == payload
+
+
 def test_mcp_context_policy_and_sleep_schema_are_forwarded(monkeypatch) -> None:
     captured: dict[str, dict] = {}
 
@@ -111,7 +217,11 @@ def test_mcp_context_policy_and_sleep_schema_are_forwarded(monkeypatch) -> None:
     asyncio.run(
         server_module.call_tool(
             "echome_context",
-            {"task": "check reliability", "policy_mode": "enforce"},
+            {
+                "task": "check reliability",
+                "project_hints": ["repo", "/srv/repo"],
+                "policy_mode": "enforce",
+            },
         )
     )
     asyncio.run(
@@ -123,6 +233,7 @@ def test_mcp_context_policy_and_sleep_schema_are_forwarded(monkeypatch) -> None:
     asyncio.run(server_module.call_tool("echome_sleep_candidates", {}))
 
     assert captured["context"]["policy_mode"] == "enforce"
+    assert captured["context"]["project_hints"] == ["repo", "/srv/repo"]
     assert captured["project_context"]["policy_mode"] == "shadow"
     assert captured["sleep_candidates"]["plan_schema_version"] == "memory_sleep_plan.v2"
 
@@ -242,6 +353,101 @@ def test_empty_runtime_exception_still_has_diagnostic_message() -> None:
     assert payload["error"]["request_id"]
 
 
+def test_runtime_error_preserves_hub_project_error_code_and_action() -> None:
+    request = httpx.Request("POST", "http://hub/api/v1/context")
+    response = httpx.Response(
+        404,
+        request=request,
+        json={
+            "schema_version": "echome.error.v1",
+            "error": {
+                "code": "PROJECT_NOT_FOUND",
+                "message": "No canonical project matched",
+                "suggested_action": "Retry with a candidate project ID.",
+            },
+        },
+    )
+
+    payload = runtime_module.error_contract(
+        httpx.HTTPStatusError("not found", request=request, response=response)
+    )
+
+    assert payload["error"]["code"] == "PROJECT_NOT_FOUND"
+    assert payload["error"]["suggested_action"] == "Retry with a candidate project ID."
+
+
+def test_unified_context_forwards_all_local_project_identity_signals(monkeypatch) -> None:
+    captured: dict = {}
+
+    class SuccessfulClient:
+        cache_namespace = "test-user"
+        cache_enabled = False
+
+        async def unified_context(self, data):
+            captured.update(data)
+            return {"schema_version": "echome.context.v1", "runtime": {"degraded": False}}
+
+    async def local_project_hints():
+        return ["git@example.com:owner/repo.git", "/srv/repo"]
+
+    monkeypatch.setattr(runtime_module, "_local_project_hints", local_project_hints)
+    monkeypatch.setattr(runtime_module, "MCPHubClient", SuccessfulClient)
+
+    asyncio.run(runtime_module.echome_context("inspect project"))
+
+    assert captured["project_hint"] == "git@example.com:owner/repo.git"
+    assert captured["project_hints"] == ["/srv/repo"]
+
+
+def test_local_project_hints_continue_to_repository_root_without_origin(monkeypatch) -> None:
+    class FakeProcess:
+        def __init__(self, stdout: bytes, returncode: int) -> None:
+            self._stdout = stdout
+            self.returncode = returncode
+
+        async def communicate(self):
+            return self._stdout, b""
+
+    async def create_process(_git, *arguments, **_kwargs):
+        if arguments[0] == "config":
+            return FakeProcess(b"", 1)
+        return FakeProcess(b"/srv/repo\n", 0)
+
+    monkeypatch.setattr(runtime_module.asyncio, "create_subprocess_exec", create_process)
+
+    hints = asyncio.run(runtime_module._local_project_hints())
+
+    assert hints == ["/srv/repo"]
+
+
+def test_unresolved_project_context_is_not_written_as_last_known_good(monkeypatch) -> None:
+    class ResolutionClient:
+        cache_namespace = "test-user"
+        cache_enabled = True
+
+        async def unified_context(self, _data):
+            return {
+                "schema_version": "echome.context.v1",
+                "scope": "project_resolution",
+                "runtime": {"degraded": False, "resolution_required": True},
+            }
+
+    async def local_project_hints():
+        return ["unknown-project"]
+
+    def unexpected_cache_write(*_args):
+        raise AssertionError("unresolved project recovery must not be cached")
+
+    monkeypatch.setattr(runtime_module, "_local_project_hints", local_project_hints)
+    monkeypatch.setattr(runtime_module, "MCPHubClient", ResolutionClient)
+    monkeypatch.setattr(runtime_module, "_cache_encryption_key", lambda: b"0" * 32)
+    monkeypatch.setattr(runtime_module, "_write_cache", unexpected_cache_write)
+
+    payload = json.loads(asyncio.run(runtime_module.echome_context("inspect project")))
+
+    assert payload["scope"] == "project_resolution"
+
+
 def test_unified_context_returns_cached_read_only_result_on_hub_failure(
     monkeypatch, tmp_path
 ) -> None:
@@ -267,11 +473,11 @@ def test_unified_context_returns_cached_read_only_result_on_hub_failure(
         async def unified_context(self, _data):
             raise httpx.ConnectError("offline")
 
-    async def no_project_hint():
-        return None
+    async def no_project_hints():
+        return []
 
     monkeypatch.setenv("ECHOME_CONTEXT_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr(runtime_module, "_local_project_hint", no_project_hint)
+    monkeypatch.setattr(runtime_module, "_local_project_hints", no_project_hints)
     monkeypatch.setattr(runtime_module, "MCPHubClient", SuccessfulClient)
     first = json.loads(asyncio.run(runtime_module.echome_context("Git workflow")))
     cache_text = next(tmp_path.glob("*.json")).read_text()
@@ -306,11 +512,11 @@ def test_unified_context_does_not_use_cache_for_auth_failure(monkeypatch, tmp_pa
             response = httpx.Response(401, request=request, json={"detail": "expired"})
             raise httpx.HTTPStatusError("expired", request=request, response=response)
 
-    async def no_project_hint():
-        return None
+    async def no_project_hints():
+        return []
 
     monkeypatch.setenv("ECHOME_CONTEXT_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr(runtime_module, "_local_project_hint", no_project_hint)
+    monkeypatch.setattr(runtime_module, "_local_project_hints", no_project_hints)
     monkeypatch.setattr(runtime_module, "MCPHubClient", SuccessfulClient)
     asyncio.run(runtime_module.echome_context("Git workflow"))
     monkeypatch.setattr(runtime_module, "MCPHubClient", UnauthorizedClient)
@@ -331,13 +537,13 @@ def test_cache_write_failure_does_not_replace_online_context(monkeypatch) -> Non
         async def unified_context(self, _data):
             return payload
 
-    async def no_project_hint():
-        return None
+    async def no_project_hints():
+        return []
 
     def fail_cache(*_args):
         raise OSError("read-only cache")
 
-    monkeypatch.setattr(runtime_module, "_local_project_hint", no_project_hint)
+    monkeypatch.setattr(runtime_module, "_local_project_hints", no_project_hints)
     monkeypatch.setattr(runtime_module, "MCPHubClient", SuccessfulClient)
     monkeypatch.setattr(runtime_module, "_cache_encryption_key", lambda: b"0" * 32)
     monkeypatch.setattr(runtime_module, "_write_cache", fail_cache)
@@ -386,6 +592,7 @@ def test_explicit_core_profile_keeps_graph_reliability(monkeypatch) -> None:
         "echome_context_outcome",
         "echome_memory_explain",
         "echome_remember",
+        "echome_create_project",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
     }

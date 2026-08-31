@@ -10,7 +10,7 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v6",
+    "capabilities_version": "echome.capabilities.v7",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
@@ -39,6 +39,11 @@ CAPABILITIES: dict[str, Any] = {
         },
     ],
     "project_workflow": [
+        {
+            "step": "resolve",
+            "tool": "echome_context",
+            "when": "Send all known project identity signals. Follow project_resolution retry actions instead of stopping after an unmatched hint.",
+        },
         {
             "step": "preflight",
             "tool": "echome_project_preflight",
@@ -178,6 +183,13 @@ CAPABILITIES: dict[str, Any] = {
                 "default_status": "proposed",
             },
         ],
+        "project_identity": [
+            {
+                "tool": "echome_create_project",
+                "when": "Only after echome_context returns project_resolution.status=not_found and the user explicitly confirms this is a new project.",
+                "mutates_state": True,
+            },
+        ],
         "write": [
             {
                 "tool": "echome_memory_feedback",
@@ -231,6 +243,7 @@ CAPABILITIES: dict[str, Any] = {
         "Follow the completion_contract returned by a recorded non-shadow context run. Outcomes are append-only; use no_signal instead of inventing success or failure, and set policy_effect only when explicit.",
         "Context reliability defaults to shadow mode: decisions are observable but source memories and constraints are never rewritten. Enforce mode also requires an explicit Hub feature flag.",
         "Before any enforce canary, call echome_runtime_health with include_policy_readiness=true. eligible_for_canary never enables enforce automatically.",
+        "When project_resolution requires action, retry with a returned canonical ID; create a project only after status=not_found and explicit user confirmation.",
     ],
 }
 
@@ -269,8 +282,13 @@ def capabilities_payload() -> dict[str, Any]:
         {
             "step": "context",
             "tool": "echome_context",
-            "when": "Pass a project hint and changed paths when project impact matters.",
-        }
+            "when": "Pass project hints and changed paths when project impact matters; follow structured retry actions when identity is unresolved.",
+        },
+        {
+            "step": "create",
+            "tool": "echome_create_project",
+            "when": "Only after project_resolution.status=not_found and explicit user confirmation.",
+        },
     ]
     payload["tool_groups"] = {
         group: [entry for entry in entries if entry["tool"] in CORE_TOOL_NAMES]
@@ -286,6 +304,7 @@ def capabilities_payload() -> dict[str, Any]:
         "Use echome_remember only for durable context and never store secrets.",
         "When echome_context returns a completion_contract, close that recorded run exactly once; use no_signal when usefulness is unknown.",
         "Record memory feedback only when usefulness or a correction is clear; missing feedback is unknown.",
+        "If project resolution is ambiguous, retry echome_context with a returned canonical ID. Create only after not_found and explicit confirmation.",
     ]
     return payload
 
@@ -303,6 +322,8 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
             "Use EchoMe MCP as the memory and project-context layer."
             f"{project_hint}\n\n"
             "Call echome_context first with the current task, project hint, and changed paths when known. "
+            "If it returns project_resolution, retry with a candidate canonical ID; call echome_create_project "
+            "only after status=not_found and explicit user confirmation. "
             "Use echome_memory_explain before relying on a key memory whose provenance or freshness matters. "
             "When echome_context returns a completion_contract, call echome_context_outcome exactly once "
             "at task end and use no_signal when usefulness is unknown. Record memory feedback only when its "
