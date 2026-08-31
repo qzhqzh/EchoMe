@@ -81,6 +81,8 @@ MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `messag
 - `needs_confirmation` / `ambiguous`：返回 canonical ID 候选和可直接重试的参数，Agent 必须继续选择或询问。
 - `not_found`：返回 `echome_create_project` 参数预案；只有用户明确确认是新项目后才允许创建。
 - `scope=project_resolution` 是正常 MCP 结果，不设置 protocol error，也不进入 last-known-good 缓存。
+- 因为尚未生成可使用的 context，该结果不返回 completion contract；Hub 可将诊断 run 记为
+  `failed/PROJECT_RESOLUTION_REQUIRED`，与传输或编译错误分开统计。
 
 v1.7 延续 `echome_context` 与 `echome_project_context` 的 `policy_mode`：
 

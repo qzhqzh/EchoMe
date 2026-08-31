@@ -1143,6 +1143,11 @@ async def list_tools() -> list[Tool]:
                         "items": {"type": "string"},
                         "description": "用于后续确定性识别的路径模式",
                     },
+                    "confirmed_new_project": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "仅当用户明确确认这是新项目时设为 true；否则不会创建",
+                    },
                     "confirmed_distinct_project": {
                         "type": "boolean",
                         "default": False,
@@ -1492,6 +1497,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 git_remote=arguments.get("git_remote"),
                 kind=arguments.get("kind", "repository"),
                 path_patterns=arguments.get("path_patterns"),
+                confirmed_new_project=arguments.get("confirmed_new_project", False),
                 confirmed_distinct_project=arguments.get("confirmed_distinct_project", False),
             )
         elif name == "echome_sleep_candidates":

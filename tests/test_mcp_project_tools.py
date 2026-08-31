@@ -55,9 +55,15 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     assert by_name["echome_reflect_submit"].inputSchema["properties"]["claims"]["minItems"] == 1
     assert "content" not in by_name["echome_reflect_submit"].inputSchema["properties"]
     assert (
-        by_name["echome_create_project"].inputSchema["properties"][
-            "confirmed_distinct_project"
-        ]["default"]
+        by_name["echome_create_project"].inputSchema["properties"]["confirmed_distinct_project"][
+            "default"
+        ]
+        is False
+    )
+    assert (
+        by_name["echome_create_project"].inputSchema["properties"]["confirmed_new_project"][
+            "default"
+        ]
         is False
     )
 
@@ -87,6 +93,44 @@ def test_create_project_stops_when_discovery_finds_existing_candidate(monkeypatc
 
     assert "未创建项目" in result
     assert "owner/existing" in result
+
+
+def test_create_project_requires_explicit_new_project_confirmation(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class NewProjectClient:
+        async def discover_projects(self, _hints):
+            return {"status": "not_found", "candidates": []}
+
+        async def get_project(self, _project_id):
+            return None
+
+        async def create_project(self, **kwargs):
+            calls.append(kwargs)
+            return {"id": kwargs["id"], "name": kwargs["name"], "kind": kwargs["kind"]}
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", NewProjectClient)
+
+    blocked = asyncio.run(project_tools_module.echome_create_project(name="new-repo"))
+    created = asyncio.run(
+        project_tools_module.echome_create_project(
+            name="new-repo",
+            confirmed_new_project=True,
+        )
+    )
+
+    assert "需要用户明确确认" in blocked
+    assert calls == [
+        {
+            "id": "new-repo",
+            "name": "new-repo",
+            "description": None,
+            "git_remote": None,
+            "kind": "repository",
+            "path_patterns": [],
+        }
+    ]
+    assert "项目创建成功" in created
 
 
 def test_all_structured_tool_outputs_have_object_root_for_client_compatibility(

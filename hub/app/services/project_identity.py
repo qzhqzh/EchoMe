@@ -382,13 +382,22 @@ async def discover_projects(
     if not clean_hints:
         raise HTTPException(status_code=422, detail="At least one project hint is required")
 
+    projects = await _all_user_projects(session, user_id)
+    projects_by_id = {project.id: project for project in projects}
     exact_by_project: dict[str, tuple[ProjectResolution, list[str]]] = {}
     ambiguous_ids: set[str] = set()
+    unresolved_hints: list[str] = []
     for hint in clean_hints:
         try:
-            resolution = await resolve_project(session, user_id, hint)
+            resolution = await resolve_project(
+                session,
+                user_id,
+                hint,
+                project_candidates=projects,
+            )
         except HTTPException as exc:
             if exc.status_code == 404:
+                unresolved_hints.append(hint)
                 continue
             if exc.status_code == 409 and isinstance(exc.detail, dict):
                 ambiguous_ids.update(str(item) for item in exc.detail.get("candidates", []))
@@ -402,7 +411,11 @@ async def discover_projects(
 
     exact_ids = set(exact_by_project)
     conflicting_ids = exact_ids | ambiguous_ids
-    if len(exact_by_project) == 1 and not (ambiguous_ids - exact_ids):
+    if (
+        len(exact_by_project) == 1
+        and not unresolved_hints
+        and not (ambiguous_ids - exact_ids)
+    ):
         resolution, resolved_hints = next(iter(exact_by_project.values()))
         candidate = ProjectCandidate(
             project=resolution.project,
@@ -417,8 +430,6 @@ async def discover_projects(
             resolution=resolution,
         )
 
-    projects = await _all_user_projects(session, user_id)
-    projects_by_id = {project.id: project for project in projects}
     if len(conflicting_ids) > 1:
         conflict_candidates = tuple(
             ProjectCandidate(
@@ -445,7 +456,7 @@ async def discover_projects(
         return ProjectDiscovery(
             status="ambiguous",
             hints=clean_hints,
-            candidates=conflict_candidates[:limit],
+            candidates=conflict_candidates[: max(2, limit)],
         )
 
     alias_result = await session.execute(
@@ -496,12 +507,13 @@ async def discover_projects(
             )
         )
 
+    match_hints = tuple(unresolved_hints) if exact_by_project else clean_hints
     heuristic_candidates: list[ProjectCandidate] = []
     for project in projects:
         best_score = 0.0
         reasons: set[str] = set()
         candidate_hints: set[str] = set()
-        for hint in clean_hints:
+        for hint in match_hints:
             hint_best = 0.0
             hint_reason = ""
             for value, value_type, source, confidence_cap in values_by_project[project.id]:
@@ -529,13 +541,46 @@ async def discover_projects(
                 project=project,
                 confidence=round(best_score, 3),
                 matched_by=tuple(sorted(reasons)),
-                matched_hints=tuple(hint for hint in clean_hints if hint in candidate_hints),
+                matched_hints=tuple(hint for hint in match_hints if hint in candidate_hints),
                 workspace_parents=tuple(sorted(parent_ids_by_child.get(project.id, set()))),
             )
         )
 
     heuristic_candidates.sort(key=lambda candidate: (-candidate.confidence, candidate.project.id))
-    heuristic_candidates = heuristic_candidates[:limit]
+    if exact_by_project:
+        exact_resolution, resolved_hints = next(iter(exact_by_project.values()))
+        exact_candidate = ProjectCandidate(
+            project=exact_resolution.project,
+            confidence=exact_resolution.confidence,
+            matched_by=(exact_resolution.matched_by,),
+            matched_hints=tuple(resolved_hints),
+            workspace_parents=tuple(
+                sorted(parent_ids_by_child.get(exact_resolution.project.id, set()))
+            ),
+        )
+        strong_conflicts = [
+            candidate
+            for candidate in heuristic_candidates
+            if candidate.project.id != exact_resolution.project.id
+            and candidate.confidence >= AUTO_RESOLVE_CONFIDENCE
+        ]
+        if strong_conflicts:
+            return ProjectDiscovery(
+                status="ambiguous",
+                hints=clean_hints,
+                candidates=tuple([exact_candidate, *strong_conflicts][: max(2, limit)]),
+            )
+        supporting_candidates = [
+            candidate
+            for candidate in heuristic_candidates
+            if candidate.project.id != exact_resolution.project.id
+        ]
+        return ProjectDiscovery(
+            status="resolved",
+            hints=clean_hints,
+            candidates=tuple([exact_candidate, *supporting_candidates][:limit]),
+            resolution=exact_resolution,
+        )
     if not heuristic_candidates:
         return ProjectDiscovery(status="not_found", hints=clean_hints, candidates=())
 
@@ -553,7 +598,7 @@ async def discover_projects(
         return ProjectDiscovery(
             status="resolved",
             hints=clean_hints,
-            candidates=tuple(heuristic_candidates),
+            candidates=tuple(heuristic_candidates[:limit]),
             resolution=resolution,
         )
 
@@ -565,7 +610,9 @@ async def discover_projects(
     return ProjectDiscovery(
         status=status,
         hints=clean_hints,
-        candidates=tuple(heuristic_candidates),
+        candidates=tuple(
+            heuristic_candidates[: max(2, limit) if status == "ambiguous" else limit]
+        ),
     )
 
 
@@ -574,6 +621,7 @@ async def resolve_project(
     user_id: str,
     hint: str,
     alias_type: str | None = None,
+    project_candidates: list[Project] | None = None,
 ) -> ProjectResolution:
     """Resolve a hint to one project, refusing ambiguous or cross-user matches."""
     clean_hint = hint.strip()
@@ -636,7 +684,11 @@ async def resolve_project(
                 str(alias.id),
             )
 
-    projects = await _all_user_projects(session, user_id)
+    projects = (
+        project_candidates
+        if project_candidates is not None
+        else await _all_user_projects(session, user_id)
+    )
     fallback: list[tuple[Project, str, float]] = []
     for project in projects:
         if (

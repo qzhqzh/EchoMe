@@ -44,6 +44,7 @@ async def echome_create_project(
     git_remote: str | None = None,
     kind: str = "repository",
     path_patterns: list[str] | None = None,
+    confirmed_new_project: bool = False,
     confirmed_distinct_project: bool = False,
 ) -> str:
     """Create a new project.
@@ -55,6 +56,7 @@ async def echome_create_project(
         git_remote: Git 远程仓库地址（可选）
         kind: repository 或 workspace
         path_patterns: 可识别该项目的路径模式
+        confirmed_new_project: 用户明确确认这是新项目后才允许创建
         confirmed_distinct_project: 用户确认候选均为其他项目后允许继续创建
 
     Returns:
@@ -99,6 +101,12 @@ async def echome_create_project(
             return f"项目 '{canonical_id}' 已存在。无需重复创建。"
     except Exception as exc:
         raise RuntimeError(f"创建前项目检查失败: {exc}") from exc
+
+    if not confirmed_new_project:
+        return (
+            "未创建项目：需要用户明确确认这是一个新项目。"
+            "确认后请设置 confirmed_new_project=true；该确认不会绕过候选冲突检查。"
+        )
 
     # 创建项目
     try:

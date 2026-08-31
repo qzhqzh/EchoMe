@@ -86,7 +86,7 @@ async def test_discovery_refuses_to_guess_between_environment_variants() -> None
         "app.services.project_identity.resolve_project",
         new=AsyncMock(side_effect=HTTPException(status_code=404, detail="Project not found")),
     ):
-        discovery = await discover_projects(session, "user", ["client-local"])
+        discovery = await discover_projects(session, "user", ["client-local"], limit=1)
 
     assert discovery.status == "ambiguous"
     assert discovery.resolution is None
@@ -236,6 +236,54 @@ async def test_discovery_refuses_conflicting_exact_signals() -> None:
     assert {candidate.project.id for candidate in discovery.candidates} == {
         "remote-project",
         "path-project",
+    }
+
+
+@pytest.mark.asyncio
+async def test_discovery_detects_strong_conflict_after_one_exact_signal() -> None:
+    old_remote = Project(
+        id="old-project",
+        user_id="user",
+        name="old-project",
+        kind="repository",
+        path_patterns=[],
+    )
+    current_path = Project(
+        id="current",
+        user_id="user",
+        name="current",
+        kind="repository",
+        path_patterns=[],
+    )
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            _scalar_result([old_remote, current_path]),
+            _scalar_result([]),
+            _scalar_result([]),
+        ]
+    )
+
+    with patch(
+        "app.services.project_identity.resolve_project",
+        new=AsyncMock(
+            side_effect=[
+                ProjectResolution(old_remote, "project_git_remote", 0.95),
+                HTTPException(status_code=404, detail="Project not found"),
+            ]
+        ),
+    ):
+        discovery = await discover_projects(
+            session,
+            "user",
+            ["git@example.com:owner/old-project.git", "/srv/current-dev"],
+        )
+
+    assert discovery.status == "ambiguous"
+    assert discovery.resolution is None
+    assert {candidate.project.id for candidate in discovery.candidates} == {
+        "old-project",
+        "current",
     }
 
 

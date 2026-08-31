@@ -556,6 +556,8 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 `project_hints` 最多接收 10 个额外身份信号。精确解析失败后，Hub 会执行无向量、可解释的候选发现：
 唯一高置信候选只用于本次只读 context；歧义或无候选时返回 `scope=project_resolution`、候选及
 `next_actions`，而不是终止性 404。该流程不会自动写 alias 或创建项目。
+未解析请求没有生成可用 context，因此不返回 `completion_contract`；启用 `record_run` 时会以
+`error_code=PROJECT_RESOLUTION_REQUIRED` 记录诊断 run，便于区分身份恢复与 Hub/编译故障。
 
 `policy_mode` 默认为 `shadow`，会返回 reliability/intervention 与 would-exclude trace，但不改变结果。
 `enforce` 只有在服务端 feature flag 开启时生效，否则回退 shadow。
