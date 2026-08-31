@@ -121,7 +121,10 @@ ERROR_OUTPUT_SCHEMA = {
 
 def _with_error_output(success_schema: dict[str, Any]) -> dict[str, Any]:
     """Allow structured MCP failures without violating a strict success schema."""
-    return {"anyOf": [success_schema, ERROR_OUTPUT_SCHEMA]}
+    return {
+        "type": "object",
+        "anyOf": [success_schema, ERROR_OUTPUT_SCHEMA],
+    }
 
 
 @server.list_tools()

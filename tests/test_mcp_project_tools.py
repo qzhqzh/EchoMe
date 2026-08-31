@@ -17,10 +17,12 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     by_name = {tool.name: tool for tool in tools}
 
     assert by_name["echome_project_context"].outputSchema is not None
+    assert by_name["echome_project_context"].outputSchema["type"] == "object"
     assert "anyOf" in by_name["echome_project_context"].outputSchema
     assert by_name["echome_project_context"].annotations.readOnlyHint is False
     assert by_name["echome_project_context"].annotations.idempotentHint is False
     assert by_name["echome_project_preflight"].outputSchema is not None
+    assert by_name["echome_project_preflight"].outputSchema["type"] == "object"
     assert "anyOf" in by_name["echome_project_preflight"].outputSchema
     assert by_name["echome_project_event_append"].annotations.readOnlyHint is False
     assert by_name["echome_project_event_append"].annotations.idempotentHint is False
@@ -50,6 +52,16 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
     assert by_name["echome_reflect_submit"].annotations.idempotentHint is True
     assert by_name["echome_reflect_submit"].inputSchema["properties"]["claims"]["minItems"] == 1
     assert "content" not in by_name["echome_reflect_submit"].inputSchema["properties"]
+
+
+def test_all_structured_tool_outputs_have_object_root_for_client_compatibility(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ECHOME_MCP_PROFILE", "full")
+
+    for tool in asyncio.run(server_module.list_tools()):
+        if tool.outputSchema is not None:
+            assert tool.outputSchema.get("type") == "object", tool.name
 
 
 def test_project_context_returns_text_and_structured_content(monkeypatch) -> None:
