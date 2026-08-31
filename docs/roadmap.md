@@ -10,7 +10,7 @@
 代码实现已经超过原始 Phase 0/1 计划，当前仓库处于早期可用发布态：
 
 - **当前稳定版本**：`echome v1.8.0`
-- **当前生产 schema**：revision `017`
+- **当前生产 schema**：revision `018`
 - **当前策略状态**：Context Policy 保持 shadow；readiness 只用于 canary 资格判断，不能自动开启 enforce
 - **Hub**：已实现认证、多用户、memories CRUD/search、projects、sync/render、review、market、admin、embedding 接入和 rate limit
 - **CLI**：已实现 `init/login/add/list/search/sync/review/market/doctor/seed/update/status/version`；文件式 local-vault `push/pull` 仍是保留接口，会明确返回未实现

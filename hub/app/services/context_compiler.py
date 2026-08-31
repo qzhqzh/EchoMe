@@ -31,7 +31,7 @@ from app.services.content_safety import find_sensitive_content
 from app.services.context_completion import completion_contract
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.embedding import get_embedding, get_embeddings
-from app.services.project_identity import project_scope_ids
+from app.services.project_identity import ProjectContextScope, project_context_scope
 from app.services.reflection import (
     REFLECTION_SCHEMA_VERSION,
     SOURCE_ID_KEYS,
@@ -208,6 +208,25 @@ def _memory_payload(item: Memory) -> dict[str, Any]:
         "status": item.status,
         "updated_at": item.updated_at.isoformat(),
     }
+
+
+def _memory_scope_tier(
+    item: Memory,
+    context_scope: ProjectContextScope,
+) -> tuple[int, str]:
+    scoped_projects = set(item.scope_projects or [])
+    exact_scope_ids = set(
+        context_scope.scope_ids_by_project.get(context_scope.exact_project_id, ())
+    )
+    if scoped_projects & exact_scope_ids:
+        return 3, "exact_project"
+    for project_id in context_scope.inherited_project_ids:
+        if scoped_projects & set(context_scope.scope_ids_by_project.get(project_id, ())):
+            return 2, "inherited_workspace"
+    for project_id in context_scope.selected_child_project_ids:
+        if scoped_projects & set(context_scope.scope_ids_by_project.get(project_id, ())):
+            return 2, "selected_child"
+    return 0, "global"
 
 
 def _artifact_payload(item: ProjectArtifact) -> dict[str, Any]:
@@ -479,7 +498,20 @@ async def compile_project_context(
         if _is_temporally_active(item, valid_at=valid_at, as_of=as_of)
     ]
 
-    scope_ids = await project_scope_ids(session, user_id, project.id)
+    context_scope = await project_context_scope(
+        session,
+        user_id,
+        project,
+        body.changed_paths,
+    )
+    scope_ids = list(context_scope.memory_scope_ids)
+    exclusion_scope_ids = set(
+        context_scope.scope_ids_by_project.get(context_scope.exact_project_id, ())
+    )
+    for child_project_id in context_scope.selected_child_project_ids:
+        exclusion_scope_ids.update(
+            context_scope.scope_ids_by_project.get(child_project_id, ())
+        )
     memory_filter = [
         Memory.user_id == user_id,
         Memory.status.in_(ACTIVE_MEMORY_STATUSES),
@@ -487,11 +519,16 @@ async def compile_project_context(
             Memory.scope_global.is_(True),
             *(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids),
         ),
+        *(
+            ~Memory.scope_exclude.contains([scope_id])
+            for scope_id in sorted(exclusion_scope_ids)
+        ),
     ]
     if body.as_of:
         memory_filter.append(Memory.updated_at <= body.as_of)
     memory_result = await session.execute(select(Memory).where(*memory_filter))
     memories = list(memory_result.scalars().all())
+    memory_scope_tiers = {item.id: _memory_scope_tier(item, context_scope) for item in memories}
 
     chunk_result = await session.execute(
         select(ArtifactChunk).where(
@@ -526,6 +563,16 @@ async def compile_project_context(
         )
 
     rankings: dict[str, list[str]] = {}
+    _add_rank(
+        rankings,
+        "project_scope_memory",
+        [
+            (tier * 100 + item.priority, f"memory:{item.id}")
+            for item in memories
+            for tier, _label in [memory_scope_tiers[item.id]]
+            if tier > 0
+        ],
+    )
     for kind in ("constraint", "memory", "chunk"):
         _add_rank(
             rankings,
@@ -693,6 +740,9 @@ async def compile_project_context(
         candidate.reasons = reasons.get(key, [])
         if key in semantic_scores:
             candidate.reasons.append(f"semantic_similarity:{semantic_scores[key]:.3f}")
+        if candidate.kind == "memory":
+            _tier, label = memory_scope_tiers[uuid.UUID(candidate.payload["id"])]
+            candidate.reasons.append(f"scope:{label}")
         if candidate.kind == "constraint":
             status = candidate.payload["status"]
             candidate.reasons.append(f"status:{status}")
@@ -946,10 +996,20 @@ async def compile_project_context(
             item.embedding is None and bool(find_sensitive_content(constraint_document(item)))
             for item in constraints
         ),
+        "project_scopes": {
+            "exact": context_scope.exact_project_id,
+            "inherited": list(context_scope.inherited_project_ids),
+            "selected_children": list(context_scope.selected_child_project_ids),
+        },
     }
     run_id = uuid.uuid4() if body.record_run else None
     pack: dict[str, Any] = {
-        "project": {"id": project.id, "name": project.name, "description": project.description},
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "kind": project.kind,
+            "description": project.description,
+        },
         "task": body.task,
         "mode": body.mode,
         "must_include": [

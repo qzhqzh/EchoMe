@@ -117,6 +117,7 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
     name: Mapped[str] = mapped_column(String(256), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="repository")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     git_remote: Mapped[str | None] = mapped_column(String(512), nullable=True)
     path_patterns: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -126,6 +127,13 @@ class Project(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('repository','workspace')",
+            name="valid_project_kind",
+        ),
     )
 
 
