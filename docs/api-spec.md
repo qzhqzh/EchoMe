@@ -301,6 +301,7 @@ CLI 批量上传本地 vault 到 Hub。
 {
   "id": "qzhqzh/EchoMe",
   "name": "EchoMe",
+  "kind": "repository",
   "description": "跨 AI 个人上下文同步层",
   "git_remote": "git@github.com:qzhqzh/EchoMe.git",
   "path_patterns": ["~/projects/EchoMe", "~/work/echome*"]
@@ -318,6 +319,9 @@ CLI 批量上传本地 vault 到 Hub。
 ### DELETE /projects/{id}
 
 删除项目。
+
+`kind` 可为 `repository`（默认，兼容旧客户端）或 `workspace`。存在 composition
+历史的项目不可删除；存在 active relation 时必须先归档 relation，才能更改 kind。
 
 ---
 
@@ -572,6 +576,19 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 Alias 不搬迁或覆盖历史数据。读路径可展开 active 的历史 scope；写路径把已知 active alias 统一为
 canonical project，无法解析的旧 scope 为兼容历史客户端而原样保留。
 歧义解析返回 `409`，未知项目返回 `404`，跨用户 alias 不可见。
+
+### Composite Project Workspaces
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/projects/relations` | 查询 active workspace/repository 关系，可按 `project_id` 过滤 |
+| `POST` | `/api/v1/projects/relations` | 创建 `workspace --contains--> repository` 关系 |
+| `PATCH` | `/api/v1/projects/relations/{relation_id}` | 归档或重新激活关系，保留历史 |
+
+Repository context 会组合 global、父 workspace 和当前 repository 的记忆，但不会加载 sibling
+repository。Workspace context 默认只加载自身记忆；仅当 `changed_paths` 命中子项目的
+`path_patterns` 或 active path alias 时，才加载该子项目记忆。Project Knowledge 的 constraint、
+artifact、chunk 和 view 仍保持 exact-project scope。
 
 ### Context Outcomes
 

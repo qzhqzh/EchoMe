@@ -14,7 +14,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Project
-from app.models.project_knowledge import ProjectAlias
+from app.models.project_knowledge import ProjectAlias, ProjectRelation
 
 ALIAS_TYPES = {"legacy_id", "name", "git_remote", "path", "client_hint"}
 HISTORY_SCOPE_ALIAS_TYPES = {"legacy_id", "name", "client_hint"}
@@ -37,6 +37,18 @@ class ProjectResolution:
             "confidence": self.confidence,
             "alias_id": self.alias_id,
         }
+
+
+@dataclass(frozen=True)
+class ProjectContextScope:
+    """Canonical projects and historical IDs eligible for one context request."""
+
+    exact_project_id: str
+    canonical_project_ids: tuple[str, ...]
+    memory_scope_ids: tuple[str, ...]
+    inherited_project_ids: tuple[str, ...]
+    selected_child_project_ids: tuple[str, ...]
+    scope_ids_by_project: dict[str, tuple[str, ...]]
 
 
 def _normalized_text(value: str) -> str:
@@ -215,6 +227,151 @@ async def project_scope_ids(
     values = {canonical_project_id}
     values.update(item.alias_value for item in result.scalars().all())
     return sorted(values)
+
+
+def _relative_path_pattern(pattern: str) -> str | None:
+    wildcard_indexes = [pattern.find(marker) for marker in ("*", "?", "[")]
+    wildcard_indexes = [index for index in wildcard_indexes if index >= 0]
+    prefix_end = min(wildcard_indexes, default=len(pattern))
+    prefix = pattern[:prefix_end].rstrip("/")
+    basename = posixpath.basename(prefix)
+    if not basename:
+        return None
+    return f"{basename}{pattern[len(prefix) :]}"
+
+
+def project_matches_changed_paths(
+    project: Project,
+    path_aliases: list[str],
+    changed_paths: list[str],
+) -> bool:
+    """Match absolute or workspace-relative changed paths to one child project."""
+    normalized_paths: list[str] = []
+    for path in changed_paths:
+        try:
+            normalized_paths.append(normalize_project_hint(path, "path"))
+        except ValueError:
+            continue
+    if not normalized_paths:
+        return False
+
+    roots: list[str] = []
+    for value in path_aliases:
+        try:
+            roots.append(normalize_project_hint(value, "path").rstrip("/"))
+        except ValueError:
+            continue
+    patterns: list[str] = []
+    for value in project.path_patterns or []:
+        try:
+            patterns.append(normalize_project_hint(value, "path"))
+        except ValueError:
+            continue
+
+    for path in normalized_paths:
+        for root in roots:
+            if path == root or path.startswith(f"{root}/"):
+                return True
+            if not path.startswith("/"):
+                basename = posixpath.basename(root)
+                if path == basename or path.startswith(f"{basename}/"):
+                    return True
+        for pattern in patterns:
+            if fnmatch.fnmatch(path, pattern):
+                return True
+            if not path.startswith("/"):
+                relative_pattern = _relative_path_pattern(pattern)
+                if relative_pattern and fnmatch.fnmatch(path, relative_pattern):
+                    return True
+    return False
+
+
+async def project_context_scope(
+    session: AsyncSession,
+    user_id: str,
+    project: Project,
+    changed_paths: list[str],
+) -> ProjectContextScope:
+    """Resolve memory inheritance without broadening exact Project Knowledge scope."""
+    relation_result = await session.execute(
+        select(ProjectRelation).where(
+            ProjectRelation.user_id == user_id,
+            ProjectRelation.status == "active",
+            or_(
+                ProjectRelation.parent_project_id == project.id,
+                ProjectRelation.child_project_id == project.id,
+            ),
+        )
+    )
+    relations = list(relation_result.scalars().all())
+    inherited_ids = sorted(
+        {item.parent_project_id for item in relations if item.child_project_id == project.id}
+    )
+    child_ids = sorted(
+        {item.child_project_id for item in relations if item.parent_project_id == project.id}
+    )
+    related_ids = sorted(set(inherited_ids) | set(child_ids))
+    related_projects: dict[str, Project] = {}
+    if related_ids:
+        project_result = await session.execute(
+            select(Project).where(
+                Project.user_id == user_id,
+                Project.id.in_(related_ids),
+            )
+        )
+        related_projects = {item.id: item for item in project_result.scalars().all()}
+
+    potential_ids = [project.id, *related_ids]
+    alias_result = await session.execute(
+        select(ProjectAlias).where(
+            ProjectAlias.user_id == user_id,
+            ProjectAlias.canonical_project_id.in_(potential_ids),
+            ProjectAlias.status == "active",
+        )
+    )
+    aliases = list(alias_result.scalars().all())
+    aliases_by_project: dict[str, list[ProjectAlias]] = {
+        project_id: [] for project_id in potential_ids
+    }
+    for alias in aliases:
+        aliases_by_project.setdefault(alias.canonical_project_id, []).append(alias)
+
+    selected_child_ids: list[str] = []
+    if (project.kind or "repository") == "workspace" and changed_paths:
+        for child_id in child_ids:
+            child = related_projects.get(child_id)
+            if child is None or (child.kind or "repository") != "repository":
+                continue
+            path_aliases = [
+                item.alias_value
+                for item in aliases_by_project.get(child_id, [])
+                if item.alias_type == "path"
+            ]
+            if project_matches_changed_paths(child, path_aliases, changed_paths):
+                selected_child_ids.append(child_id)
+
+    canonical_ids = tuple(dict.fromkeys([project.id, *inherited_ids, *selected_child_ids]))
+    scope_ids_by_project: dict[str, tuple[str, ...]] = {}
+    all_scope_ids: set[str] = set()
+    for project_id in canonical_ids:
+        scope_ids = {project_id}
+        scope_ids.update(
+            item.alias_value
+            for item in aliases_by_project.get(project_id, [])
+            if item.alias_type in HISTORY_SCOPE_ALIAS_TYPES
+        )
+        ordered_scope_ids = tuple(sorted(scope_ids))
+        scope_ids_by_project[project_id] = ordered_scope_ids
+        all_scope_ids.update(ordered_scope_ids)
+
+    return ProjectContextScope(
+        exact_project_id=project.id,
+        canonical_project_ids=canonical_ids,
+        memory_scope_ids=tuple(sorted(all_scope_ids)),
+        inherited_project_ids=tuple(inherited_ids),
+        selected_child_project_ids=tuple(selected_child_ids),
+        scope_ids_by_project=scope_ids_by_project,
+    )
 
 
 async def canonicalize_project_scopes(

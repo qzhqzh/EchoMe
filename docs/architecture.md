@@ -127,6 +127,20 @@ artifact/version/chunk + constraint/version/edge + event
 
 项目事件和 AI 推断先作为证据或 proposal 追加，不会静默升级为 active constraint，也不会直接修改 Personal Memory。
 
+### 4.4 Composite Project Workspaces
+
+Project identity 和 project membership 分开建模：alias 负责把 path、remote、旧名称解析到
+canonical project；`project_relations` 负责表达 `workspace --contains--> repository`。
+
+```text
+repository context = global memory + parent workspace memory + exact repository memory
+workspace context  = global memory + workspace memory + changed_paths 命中的 child memory
+```
+
+父 workspace 可向 repository 提供共享规范，但 repository 之间不隐式继承。Context Compiler
+只扩展 Memory scope；Project Knowledge 的 constraint、artifact、chunk 和 view 继续使用当前
+canonical project，避免共享记忆机制扩大权威证据边界。
+
 ## 5. 数据安全边界
 
 - 不在普通检索、Sleep、feedback 或日志流程中硬删除权威历史。

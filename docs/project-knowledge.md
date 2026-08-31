@@ -8,7 +8,7 @@ EchoMe keeps two separate but cooperating domains:
 Project constraints do not alter the behavior of Memory retrieval or Memory Sleep. The task-aware
 project context endpoint combines both domains only when an AI explicitly asks for project context.
 
-The current deployed application version is `1.8.0`, and the current production Alembic revision is `017`.
+The current deployed application version is `1.8.0`, and the current production Alembic revision is `018`.
 Repository metadata and authoritative documentation are checked together by
 `scripts/check_project_truth.py`; historical version plans are not current operational guidance.
 

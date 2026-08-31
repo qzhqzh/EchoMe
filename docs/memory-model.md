@@ -136,13 +136,30 @@ CREATE TABLE projects (
     id              VARCHAR(128) PRIMARY KEY,    -- 如 "qzhqzh/EchoMe"
     user_id         VARCHAR(64) NOT NULL DEFAULT 'default',
     name            VARCHAR(256) NOT NULL,
+    kind            VARCHAR(16) NOT NULL DEFAULT 'repository', -- repository/workspace
     description     TEXT,
     git_remote      VARCHAR(512),               -- git remote URL，用于自动匹配
     path_patterns   JSONB NOT NULL DEFAULT '[]', -- 本地路径模式匹配
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE project_relations (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           VARCHAR(64) NOT NULL,
+    parent_project_id VARCHAR(128) NOT NULL REFERENCES projects(id),
+    child_project_id  VARCHAR(128) NOT NULL REFERENCES projects(id),
+    relation_type     VARCHAR(16) NOT NULL DEFAULT 'contains',
+    status            VARCHAR(16) NOT NULL DEFAULT 'active', -- active/archived
+    source            VARCHAR(32) NOT NULL DEFAULT 'manual',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, parent_project_id, child_project_id, relation_type)
+);
 ```
+
+`workspace` 只通过 active relation 组合 repository。子 repository 继承父 workspace 记忆；
+workspace 仅按 `changed_paths` 选择命中的子 repository，不隐式加载 sibling scope。
 
 ### 3.4 同步日志表
 

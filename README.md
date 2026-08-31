@@ -207,7 +207,7 @@ Sleep apply 需要先提交并确认合法 JSON 预案，不会直接批量重�
 ## 数据安全原则
 
 - PostgreSQL + pgvector 是唯一权威服务端数据层。
-- 数据库迁移采用 Alembic；当前生产 schema revision 为 `017`，后续迁移继续保持 additive-only。
+- 数据库迁移采用 Alembic；当前生产 schema revision 为 `018`，后续迁移继续保持 additive-only。
 - archived 和 deprecated 记忆不会作为当前有效事实参与默认检索。
 - Sleep、项目重关联和约束复核采用 `proposal → validate → apply`。
 - 原始记忆、制品版本、约束版本、事件和关系证据不被静默删除。

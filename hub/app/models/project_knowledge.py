@@ -328,6 +328,65 @@ class ProjectAlias(Base):
     )
 
 
+class ProjectRelation(Base):
+    """An auditable composition edge between canonical projects."""
+
+    __tablename__ = "project_relations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    parent_project_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("projects.id"), nullable=False
+    )
+    child_project_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("projects.id"), nullable=False
+    )
+    relation_type: Mapped[str] = mapped_column(String(16), nullable=False, default="contains")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint("parent_project_id <> child_project_id", name="project_relation_not_self"),
+        CheckConstraint(
+            "relation_type IN ('contains')",
+            name="valid_project_relation_type",
+        ),
+        CheckConstraint(
+            "status IN ('active','archived')",
+            name="valid_project_relation_status",
+        ),
+        CheckConstraint(
+            "source IN ('manual','ai','imported','bootstrap')",
+            name="valid_project_relation_source",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "parent_project_id",
+            "child_project_id",
+            "relation_type",
+            name="uq_project_relation_edge",
+        ),
+        Index(
+            "idx_project_relations_parent_status",
+            "user_id",
+            "parent_project_id",
+            "status",
+        ),
+        Index(
+            "idx_project_relations_child_status",
+            "user_id",
+            "child_project_id",
+            "status",
+        ),
+    )
+
+
 class ContextRun(Base):
     """An append-only trace of one project context compilation."""
 

@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
@@ -22,6 +22,7 @@ from app.models.project_knowledge import (
     ProjectArtifact,
     ProjectConstraint,
     ProjectEvent,
+    ProjectRelation,
 )
 from app.services.content_safety import require_safe_content
 from app.services.project_identity import normalize_project_hint, resolve_project
@@ -35,6 +36,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 class ProjectCreate(BaseModel):
     id: str = Field(..., max_length=128)
     name: str = Field(..., max_length=256)
+    kind: Literal["repository", "workspace"] = "repository"
     description: str | None = None
     git_remote: str | None = None
     path_patterns: list[str] = Field(default_factory=list)
@@ -43,6 +45,7 @@ class ProjectCreate(BaseModel):
 class ProjectResponse(BaseModel):
     id: str
     name: str
+    kind: Literal["repository", "workspace"]
     description: str | None
     git_remote: str | None
     path_patterns: list[str]
@@ -68,6 +71,17 @@ class ProjectAliasPatch(BaseModel):
     status: Literal["proposed", "active", "rejected", "archived"]
 
 
+class ProjectRelationCreate(BaseModel):
+    parent_project_id: str = Field(..., min_length=1, max_length=128)
+    child_project_id: str = Field(..., min_length=1, max_length=128)
+    relation_type: Literal["contains"] = "contains"
+    source: Literal["manual", "ai", "imported", "bootstrap"] = "manual"
+
+
+class ProjectRelationPatch(BaseModel):
+    status: Literal["active", "archived"]
+
+
 def _alias_payload(alias: ProjectAlias) -> dict[str, object]:
     return {
         "id": str(alias.id),
@@ -81,6 +95,28 @@ def _alias_payload(alias: ProjectAlias) -> dict[str, object]:
         "created_at": alias.created_at.isoformat(),
         "updated_at": alias.updated_at.isoformat(),
     }
+
+
+def _relation_payload(relation: ProjectRelation) -> dict[str, object]:
+    return {
+        "id": str(relation.id),
+        "parent_project_id": relation.parent_project_id,
+        "child_project_id": relation.child_project_id,
+        "relation_type": relation.relation_type,
+        "status": relation.status,
+        "source": relation.source,
+        "created_at": relation.created_at.isoformat(),
+        "updated_at": relation.updated_at.isoformat(),
+    }
+
+
+def _validate_relation_projects(parent: Project, child: Project) -> None:
+    if parent.id == child.id:
+        raise HTTPException(status_code=422, detail="A project cannot contain itself")
+    if parent.kind != "workspace":
+        raise HTTPException(status_code=422, detail="Relation parent must be a workspace")
+    if child.kind != "repository":
+        raise HTTPException(status_code=422, detail="Relation child must be a repository")
 
 
 # --- Routes ---
@@ -113,6 +149,7 @@ async def create_project(
         id=body.id,
         user_id=user_id,
         name=body.name,
+        kind=body.kind,
         description=body.description,
         git_remote=body.git_remote,
         path_patterns=body.path_patterns,
@@ -216,6 +253,93 @@ async def update_project_alias(
     return _alias_payload(alias)
 
 
+@router.get("/relations")
+async def list_project_relations(
+    project_id: str | None = None,
+    include_inactive: bool = False,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, object]:
+    """List active composition edges, optionally for one canonical project."""
+    query = select(ProjectRelation).where(ProjectRelation.user_id == user_id)
+    canonical_project_id = None
+    if project_id:
+        canonical_project_id = (await resolve_project(session, user_id, project_id)).project.id
+        query = query.where(
+            or_(
+                ProjectRelation.parent_project_id == canonical_project_id,
+                ProjectRelation.child_project_id == canonical_project_id,
+            )
+        )
+    if not include_inactive:
+        query = query.where(ProjectRelation.status == "active")
+    result = await session.execute(query.order_by(ProjectRelation.created_at))
+    items = list(result.scalars().all())
+    return {
+        "project_id": canonical_project_id,
+        "items": [_relation_payload(item) for item in items],
+    }
+
+
+@router.post("/relations", status_code=status.HTTP_201_CREATED)
+async def create_project_relation(
+    body: ProjectRelationCreate,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, object]:
+    """Create one active, auditable workspace membership edge."""
+    require_safe_content(body.parent_project_id, body.child_project_id)
+    parent = (await resolve_project(session, user_id, body.parent_project_id)).project
+    child = (await resolve_project(session, user_id, body.child_project_id)).project
+    _validate_relation_projects(parent, child)
+    existing = await session.scalar(
+        select(ProjectRelation).where(
+            ProjectRelation.user_id == user_id,
+            ProjectRelation.parent_project_id == parent.id,
+            ProjectRelation.child_project_id == child.id,
+            ProjectRelation.relation_type == body.relation_type,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Project relation already exists")
+    relation = ProjectRelation(
+        user_id=user_id,
+        parent_project_id=parent.id,
+        child_project_id=child.id,
+        relation_type=body.relation_type,
+        status="active",
+        source=body.source,
+    )
+    session.add(relation)
+    await session.flush()
+    return _relation_payload(relation)
+
+
+@router.patch("/relations/{relation_id}")
+async def update_project_relation(
+    relation_id: uuid.UUID,
+    body: ProjectRelationPatch,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, object]:
+    """Archive or reactivate a relation without deleting its history."""
+    relation = await session.scalar(
+        select(ProjectRelation).where(
+            ProjectRelation.id == relation_id,
+            ProjectRelation.user_id == user_id,
+        )
+    )
+    if relation is None:
+        raise HTTPException(status_code=404, detail="Project relation not found")
+    if body.status == "active":
+        parent = (await resolve_project(session, user_id, relation.parent_project_id)).project
+        child = (await resolve_project(session, user_id, relation.child_project_id)).project
+        _validate_relation_projects(parent, child)
+    relation.status = body.status
+    await session.flush()
+    return _relation_payload(relation)
+
+
 @router.get("/{project_id:path}", response_model=ProjectResponse)
 async def get_project(
     project_id: str,
@@ -238,6 +362,23 @@ async def update_project(
     project = (await resolve_project(session, user_id, project_id)).project
 
     project.name = body.name
+    if "kind" in body.model_fields_set and body.kind != project.kind:
+        relation_exists = await session.scalar(
+            select(ProjectRelation.id).where(
+                ProjectRelation.user_id == user_id,
+                ProjectRelation.status == "active",
+                or_(
+                    ProjectRelation.parent_project_id == project.id,
+                    ProjectRelation.child_project_id == project.id,
+                ),
+            )
+        )
+        if relation_exists:
+            raise HTTPException(
+                status_code=409,
+                detail="Archive active project relations before changing project kind",
+            )
+        project.kind = body.kind
     project.description = body.description
     project.git_remote = body.git_remote
     project.path_patterns = body.path_patterns
@@ -253,6 +394,20 @@ async def delete_project(
     """Delete an empty canonical project addressed by ID or active alias."""
     project = (await resolve_project(session, user_id, project_id)).project
     project_id = project.id
+    relation_exists = await session.scalar(
+        select(ProjectRelation.id).where(
+            ProjectRelation.user_id == user_id,
+            or_(
+                ProjectRelation.parent_project_id == project_id,
+                ProjectRelation.child_project_id == project_id,
+            ),
+        )
+    )
+    if relation_exists:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project has composition history and cannot be deleted",
+        )
     knowledge_models = (
         ProjectArtifact,
         ProjectConstraint,

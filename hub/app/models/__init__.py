@@ -16,6 +16,7 @@ from app.models.project_knowledge import (
     ProjectArtifact,
     ProjectConstraint,
     ProjectEvent,
+    ProjectRelation,
     ReliabilityAssessment,
 )
 from app.models.user import User
@@ -38,6 +39,7 @@ __all__ = [
     "ProjectArtifact",
     "ProjectConstraint",
     "ProjectEvent",
+    "ProjectRelation",
     "ReliabilityAssessment",
     "SyncLog",
     "User",
