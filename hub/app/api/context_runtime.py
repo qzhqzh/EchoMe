@@ -29,7 +29,7 @@ from app.services.context_compiler import compile_project_context
 from app.services.context_completion import completion_contract
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.memory_retrieval import retrieve_memories
-from app.services.project_identity import resolve_project
+from app.services.project_identity import ProjectDiscovery, discover_projects
 from app.services.token_counter import count_tokens
 
 logger = logging.getLogger(__name__)
@@ -62,13 +62,18 @@ router = APIRouter(
 
 
 def _runtime_route(body: UnifiedContextRequest) -> str:
-    if body.mode == "personal" or (body.mode == "auto" and not body.project_hint):
+    if body.mode == "personal" or (body.mode == "auto" and not _request_project_hints(body)):
         return "personal"
     if body.mode == "temporal":
         return "temporal"
     if body.mode == "impact" or (body.mode == "auto" and body.changed_paths):
         return "impact"
     return "project"
+
+
+def _request_project_hints(body: UnifiedContextRequest) -> list[str]:
+    values = ([body.project_hint] if body.project_hint else []) + body.project_hints
+    return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
 
 
 def _runtime_error_code(exc: Exception) -> str:
@@ -141,7 +146,11 @@ async def _record_failed_context(
                     token_budget=body.token_budget,
                     candidates={},
                     selected={},
-                    trace={"failure_stage": route, "project_hint": body.project_hint},
+                    trace={
+                        "failure_stage": route,
+                        "project_hint": body.project_hint,
+                        "project_hints": body.project_hints,
+                    },
                     status="failed",
                     request_id=request_id,
                     client=body.client,
@@ -268,6 +277,85 @@ async def _personal_context(
     return context
 
 
+async def _project_resolution_context(
+    session: AsyncSession,
+    body: UnifiedContextRequest,
+    user_id: str,
+    request_id: str,
+    route: str,
+    discovery: ProjectDiscovery,
+) -> dict[str, Any]:
+    """Return a non-terminal recovery envelope instead of a Project not found error."""
+    resolution = discovery.payload()
+    candidate_ids = [candidate.project.id for candidate in discovery.candidates]
+    raw_next_actions = resolution.get("next_actions")
+    next_actions = raw_next_actions if isinstance(raw_next_actions, list) else []
+    if discovery.status == "not_found":
+        unknown = "No existing canonical project matched the supplied hints."
+    elif discovery.status == "ambiguous":
+        unknown = "More than one canonical project is plausible; explicit selection is required."
+    else:
+        unknown = "A possible canonical project was found; explicit confirmation is required."
+    if body.record_run:
+        session.add(
+            ContextRun(
+                user_id=user_id,
+                project_id=None,
+                query=body.task,
+                mode=route if route in {"impact", "temporal"} else "local",
+                changed_paths=body.changed_paths,
+                token_budget=body.token_budget,
+                candidates={"projects": candidate_ids},
+                selected={},
+                trace={"project_resolution": resolution},
+                status="failed",
+                request_id=request_id,
+                client=body.client,
+                client_version=body.client_version,
+                route=route,
+                error_code="PROJECT_RESOLUTION_REQUIRED",
+            )
+        )
+        await session.flush()
+    return {
+        "schema_version": "echome.context.v1",
+        "scope": "project_resolution",
+        "project": None,
+        "task": body.task,
+        "mode": route,
+        "constraints": [],
+        "memories": [],
+        "artifacts": [],
+        "evidence": [],
+        "conflicts": [],
+        "stale_warnings": [],
+        "unknowns": [unknown],
+        "token_budget": body.token_budget,
+        "token_used": 0,
+        "retrieval_trace": {
+            "strategy": "deterministic_project_discovery",
+            "candidate_counts": {"projects": len(candidate_ids)},
+            "selected_count": 0,
+        },
+        "preflight": None,
+        "answerability": "insufficient_evidence",
+        "recommended_actions": [
+            str(action["description"])
+            for action in next_actions
+            if isinstance(action, dict) and action.get("description")
+        ],
+        "resolution": None,
+        "project_resolution": resolution,
+        "runtime": {
+            "request_id": request_id,
+            "route": route,
+            "degraded": False,
+            "fallback": None,
+            "resolution_required": True,
+        },
+    }
+
+
 async def _build_unified_context(
     body: UnifiedContextRequest,
     session: AsyncSession = Depends(get_session),
@@ -277,17 +365,14 @@ async def _build_unified_context(
     """Return one evidence-first context envelope for personal or project work."""
     started = perf_counter()
     request_id = body.request_id or str(uuid.uuid4())
-    if body.mode == "personal" or (body.mode == "auto" and not body.project_hint):
+    project_hints = _request_project_hints(body)
+    if body.mode == "personal" or (body.mode == "auto" and not project_hints):
         context = await _personal_context(session, body, user_id, request_id)
         route = "personal"
         resolution = None
+        project_resolution = None
         preflight = None
     else:
-        assert body.project_hint is not None
-        resolution_result = await resolve_project(session, user_id, body.project_hint)
-        project = resolution_result.project
-        if audit is not None:
-            audit["project_id"] = project.id
         route = (
             "temporal"
             if body.mode == "temporal"
@@ -295,6 +380,25 @@ async def _build_unified_context(
             if body.mode == "impact" or (body.mode == "auto" and body.changed_paths)
             else "project"
         )
+        discovery = await discover_projects(session, user_id, project_hints)
+        if discovery.resolution is None:
+            unresolved = await _project_resolution_context(
+                session,
+                body,
+                user_id,
+                request_id,
+                route,
+                discovery,
+            )
+            unresolved["runtime"]["latency_ms"] = round(
+                (perf_counter() - started) * 1000,
+                2,
+            )
+            return unresolved
+        resolution_result = discovery.resolution
+        project = resolution_result.project
+        if audit is not None:
+            audit["project_id"] = project.id
         compiler_mode = (
             "overview" if route == "temporal" else "impact" if route == "impact" else "local"
         )
@@ -321,7 +425,12 @@ async def _build_unified_context(
         )
         context["schema_version"] = "echome.context.v1"
         context["scope"] = "project"
-        resolution = resolution_result.payload(body.project_hint)
+        resolution = resolution_result.payload(
+            discovery.candidates[0].matched_hints[0]
+            if discovery.candidates and discovery.candidates[0].matched_hints
+            else project_hints[0]
+        )
+        project_resolution = discovery.payload()
         preflight = await project_preflight(
             ProjectPreflightRequest(
                 project_id=project.id,
@@ -338,6 +447,7 @@ async def _build_unified_context(
         "answerability": _answerability(context),
         "recommended_actions": _recommended_actions(context),
         "resolution": resolution,
+        "project_resolution": project_resolution,
         "runtime": {
             "request_id": request_id,
             "route": route,

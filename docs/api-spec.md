@@ -548,10 +548,14 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 | `POST` | `/api/v1/context` | 单入口获取 personal 或 canonical project context；返回 evidence、conflicts、unknowns、answerability 与 runtime metadata |
 | `GET` | `/api/v1/context/runtime/health` | 检查认证、Hub、数据库、Alembic revision、embedding 与 feature flags |
 
-`POST /context` 支持 `task`、`project_hint`、`changed_paths`、`mode`、`token_budget`、
+`POST /context` 支持 `task`、`project_hint`、`project_hints`、`changed_paths`、`mode`、`token_budget`、
 `limit`、`as_of`、`valid_at`、`request_id`、`client`、`client_version` 和 `policy_mode`。`mode=auto`
 在有项目提示时解析 canonical project；没有项目提示时走 bounded personal memory route。
 当前 personal route 使用有界词法召回；图与时间多路召回尚未进入本轮发布候选。
+
+`project_hints` 最多接收 10 个额外身份信号。精确解析失败后，Hub 会执行无向量、可解释的候选发现：
+唯一高置信候选只用于本次只读 context；歧义或无候选时返回 `scope=project_resolution`、候选及
+`next_actions`，而不是终止性 404。该流程不会自动写 alias 或创建项目。
 
 `policy_mode` 默认为 `shadow`，会返回 reliability/intervention 与 would-exclude trace，但不改变结果。
 `enforce` 只有在服务端 feature flag 开启时生效，否则回退 shadow。
@@ -569,13 +573,15 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/projects/resolve` | 按 ID、name、Git remote、path 或 client hint 精确解析 canonical project |
+| `POST` | `/api/v1/projects/discover` | 对最多 10 个身份信号做只读候选发现，返回匹配依据、置信度、workspace 父级和安全下一步 |
 | `GET` | `/api/v1/projects/aliases` | 查询 proposed/active aliases |
 | `POST` | `/api/v1/projects/aliases` | 创建 proposed alias；不能在创建时直接激活 |
 | `PATCH` | `/api/v1/projects/aliases/{alias_id}` | 显式激活、拒绝或归档 alias |
 
 Alias 不搬迁或覆盖历史数据。读路径可展开 active 的历史 scope；写路径把已知 active alias 统一为
 canonical project，无法解析的旧 scope 为兼容历史客户端而原样保留。
-歧义解析返回 `409`，未知项目返回 `404`，跨用户 alias 不可见。
+`/projects/resolve` 的歧义解析返回 `409`，未知项目返回 `404`；`/context` 和
+`/projects/discover` 则返回非终止性的结构化恢复结果。跨用户 alias 不可见。
 
 ### Composite Project Workspaces
 

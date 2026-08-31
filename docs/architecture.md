@@ -74,7 +74,7 @@ Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade h
 
 `echome_mcp` 是协议适配层，通过 Hub REST API 读写数据，不直接连接数据库。
 
-- 默认 `core` profile：8 个高频工具，包括 capability discovery、统一 context、health、graph explain、remember 和 feedback。
+- 默认 `core` profile：9 个高频工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback 和经确认的安全项目创建。
 - `ECHOME_MCP_PROFILE=full`：暴露 summary-first、Project Knowledge、Sleep 等专业工具。
 - `echome_capabilities` 会根据当前 profile 只推荐实际可调用的工具。
 - Hub 暂时不可达时，仅 `echome_context` 可读取本地 AES-256-GCM last-known-good 缓存；缓存不会回写 Hub。
@@ -131,6 +131,10 @@ artifact/version/chunk + constraint/version/edge + event
 
 Project identity 和 project membership 分开建模：alias 负责把 path、remote、旧名称解析到
 canonical project；`project_relations` 负责表达 `workspace --contains--> repository`。
+
+MCP 会同时提交 Git remote 与 repository root。Hub 先执行现有精确解析；失败后再用项目字段、
+active/proposed alias、环境后缀和 workspace 关系生成确定性候选。只有唯一高置信候选可用于本次
+只读 context；歧义需要显式选择，无候选只返回创建预案，均不会静默写 alias 或创建项目。
 
 ```text
 repository context = global memory + parent workspace memory + exact repository memory

@@ -643,6 +643,12 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Optional project ID, alias, Git remote, or path. The current Git remote is inferred when omitted.",
                     },
+                    "project_hints": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1, "maxLength": 2048},
+                        "maxItems": 10,
+                        "description": "Optional additional identity signals. When omitted, MCP sends every available local Git remote and repository-root hint.",
+                    },
                     "changed_paths": {"type": "array", "items": {"type": "string"}},
                     "mode": {
                         "type": "string",
@@ -1105,15 +1111,19 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="echome_create_project",
             description=(
-                "创建新项目。项目名称(name)同时作为唯一标识。"
-                "创建 project 类型记忆前，如果项目不存在，需先创建项目。"
+                "确认项目确实不存在后创建 canonical project。"
+                "只可在用户明确确认新建后调用；工具会先做候选发现，避免重复项目。"
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "项目名称（唯一标识）",
+                        "description": "项目显示名称",
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Canonical project ID；未提供时沿用 name",
                     },
                     "description": {
                         "type": "string",
@@ -1122,6 +1132,21 @@ async def list_tools() -> list[Tool]:
                     "git_remote": {
                         "type": "string",
                         "description": "Git 远程仓库地址（可选）",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["repository", "workspace"],
+                        "default": "repository",
+                    },
+                    "path_patterns": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "用于后续确定性识别的路径模式",
+                    },
+                    "confirmed_distinct_project": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "仅当用户已确认所有候选都是其他项目时设为 true",
                     },
                 },
                 "required": ["name"],
@@ -1273,6 +1298,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             result = await echome_context(
                 task=arguments["task"],
                 project_hint=arguments.get("project_hint"),
+                project_hints=arguments.get("project_hints"),
                 changed_paths=arguments.get("changed_paths"),
                 mode=arguments.get("mode", "auto"),
                 token_budget=arguments.get("token_budget", 6000),
@@ -1461,8 +1487,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         elif name == "echome_create_project":
             result = await echome_create_project(
                 name=arguments["name"],
+                project_id=arguments.get("project_id"),
                 description=arguments.get("description"),
                 git_remote=arguments.get("git_remote"),
+                kind=arguments.get("kind", "repository"),
+                path_patterns=arguments.get("path_patterns"),
+                confirmed_distinct_project=arguments.get("confirmed_distinct_project", False),
             )
         elif name == "echome_sleep_candidates":
             result = await echome_sleep_candidates(
