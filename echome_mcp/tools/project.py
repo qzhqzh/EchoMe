@@ -175,13 +175,17 @@ async def echome_update_project_git_identity(
         error_details: dict[str, object] = {
             "code": code,
             "message": message,
-            "retryable": False,
+            "retryable": code == "PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED",
             "request_id": exc.response.headers.get("x-request-id", "hub-response"),
             "degraded": False,
             "suggested_action": (
-                "Retry with the intended canonical project ID after resolving the conflict."
-                if exc.response.status_code == 409
-                else "Check the project ID and proposed Git identity."
+                "Call this tool again with confirmed=false to obtain a current preview token."
+                if code == "PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED"
+                else (
+                    "Retry with the intended canonical project ID after resolving the conflict."
+                    if exc.response.status_code == 409
+                    else "Check the project ID and proposed Git identity."
+                )
             ),
         }
         if isinstance(conflict_ids, list):

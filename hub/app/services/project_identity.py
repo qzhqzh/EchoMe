@@ -263,7 +263,7 @@ class ProjectGitIdentityUpdate:
             "schema_version": "echome.project-git-identity.v1",
             "status": update_status,
             "requires_confirmation": self.has_changes and not self.applied,
-            "confirmation_token": self.confirmation_token,
+            "confirmation_token": self.confirmation_token if not self.applied else None,
             "project": {
                 "id": self.project.id,
                 "name": self.project.name,
@@ -490,8 +490,20 @@ def _project_create_proposal(hints: tuple[str, ...]) -> dict[str, object] | None
     return proposal
 
 
-async def _all_user_projects(session: AsyncSession, user_id: str) -> list[Project]:
-    result = await session.execute(select(Project).where(Project.user_id == user_id))
+async def _all_user_projects(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    for_update: bool = False,
+) -> list[Project]:
+    query = select(Project).where(Project.user_id == user_id)
+    if for_update:
+        query = (
+            query.order_by(Project.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 
@@ -504,10 +516,8 @@ async def update_project_git_identity(
     git_remote_aliases: list[str],
     confirmed: bool,
     confirmation_token: str | None = None,
-    source: Literal["manual", "ai", "imported", "bootstrap"] = "ai",
 ) -> ProjectGitIdentityUpdate:
     """Preview or atomically apply a conflict-checked Git identity update."""
-    project = (await resolve_project(session, user_id, project_hint)).project
     requested_git_remote = _normalized_text(git_remote) if git_remote is not None else None
 
     aliases_by_normalized: dict[str, str] = {}
@@ -517,6 +527,7 @@ async def update_project_git_identity(
         aliases_by_normalized.setdefault(normalized_alias, clean_alias)
     if requested_git_remote is None and not aliases_by_normalized:
         raise ValueError("A git_remote or at least one git_remote_alias is required")
+    project = (await resolve_project(session, user_id, project_hint)).project
 
     requested_primary_normalized = (
         normalize_project_hint(requested_git_remote, "git_remote")
@@ -537,7 +548,7 @@ async def update_project_git_identity(
     if requested_primary_normalized is not None:
         requested_normalized_values.add(requested_primary_normalized)
 
-    projects = await _all_user_projects(session, user_id)
+    projects = await _all_user_projects(session, user_id, for_update=confirmed)
     conflicting_project_ids: set[str] = set()
     for other_project in projects:
         if other_project.id == project.id or not other_project.git_remote:
@@ -549,13 +560,14 @@ async def update_project_git_identity(
         if other_normalized in requested_normalized_values:
             conflicting_project_ids.add(other_project.id)
 
-    alias_result = await session.execute(
-        select(ProjectAlias).where(
-            ProjectAlias.user_id == user_id,
-            ProjectAlias.alias_type == "git_remote",
-            ProjectAlias.normalized_value.in_(requested_normalized_values),
-        )
+    alias_query = select(ProjectAlias).where(
+        ProjectAlias.user_id == user_id,
+        ProjectAlias.alias_type == "git_remote",
+        ProjectAlias.normalized_value.in_(requested_normalized_values),
     )
+    if confirmed:
+        alias_query = alias_query.with_for_update().execution_options(populate_existing=True)
+    alias_result = await session.execute(alias_query)
     existing_aliases = list(alias_result.scalars().all())
     conflicting_project_ids.update(
         alias.canonical_project_id
@@ -642,7 +654,7 @@ async def update_project_git_identity(
                     alias_value=alias_value,
                     normalized_value=normalize_project_hint(alias_value, "git_remote"),
                     status="active",
-                    source=source,
+                    source="ai",
                     confidence=1.0,
                 )
             )

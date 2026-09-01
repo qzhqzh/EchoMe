@@ -81,7 +81,6 @@ class ProjectGitIdentityUpdateRequest(BaseModel):
     )
     confirmed: bool = False
     confirmation_token: str | None = Field(None, min_length=64, max_length=64)
-    source: Literal["manual", "ai", "imported", "bootstrap"] = "ai"
 
 
 class ProjectAliasCreate(BaseModel):
@@ -228,7 +227,6 @@ async def patch_project_git_identity(
             git_remote_aliases=body.git_remote_aliases,
             confirmed=body.confirmed,
             confirmation_token=body.confirmation_token,
-            source=body.source,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

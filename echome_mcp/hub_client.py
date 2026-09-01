@@ -538,7 +538,6 @@ class MCPHubClient:
             "git_remote_aliases": git_remote_aliases or [],
             "confirmed": confirmed,
             "confirmation_token": confirmation_token,
-            "source": "ai",
         }
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
             resp = await client.patch("/api/v1/projects/git-identity", json=data)

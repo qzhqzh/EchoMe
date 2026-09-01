@@ -56,7 +56,6 @@ async def test_git_identity_endpoint_returns_server_owned_preview() -> None:
         git_remote_aliases=[],
         confirmed=False,
         confirmation_token=None,
-        source="ai",
     )
 
 

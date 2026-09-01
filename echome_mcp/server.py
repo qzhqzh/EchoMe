@@ -1218,6 +1218,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "confirmation_token": {
                         "type": "string",
+                        "minLength": 64,
+                        "maxLength": 64,
                         "description": "confirmed=true 时必须回传最近一次预览返回的 token",
                     },
                 },

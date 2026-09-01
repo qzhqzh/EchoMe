@@ -224,6 +224,40 @@ def test_update_project_git_identity_preserves_conflict_details(monkeypatch) -> 
     assert payload["error"]["canonical_project_ids"] == ["other/repo"]
 
 
+def test_update_project_git_identity_explains_stale_preview(monkeypatch) -> None:
+    class StalePreviewClient:
+        async def update_project_git_identity(self, **_kwargs):
+            request = httpx.Request("PATCH", "https://hub.example/api/v1/projects/git-identity")
+            response = httpx.Response(
+                409,
+                request=request,
+                json={
+                    "detail": {
+                        "code": "PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED",
+                        "message": "Preview the current update before applying",
+                    }
+                },
+            )
+            raise httpx.HTTPStatusError("stale preview", request=request, response=response)
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", StalePreviewClient)
+
+    payload = json.loads(
+        asyncio.run(
+            project_tools_module.echome_update_project_git_identity(
+                project_id="owner/repo",
+                git_remote="git@github.com:owner/repo.git",
+                confirmed=True,
+                confirmation_token="0" * 64,
+            )
+        )
+    )
+
+    assert payload["error"]["code"] == "PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED"
+    assert payload["error"]["retryable"] is True
+    assert "confirmed=false" in payload["error"]["suggested_action"]
+
+
 def test_update_project_git_identity_dispatches_confirmation(monkeypatch) -> None:
     calls: list[dict] = []
 
