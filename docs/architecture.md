@@ -133,8 +133,10 @@ Project identity 和 project membership 分开建模：alias 负责把 path、re
 canonical project；`project_relations` 负责表达 `workspace --contains--> repository`。
 
 MCP 会同时提交 Git remote 与 repository root。Hub 先执行现有精确解析；失败后再用项目字段、
-active/proposed alias、环境后缀和 workspace 关系生成确定性候选。只有唯一高置信候选可用于本次
-只读 context；歧义需要显式选择，无候选只返回创建预案，均不会静默写 alias 或创建项目。
+active/proposed alias、环境后缀和 workspace 关系生成确定性候选。Discovery 本身保持只读；
+无候选时返回静默创建动作，单一可复用候选返回静默补 active alias 动作，随后由
+`echome_create_project` 幂等执行。多个候选的真实歧义仍需要显式选择；显式变更主 Git remote 继续使用
+服务端预览与确认 token。
 
 ```text
 repository context = global memory + parent workspace memory + exact repository memory

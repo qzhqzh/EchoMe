@@ -523,6 +523,27 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def ensure_project_aliases(
+        self,
+        canonical_project_id: str,
+        aliases: list[dict[str, str]],
+        confidence: float = 1.0,
+    ) -> dict[str, Any]:
+        """Idempotently attach active aliases to one canonical project."""
+        data = {
+            "canonical_project_id": canonical_project_id,
+            "aliases": aliases,
+            "source": "ai",
+            "confidence": confidence,
+        }
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.put("/api/v1/projects/aliases", json=data)
+            resp.raise_for_status()
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Project alias ensure response must be an object")
+            return payload
+
     async def update_project_git_identity(
         self,
         project_id: str,

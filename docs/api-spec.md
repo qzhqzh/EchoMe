@@ -579,6 +579,7 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 | `PATCH` | `/api/v1/projects/git-identity` | 预览或应用既有项目的主 Git remote 与 active Git remote aliases |
 | `GET` | `/api/v1/projects/aliases` | 查询 proposed/active aliases |
 | `POST` | `/api/v1/projects/aliases` | 创建 proposed alias；不能在创建时直接激活 |
+| `PUT` | `/api/v1/projects/aliases` | 原子、幂等地确保一个 canonical project 的一组 active aliases |
 | `PATCH` | `/api/v1/projects/aliases/{alias_id}` | 显式激活、拒绝或归档 alias |
 
 Alias 不搬迁或覆盖历史数据。读路径可展开 active 的历史 scope；写路径把已知 active alias 统一为
@@ -591,6 +592,9 @@ SCP 风格 SSH、`ssh://` 与 HTTPS 使用同一 `host/owner/repo` 规范化值�
 canonical project 的 identity 返回 `409 PROJECT_GIT_IDENTITY_CONFLICT`。
 替换主 remote 不会静默保留旧值；若旧地址仍需识别，调用方必须把它显式放入
 `git_remote_aliases`，并由预览展示这项变化。
+`PUT /projects/aliases` 不修改项目主 remote，只创建、激活或复用 active aliases；提交前会检查整批
+alias 是否已被其他 canonical project 或其主 identity 占用，冲突时整批不写入并返回
+`409 PROJECT_ALIAS_CONFLICT`。该接口用于 Agent 在唯一候选恢复时静默固化身份，最多一次确保 10 项。
 `/projects/resolve` 的歧义解析返回 `409`，未知项目返回 `404`；`/context` 和
 `/projects/discover` 则返回非终止性的结构化恢复结果。跨用户 alias 不可见。
 

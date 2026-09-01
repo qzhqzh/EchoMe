@@ -27,6 +27,7 @@ from app.models.project_knowledge import (
 from app.services.content_safety import require_safe_content
 from app.services.project_identity import (
     discover_projects,
+    ensure_project_aliases,
     normalize_project_hint,
     resolve_project,
     update_project_git_identity,
@@ -90,6 +91,18 @@ class ProjectAliasCreate(BaseModel):
     status: Literal["proposed"] = "proposed"
     source: Literal["manual", "ai", "imported", "bootstrap"] = "ai"
     confidence: float = Field(0.7, ge=0, le=1)
+
+
+class ProjectAliasEnsureItem(BaseModel):
+    alias_type: Literal["legacy_id", "name", "git_remote", "path", "client_hint"]
+    alias_value: str = Field(..., min_length=1, max_length=2048)
+
+
+class ProjectAliasesEnsureRequest(BaseModel):
+    canonical_project_id: str = Field(..., min_length=1, max_length=128)
+    aliases: list[ProjectAliasEnsureItem] = Field(..., min_length=1, max_length=10)
+    source: Literal["manual", "ai", "imported", "bootstrap"] = "ai"
+    confidence: float = Field(1.0, ge=0, le=1)
 
 
 class ProjectAliasPatch(BaseModel):
@@ -293,6 +306,31 @@ async def create_project_alias(
     session.add(alias)
     await session.flush()
     return _alias_payload(alias)
+
+
+@router.put("/aliases")
+async def ensure_active_project_aliases(
+    body: ProjectAliasesEnsureRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, object]:
+    """Idempotently attach a bounded set of active aliases to one canonical project."""
+    require_safe_content(
+        body.canonical_project_id,
+        *(alias.alias_value for alias in body.aliases),
+    )
+    try:
+        result = await ensure_project_aliases(
+            session,
+            user_id,
+            body.canonical_project_id,
+            [(alias.alias_type, alias.alias_value) for alias in body.aliases],
+            source=body.source,
+            confidence=body.confidence,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result.payload()
 
 
 @router.patch("/aliases/{alias_id}")

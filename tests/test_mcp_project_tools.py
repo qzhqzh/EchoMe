@@ -66,6 +66,15 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
         ]
         is False
     )
+    assert (
+        by_name["echome_create_project"].inputSchema["properties"]["confirmed_new_project"][
+            "deprecated"
+        ]
+        is True
+    )
+    assert by_name["echome_create_project"].annotations.readOnlyHint is False
+    assert by_name["echome_create_project"].annotations.destructiveHint is False
+    assert by_name["echome_create_project"].annotations.idempotentHint is True
     assert by_name["echome_update_project_git_identity"].outputSchema is not None
     assert by_name["echome_update_project_git_identity"].outputSchema["type"] == "object"
     assert by_name["echome_update_project_git_identity"].annotations.readOnlyHint is False
@@ -79,16 +88,27 @@ def test_core_profile_includes_project_git_identity_maintenance(monkeypatch) -> 
 
     assert len(tool_names) == 10
     assert "echome_update_project_git_identity" in tool_names
-    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v8"
+    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v9"
 
 
-def test_create_project_stops_when_discovery_finds_existing_candidate(monkeypatch) -> None:
+def test_create_project_silently_attaches_aliases_to_single_candidate(monkeypatch) -> None:
+    calls: list[dict] = []
+
     class CandidateClient:
         async def discover_projects(self, _hints):
             return {
                 "status": "needs_confirmation",
-                "candidates": [{"project": {"id": "owner/existing"}}],
+                "candidates": [
+                    {
+                        "project": {"id": "owner/existing", "name": "existing"},
+                        "confidence": 0.8,
+                    }
+                ],
             }
+
+        async def ensure_project_aliases(self, **kwargs):
+            calls.append(kwargs)
+            return {"status": "updated", "canonical_project_id": "owner/existing"}
 
         async def get_project(self, _project_id):
             raise AssertionError("exact lookup must not run after a discovery match")
@@ -105,11 +125,64 @@ def test_create_project_stops_when_discovery_finds_existing_candidate(monkeypatc
         )
     )
 
-    assert "未创建项目" in result
+    assert "已复用现有项目" in result
     assert "owner/existing" in result
+    assert calls == [
+        {
+            "canonical_project_id": "owner/existing",
+            "aliases": [
+                {"alias_type": "legacy_id", "alias_value": "existing-dev"},
+                {"alias_type": "name", "alias_value": "existing-dev"},
+                {
+                    "alias_type": "git_remote",
+                    "alias_value": "git@example.com:owner/existing.git",
+                },
+            ],
+            "confidence": 0.8,
+        }
+    ]
 
 
-def test_create_project_requires_explicit_new_project_confirmation(monkeypatch) -> None:
+def test_create_project_preserves_structured_alias_conflict(monkeypatch) -> None:
+    class ConflictClient:
+        async def discover_projects(self, _hints):
+            return {
+                "status": "needs_confirmation",
+                "candidates": [
+                    {
+                        "project": {"id": "owner/existing", "name": "existing"},
+                        "confidence": 0.8,
+                    }
+                ],
+            }
+
+        async def ensure_project_aliases(self, **_kwargs):
+            request = httpx.Request("PUT", "https://hub/api/v1/projects/aliases")
+            response = httpx.Response(
+                409,
+                request=request,
+                json={
+                    "detail": {
+                        "code": "PROJECT_ALIAS_CONFLICT",
+                        "message": "Alias belongs to another project",
+                        "canonical_project_ids": ["owner/other"],
+                    }
+                },
+            )
+            raise httpx.HTTPStatusError("conflict", request=request, response=response)
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", ConflictClient)
+
+    payload = json.loads(
+        asyncio.run(project_tools_module.echome_create_project(name="existing-dev"))
+    )
+
+    assert payload["error"]["code"] == "PROJECT_ALIAS_CONFLICT"
+    assert payload["error"]["canonical_project_ids"] == ["owner/other"]
+    assert payload["error"]["retryable"] is False
+
+
+def test_create_project_silently_creates_after_not_found(monkeypatch) -> None:
     calls: list[dict] = []
 
     class NewProjectClient:
@@ -125,15 +198,8 @@ def test_create_project_requires_explicit_new_project_confirmation(monkeypatch) 
 
     monkeypatch.setattr(project_tools_module, "MCPHubClient", NewProjectClient)
 
-    blocked = asyncio.run(project_tools_module.echome_create_project(name="new-repo"))
-    created = asyncio.run(
-        project_tools_module.echome_create_project(
-            name="new-repo",
-            confirmed_new_project=True,
-        )
-    )
+    created = asyncio.run(project_tools_module.echome_create_project(name="new-repo"))
 
-    assert "需要用户明确确认" in blocked
     assert calls == [
         {
             "id": "new-repo",
@@ -145,6 +211,65 @@ def test_create_project_requires_explicit_new_project_confirmation(monkeypatch) 
         }
     ]
     assert "项目创建成功" in created
+
+
+def test_create_project_still_stops_for_multiple_candidates(monkeypatch) -> None:
+    class AmbiguousClient:
+        async def discover_projects(self, _hints):
+            return {
+                "status": "ambiguous",
+                "candidates": [
+                    {"project": {"id": "owner/one"}},
+                    {"project": {"id": "owner/two"}},
+                ],
+            }
+
+        async def get_project(self, _project_id):
+            raise AssertionError("exact lookup must not run while discovery is ambiguous")
+
+        async def create_project(self, **_kwargs):
+            raise AssertionError("ambiguous identities must not create a project")
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", AmbiguousClient)
+
+    result = asyncio.run(project_tools_module.echome_create_project(name="repo"))
+
+    assert "未创建项目" in result
+    assert "owner/one" in result
+    assert "owner/two" in result
+
+
+def test_create_project_preserves_explicit_distinct_project_override(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class DistinctClient:
+        async def discover_projects(self, _hints):
+            return {
+                "status": "needs_confirmation",
+                "candidates": [{"project": {"id": "owner/existing"}}],
+            }
+
+        async def get_project(self, _project_id):
+            return None
+
+        async def create_project(self, **kwargs):
+            calls.append(kwargs)
+            return {"id": kwargs["id"], "name": kwargs["name"], "kind": kwargs["kind"]}
+
+        async def ensure_project_aliases(self, **_kwargs):
+            raise AssertionError("explicitly distinct projects must not attach aliases")
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", DistinctClient)
+
+    result = asyncio.run(
+        project_tools_module.echome_create_project(
+            name="new-repo",
+            confirmed_distinct_project=True,
+        )
+    )
+
+    assert "项目创建成功" in result
+    assert calls[0]["id"] == "new-repo"
 
 
 def test_update_project_git_identity_previews_before_confirmation(monkeypatch) -> None:
@@ -343,7 +468,7 @@ def test_project_resolution_envelope_is_not_a_protocol_error(monkeypatch) -> Non
         "project_resolution": {
             "schema_version": "echome.project-resolution.v1",
             "status": "not_found",
-            "next_actions": [{"action": "confirm_then_create_project"}],
+            "next_actions": [{"action": "create_project"}],
         },
         "runtime": {"resolution_required": True},
     }

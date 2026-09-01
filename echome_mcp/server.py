@@ -1140,8 +1140,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="echome_create_project",
             description=(
-                "确认项目确实不存在后创建 canonical project。"
-                "只可在用户明确确认新建后调用；工具会先做候选发现，避免重复项目。"
+                "自动确保 canonical project：没有候选时静默创建，唯一候选时复用并补 active alias。"
+                "多个候选仍会停止，避免错误合并或重复创建。"
             ),
             inputSchema={
                 "type": "object",
@@ -1175,7 +1175,8 @@ async def list_tools() -> list[Tool]:
                     "confirmed_new_project": {
                         "type": "boolean",
                         "default": False,
-                        "description": "仅当用户明确确认这是新项目时设为 true；否则不会创建",
+                        "deprecated": True,
+                        "description": "已弃用的兼容参数；新项目创建不再要求显式确认",
                     },
                     "confirmed_distinct_project": {
                         "type": "boolean",
@@ -1185,6 +1186,12 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["name"],
             },
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
         ),
         Tool(
             name="echome_update_project_git_identity",
