@@ -14,6 +14,7 @@ from app.services.project_identity import (
     ProjectResolution,
     canonicalize_project_scopes,
     discover_projects,
+    ensure_project_aliases,
     normalize_project_hint,
     project_scope_ids,
     resolve_project,
@@ -69,7 +70,223 @@ async def test_https_git_alias_resolves_scp_style_ssh_remote() -> None:
     assert resolution.matched_by == "alias:git_remote"
 
 
-def test_discovery_offers_confirmed_git_identity_update_for_existing_candidate() -> None:
+@pytest.mark.asyncio
+async def test_ensure_project_aliases_creates_activates_and_skips_covered_identity() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        git_remote="https://github.com/owner/repo.git",
+        path_patterns=["/srv/repo/**"],
+    )
+    existing = ProjectAlias(
+        id=uuid.uuid4(),
+        user_id="user",
+        canonical_project_id=project.id,
+        alias_type="name",
+        alias_value="repo-dev",
+        normalized_value="repo-dev",
+        status="proposed",
+        source="ai",
+        confidence=0.7,
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([existing]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+    ):
+        result = await ensure_project_aliases(
+            session,
+            "user",
+            project.id,
+            [
+                ("legacy_id", "owner/repo-dev"),
+                ("name", "repo-dev"),
+                ("git_remote", "git@github.com:owner/repo.git"),
+                ("path", "/srv/repo"),
+            ],
+            confidence=0.9,
+        )
+
+    payload = result.payload()
+    assert payload["status"] == "updated"
+    assert [item["outcome"] for item in payload["items"]] == [
+        "created",
+        "activated",
+        "covered_by_project",
+        "covered_by_project",
+    ]
+    created = session.add.call_args.args[0]
+    assert created.canonical_project_id == project.id
+    assert created.alias_type == "legacy_id"
+    assert created.status == "active"
+    assert existing.status == "active"
+    assert existing.confidence == 0.9
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_aliases_is_idempotent_for_active_alias() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    existing = ProjectAlias(
+        id=uuid.uuid4(),
+        user_id="user",
+        canonical_project_id=project.id,
+        alias_type="legacy_id",
+        alias_value="owner/repo-dev",
+        normalized_value="owner/repo-dev",
+        status="active",
+        source="ai",
+        confidence=0.9,
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([existing]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+    ):
+        result = await ensure_project_aliases(
+            session,
+            "user",
+            project.id,
+            [("legacy_id", "owner/repo-dev")],
+        )
+
+    assert result.payload()["status"] == "unchanged"
+    assert result.payload()["items"][0]["outcome"] == "unchanged"
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_aliases_rejects_cross_project_primary_conflict_atomically() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    other = Project(
+        id="other/repo",
+        user_id="user",
+        name="other",
+        kind="repository",
+        git_remote="https://github.com/other/repo.git",
+        path_patterns=[],
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project, other]),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await ensure_project_aliases(
+            session,
+            "user",
+            project.id,
+            [
+                ("legacy_id", "owner/repo-dev"),
+                ("git_remote", "git@github.com:other/repo.git"),
+            ],
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "PROJECT_ALIAS_CONFLICT"
+    assert exc_info.value.detail["canonical_project_ids"] == [other.id]
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_aliases_rejects_cross_type_active_alias_conflict() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    other = Project(
+        id="other/repo",
+        user_id="user",
+        name="other",
+        kind="repository",
+        path_patterns=[],
+    )
+    other_alias = ProjectAlias(
+        id=uuid.uuid4(),
+        user_id="user",
+        canonical_project_id=other.id,
+        alias_type="name",
+        alias_value="repo-dev",
+        normalized_value="repo-dev",
+        status="active",
+        source="ai",
+        confidence=0.8,
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([other_alias]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project, other]),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await ensure_project_aliases(
+            session,
+            "user",
+            project.id,
+            [("legacy_id", "repo-dev")],
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["canonical_project_ids"] == [other.id]
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+def test_resolved_discovery_offers_confirmed_primary_git_identity_update() -> None:
     project = Project(
         id="owner/repo",
         user_id="user",
@@ -78,7 +295,7 @@ def test_discovery_offers_confirmed_git_identity_update_for_existing_candidate()
         path_patterns=[],
     )
     discovery = ProjectDiscovery(
-        status="needs_confirmation",
+        status="resolved",
         hints=("git@github.com:owner/repo.git",),
         candidates=(
             ProjectCandidate(
@@ -88,6 +305,7 @@ def test_discovery_offers_confirmed_git_identity_update_for_existing_candidate()
                 matched_hints=("git@github.com:owner/repo.git",),
             ),
         ),
+        resolution=ProjectResolution(project, "project_id", 1.0),
     )
 
     update_action = next(
@@ -695,7 +913,7 @@ async def test_discovery_detects_strong_conflict_after_one_exact_signal() -> Non
 
 
 @pytest.mark.asyncio
-async def test_discovery_returns_confirmed_create_proposal_only_after_no_match() -> None:
+async def test_discovery_returns_silent_create_proposal_only_after_no_match() -> None:
     session = AsyncMock()
     session.execute = AsyncMock(
         side_effect=[
@@ -717,10 +935,42 @@ async def test_discovery_returns_confirmed_create_proposal_only_after_no_match()
 
     payload = discovery.payload()
     assert discovery.status == "not_found"
-    assert payload["requires_confirmation"] is True
+    assert payload["requires_confirmation"] is False
     assert payload["create_proposal"]["project_id"] == "owner/new-repo"
     assert payload["create_proposal"]["path_patterns"] == ["/srv/new-repo/**"]
-    assert payload["next_actions"][0]["action"] == "confirm_then_create_project"
+    assert payload["next_actions"][0]["action"] == "create_project"
+
+
+def test_discovery_single_candidate_offers_silent_alias_attachment() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    discovery = ProjectDiscovery(
+        status="needs_confirmation",
+        hints=("owner/repo-dev",),
+        candidates=(
+            ProjectCandidate(
+                project=project,
+                confidence=0.8,
+                matched_by=("project_name:environment_variant",),
+                matched_hints=("owner/repo-dev",),
+            ),
+        ),
+    )
+
+    payload = discovery.payload()
+
+    assert payload["requires_confirmation"] is False
+    attach_action = next(
+        action
+        for action in payload["next_actions"]
+        if action["action"] == "create_or_attach_project"
+    )
+    assert attach_action["arguments"]["project_id"] == "owner/repo-dev"
 
 
 @pytest.mark.asyncio

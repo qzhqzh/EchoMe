@@ -108,6 +108,22 @@ class ProjectDiscovery:
     def payload(self) -> dict[str, object]:
         candidate_payloads = [candidate.payload() for candidate in self.candidates]
         next_actions: list[dict[str, object]] = []
+        attach_proposal = (
+            _project_create_proposal(self.hints)
+            if self.status == "needs_confirmation" and len(self.candidates) == 1
+            else None
+        )
+        if attach_proposal is not None:
+            next_actions.append(
+                {
+                    "action": "create_or_attach_project",
+                    "description": (
+                        "Call echome_create_project without user confirmation; it will reuse the "
+                        "sole candidate and persist active aliases."
+                    ),
+                    "arguments": attach_proposal,
+                }
+            )
         if self.status in {"needs_confirmation", "ambiguous"}:
             next_actions.extend(
                 {
@@ -134,7 +150,7 @@ class ProjectDiscovery:
                 }
                 for parent_id in workspace_parent_ids
             )
-        if self.status in {"resolved", "needs_confirmation"} and len(self.candidates) == 1:
+        if self.status == "resolved" and len(self.candidates) == 1:
             candidate = self.candidates[0].project
             remote_hint = next(
                 (hint for hint in self.hints if _looks_like_git_remote(hint)),
@@ -175,8 +191,11 @@ class ProjectDiscovery:
         if create_proposal is not None:
             next_actions.append(
                 {
-                    "action": "confirm_then_create_project",
-                    "description": "Confirm this is a new project before calling echome_create_project.",
+                    "action": "create_project",
+                    "description": (
+                        "Call echome_create_project to create this project without asking the user "
+                        "for confirmation."
+                    ),
                     "arguments": create_proposal,
                 }
             )
@@ -196,7 +215,8 @@ class ProjectDiscovery:
             ),
             "candidates": candidate_payloads,
             "create_proposal": create_proposal,
-            "requires_confirmation": self.status != "resolved",
+            "requires_confirmation": self.status == "ambiguous"
+            or (self.status == "needs_confirmation" and len(self.candidates) != 1),
             "next_actions": next_actions,
         }
 
@@ -284,6 +304,48 @@ class ProjectGitIdentityUpdate:
                 "aliases_unchanged": list(self.aliases_unchanged),
                 "aliases_covered_by_primary": list(self.aliases_covered_by_primary),
             },
+        }
+
+
+@dataclass(frozen=True)
+class ProjectAliasEnsureChange:
+    """One idempotent alias association outcome."""
+
+    alias_type: str
+    alias_value: str
+    normalized_value: str
+    outcome: Literal["created", "activated", "unchanged", "covered_by_project"]
+    alias_id: str | None = None
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "alias_id": self.alias_id,
+            "alias_type": self.alias_type,
+            "alias_value": self.alias_value,
+            "normalized_value": self.normalized_value,
+            "status": "active" if self.outcome != "covered_by_project" else None,
+            "effective": True,
+            "outcome": self.outcome,
+        }
+
+
+@dataclass(frozen=True)
+class ProjectAliasesEnsureResult:
+    """Atomic result for attaching active aliases to one canonical project."""
+
+    project: Project
+    changes: tuple[ProjectAliasEnsureChange, ...]
+
+    @property
+    def changed(self) -> bool:
+        return any(change.outcome in {"created", "activated"} for change in self.changes)
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "echome.project-aliases.v1",
+            "status": "updated" if self.changed else "unchanged",
+            "canonical_project_id": self.project.id,
+            "items": [change.payload() for change in self.changes],
         }
 
 
@@ -671,6 +733,198 @@ async def update_project_git_identity(
             applied=True,
         )
     return preview
+
+
+def _project_covers_alias(
+    project: Project,
+    alias_type: str,
+    normalized_value: str,
+) -> bool:
+    if alias_type in {"legacy_id", "name", "client_hint"}:
+        direct_values = {
+            normalize_project_hint(project.id, alias_type),
+            normalize_project_hint(project.name, alias_type),
+        }
+        return normalized_value in direct_values
+    if alias_type == "git_remote" and project.git_remote:
+        try:
+            return normalized_value == normalize_project_hint(project.git_remote, "git_remote")
+        except ValueError:
+            return False
+    if alias_type == "path":
+        for pattern in project.path_patterns or []:
+            try:
+                normalized_pattern = normalize_project_hint(pattern, "path")
+                wildcard_indexes = [
+                    normalized_pattern.find(marker) for marker in ("*", "?", "[")
+                ]
+                wildcard_indexes = [index for index in wildcard_indexes if index >= 0]
+                pattern_root = normalized_pattern[
+                    : min(wildcard_indexes, default=len(normalized_pattern))
+                ].rstrip("/")
+                if (
+                    normalized_value in {normalized_pattern, pattern_root}
+                    or fnmatch.fnmatch(normalized_value, normalized_pattern)
+                ):
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+async def ensure_project_aliases(
+    session: AsyncSession,
+    user_id: str,
+    project_hint: str,
+    aliases: list[tuple[str, str]],
+    *,
+    source: str = "ai",
+    confidence: float = 1.0,
+) -> ProjectAliasesEnsureResult:
+    """Atomically create or activate active aliases for one canonical project."""
+    if not aliases:
+        raise ValueError("At least one project alias is required")
+    if len(aliases) > 10:
+        raise ValueError("At most 10 project aliases can be ensured at once")
+
+    normalized_aliases: dict[tuple[str, str], str] = {}
+    for alias_type, alias_value in aliases:
+        clean_value = _normalized_text(alias_value)
+        normalized_value = normalize_project_hint(clean_value, alias_type)
+        normalized_aliases.setdefault((alias_type, normalized_value), clean_value)
+    lookup_keys_by_alias = {
+        key: {
+            (lookup_type, normalize_project_hint(alias_value, lookup_type))
+            for lookup_type in dict.fromkeys([key[0], *infer_alias_types(alias_value)])
+        }
+        for key, alias_value in normalized_aliases.items()
+    }
+
+    resolution = await resolve_project(session, user_id, project_hint)
+    projects = await _all_user_projects(session, user_id, for_update=True)
+    project = next(
+        (candidate for candidate in projects if candidate.id == resolution.project.id),
+        None,
+    )
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    conflicting_project_ids: set[str] = set()
+    for other_project in projects:
+        if other_project.id == project.id:
+            continue
+        for (alias_type, normalized_value), _alias_value in normalized_aliases.items():
+            if _project_covers_alias(other_project, alias_type, normalized_value):
+                conflicting_project_ids.add(other_project.id)
+
+    lookup_keys = {
+        lookup_key
+        for alias_lookup_keys in lookup_keys_by_alias.values()
+        for lookup_key in alias_lookup_keys
+    }
+    alias_predicates = [
+        (ProjectAlias.alias_type == alias_type)
+        & (ProjectAlias.normalized_value == normalized_value)
+        for alias_type, normalized_value in lookup_keys
+    ]
+    alias_result = await session.execute(
+        select(ProjectAlias)
+        .where(
+            ProjectAlias.user_id == user_id,
+            or_(*alias_predicates),
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    existing_aliases = list(alias_result.scalars().all())
+    for requested_key, alias_lookup_keys in lookup_keys_by_alias.items():
+        for alias in existing_aliases:
+            alias_key = (alias.alias_type, alias.normalized_value)
+            if alias.canonical_project_id == project.id:
+                continue
+            if alias_key == requested_key or (
+                alias.status in {"active", "proposed"} and alias_key in alias_lookup_keys
+            ):
+                conflicting_project_ids.add(alias.canonical_project_id)
+    if conflicting_project_ids:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "PROJECT_ALIAS_CONFLICT",
+                "message": "Project alias is already represented by another canonical project",
+                "canonical_project_ids": sorted(conflicting_project_ids),
+                "normalized_values": sorted(
+                    normalized_value for _alias_type, normalized_value in normalized_aliases
+                ),
+            },
+        )
+
+    existing_by_key = {
+        (alias.alias_type, alias.normalized_value): alias
+        for alias in existing_aliases
+        if alias.canonical_project_id == project.id
+    }
+    active_same_project_keys = {
+        (alias.alias_type, alias.normalized_value)
+        for alias in existing_aliases
+        if alias.canonical_project_id == project.id and alias.status == "active"
+    }
+    planned: list[
+        tuple[
+            str,
+            str,
+            str,
+            Literal["created", "activated", "unchanged", "covered_by_project"],
+            ProjectAlias | None,
+        ]
+    ] = []
+    changed = False
+    for (alias_type, normalized_value), alias_value in normalized_aliases.items():
+        existing = existing_by_key.get((alias_type, normalized_value))
+        if existing is not None:
+            outcome: Literal["activated", "unchanged"]
+            if existing.status == "active":
+                outcome = "unchanged"
+            else:
+                existing.status = "active"
+                existing.confidence = max(existing.confidence, confidence)
+                outcome = "activated"
+                changed = True
+            planned.append((alias_type, existing.alias_value, normalized_value, outcome, existing))
+            continue
+        if _project_covers_alias(project, alias_type, normalized_value):
+            planned.append((alias_type, alias_value, normalized_value, "covered_by_project", None))
+            continue
+        if active_same_project_keys & lookup_keys_by_alias[(alias_type, normalized_value)]:
+            planned.append((alias_type, alias_value, normalized_value, "covered_by_project", None))
+            continue
+        alias = ProjectAlias(
+            user_id=user_id,
+            canonical_project_id=project.id,
+            alias_type=alias_type,
+            alias_value=alias_value,
+            normalized_value=normalized_value,
+            status="active",
+            source=source,
+            confidence=confidence,
+        )
+        session.add(alias)
+        planned.append((alias_type, alias_value, normalized_value, "created", alias))
+        changed = True
+
+    if changed:
+        await session.flush()
+    changes = tuple(
+        ProjectAliasEnsureChange(
+            alias_type=alias_type,
+            alias_value=alias_value,
+            normalized_value=normalized_value,
+            outcome=outcome,
+            alias_id=str(alias.id) if alias is not None and alias.id is not None else None,
+        )
+        for alias_type, alias_value, normalized_value, outcome, alias in planned
+    )
+    return ProjectAliasesEnsureResult(project=project, changes=changes)
 
 
 async def discover_projects(

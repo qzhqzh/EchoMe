@@ -7,12 +7,18 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.projects import (
+    ProjectAliasesEnsureRequest,
     ProjectGitIdentityUpdateRequest,
     delete_project,
+    ensure_active_project_aliases,
     patch_project_git_identity,
 )
 from app.models.memory import Project
-from app.services.project_identity import ProjectGitIdentityUpdate
+from app.services.project_identity import (
+    ProjectAliasEnsureChange,
+    ProjectAliasesEnsureResult,
+    ProjectGitIdentityUpdate,
+)
 
 
 @pytest.mark.asyncio
@@ -56,6 +62,59 @@ async def test_git_identity_endpoint_returns_server_owned_preview() -> None:
         git_remote_aliases=[],
         confirmed=False,
         confirmation_token=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_alias_ensure_endpoint_writes_active_aliases_without_confirmation() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    ensured = ProjectAliasesEnsureResult(
+        project=project,
+        changes=(
+            ProjectAliasEnsureChange(
+                alias_type="legacy_id",
+                alias_value="owner/repo-dev",
+                normalized_value="owner/repo-dev",
+                outcome="created",
+            ),
+        ),
+    )
+    body = ProjectAliasesEnsureRequest(
+        canonical_project_id=project.id,
+        aliases=[
+            {
+                "alias_type": "legacy_id",
+                "alias_value": "owner/repo-dev",
+            }
+        ],
+        confidence=0.8,
+    )
+    session = AsyncMock()
+
+    with patch(
+        "app.api.projects.ensure_project_aliases",
+        new=AsyncMock(return_value=ensured),
+    ) as ensure:
+        payload = await ensure_active_project_aliases(
+            body,
+            session=session,
+            user_id="user",
+        )
+
+    assert payload["status"] == "updated"
+    ensure.assert_awaited_once_with(
+        session,
+        "user",
+        project.id,
+        [("legacy_id", "owner/repo-dev")],
+        source="ai",
+        confidence=0.8,
     )
 
 

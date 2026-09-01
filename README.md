@@ -34,8 +34,8 @@ AI 默认调用 `echome_context`，由运行时自动完成：
 
 - personal / project / impact / temporal 路由选择
 - canonical project 与 alias 解析；同时使用 Git remote、repository root 等多个身份信号
-- 未命中时返回可继续重试、选择或确认创建的结构化 project resolution，不以一次 404 终止
-- 对已确认的既有项目先预览、再显式确认补录 Git remote/alias；SSH 与 HTTPS 地址按同一仓库身份识别
+- 未命中时返回可继续执行的结构化 project resolution；无候选静默创建，唯一候选静默补 active alias
+- 显式变更既有项目主 Git remote 时仍先预览、再确认；SSH 与 HTTPS 地址按同一仓库身份识别
 - 记忆、约束、制品、事件和图关系召回
 - 冲突、未知项、时效性和 answerability 判断
 - token budget 控制与检索 trace 记录
