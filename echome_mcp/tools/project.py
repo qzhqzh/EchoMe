@@ -1,5 +1,7 @@
 """echome_project - Project management tools."""
 
+import json
+
 import httpx
 
 from echome_mcp.hub_client import MCPHubClient
@@ -133,3 +135,62 @@ async def echome_create_project(
         f"- Git: {result.get('git_remote') or '无'}\n\n"
         f"现在可以使用 echome_remember 创建项目记忆，project_id 使用 '{result.get('id')}'。"
     )
+
+
+async def echome_update_project_git_identity(
+    project_id: str,
+    git_remote: str | None = None,
+    git_remote_aliases: list[str] | None = None,
+    confirmed: bool = False,
+    confirmation_token: str | None = None,
+) -> str:
+    """Preview or apply a safe Git remote/alias update for an existing project."""
+    client = MCPHubClient()
+    try:
+        result = await client.update_project_git_identity(
+            project_id=project_id,
+            git_remote=git_remote,
+            git_remote_aliases=git_remote_aliases,
+            confirmed=confirmed,
+            confirmation_token=confirmation_token,
+        )
+    except httpx.HTTPStatusError as exc:
+        try:
+            response_payload = exc.response.json()
+        except ValueError:
+            response_payload = {}
+        detail = response_payload.get("detail") if isinstance(response_payload, dict) else None
+        if isinstance(detail, dict):
+            code = str(detail.get("code") or "PROJECT_GIT_IDENTITY_UPDATE_FAILED")
+            message = str(detail.get("message") or exc)
+            conflict_ids = detail.get("canonical_project_ids")
+        else:
+            code = {
+                404: "PROJECT_NOT_FOUND",
+                409: "PROJECT_GIT_IDENTITY_CONFLICT",
+                422: "INVALID_PROJECT_GIT_IDENTITY",
+            }.get(exc.response.status_code, "PROJECT_GIT_IDENTITY_UPDATE_FAILED")
+            message = str(detail or exc)
+            conflict_ids = None
+        error_details: dict[str, object] = {
+            "code": code,
+            "message": message,
+            "retryable": False,
+            "request_id": exc.response.headers.get("x-request-id", "hub-response"),
+            "degraded": False,
+            "suggested_action": (
+                "Retry with the intended canonical project ID after resolving the conflict."
+                if exc.response.status_code == 409
+                else "Check the project ID and proposed Git identity."
+            ),
+        }
+        if isinstance(conflict_ids, list):
+            error_details["canonical_project_ids"] = conflict_ids
+        error = {
+            "schema_version": "echome.error.v1",
+            "error": error_details,
+        }
+        return json.dumps(error, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        raise RuntimeError(f"更新项目 Git identity 失败: {exc}") from exc
+    return json.dumps(result, ensure_ascii=False, indent=2)

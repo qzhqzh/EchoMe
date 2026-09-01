@@ -522,3 +522,28 @@ class MCPHubClient:
             resp = await client.post("/api/v1/projects", json=data)
             resp.raise_for_status()
             return resp.json()
+
+    async def update_project_git_identity(
+        self,
+        project_id: str,
+        git_remote: str | None = None,
+        git_remote_aliases: list[str] | None = None,
+        confirmed: bool = False,
+        confirmation_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Preview or apply a conflict-checked Git identity update."""
+        data = {
+            "project_id": project_id,
+            "git_remote": git_remote,
+            "git_remote_aliases": git_remote_aliases or [],
+            "confirmed": confirmed,
+            "confirmation_token": confirmation_token,
+            "source": "ai",
+        }
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.patch("/api/v1/projects/git-identity", json=data)
+            resp.raise_for_status()
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Project Git identity response must be an object")
+            return payload

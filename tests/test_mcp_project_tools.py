@@ -66,6 +66,20 @@ def test_project_tools_advertise_structured_context_and_preflight(monkeypatch) -
         ]
         is False
     )
+    assert by_name["echome_update_project_git_identity"].outputSchema is not None
+    assert by_name["echome_update_project_git_identity"].outputSchema["type"] == "object"
+    assert by_name["echome_update_project_git_identity"].annotations.readOnlyHint is False
+    assert by_name["echome_update_project_git_identity"].annotations.destructiveHint is True
+    assert by_name["echome_update_project_git_identity"].annotations.idempotentHint is True
+
+
+def test_core_profile_includes_project_git_identity_maintenance(monkeypatch) -> None:
+    monkeypatch.setenv("ECHOME_MCP_PROFILE", "core")
+    tool_names = {tool.name for tool in asyncio.run(server_module.list_tools())}
+
+    assert len(tool_names) == 10
+    assert "echome_update_project_git_identity" in tool_names
+    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v8"
 
 
 def test_create_project_stops_when_discovery_finds_existing_candidate(monkeypatch) -> None:
@@ -131,6 +145,126 @@ def test_create_project_requires_explicit_new_project_confirmation(monkeypatch) 
         }
     ]
     assert "项目创建成功" in created
+
+
+def test_update_project_git_identity_previews_before_confirmation(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class IdentityClient:
+        async def update_project_git_identity(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "schema_version": "echome.project-git-identity.v1",
+                "status": "confirmation_required",
+                "requires_confirmation": True,
+                "confirmation_token": "a" * 64,
+                "project": {"id": kwargs["project_id"], "git_remote": None},
+                "changes": {
+                    "git_remote": {
+                        "before": None,
+                        "after": kwargs["git_remote"],
+                        "changed": True,
+                    }
+                },
+            }
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", IdentityClient)
+
+    payload = json.loads(
+        asyncio.run(
+            project_tools_module.echome_update_project_git_identity(
+                project_id="owner/repo",
+                git_remote="git@github.com:owner/repo.git",
+            )
+        )
+    )
+
+    assert payload["status"] == "confirmation_required"
+    assert calls == [
+        {
+            "project_id": "owner/repo",
+            "git_remote": "git@github.com:owner/repo.git",
+            "git_remote_aliases": None,
+            "confirmed": False,
+            "confirmation_token": None,
+        }
+    ]
+
+
+def test_update_project_git_identity_preserves_conflict_details(monkeypatch) -> None:
+    class ConflictClient:
+        async def update_project_git_identity(self, **_kwargs):
+            request = httpx.Request("PATCH", "https://hub.example/api/v1/projects/git-identity")
+            response = httpx.Response(
+                409,
+                request=request,
+                json={
+                    "detail": {
+                        "code": "PROJECT_GIT_IDENTITY_CONFLICT",
+                        "message": "Git identity is already assigned",
+                        "canonical_project_ids": ["other/repo"],
+                    }
+                },
+            )
+            raise httpx.HTTPStatusError("conflict", request=request, response=response)
+
+    monkeypatch.setattr(project_tools_module, "MCPHubClient", ConflictClient)
+
+    payload = json.loads(
+        asyncio.run(
+            project_tools_module.echome_update_project_git_identity(
+                project_id="owner/repo",
+                git_remote="git@github.com:other/repo.git",
+                confirmed=True,
+            )
+        )
+    )
+
+    assert payload["error"]["code"] == "PROJECT_GIT_IDENTITY_CONFLICT"
+    assert payload["error"]["canonical_project_ids"] == ["other/repo"]
+
+
+def test_update_project_git_identity_dispatches_confirmation(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    async def fake_update(**kwargs) -> str:
+        calls.append(kwargs)
+        return json.dumps(
+            {
+                "schema_version": "echome.project-git-identity.v1",
+                "status": "updated",
+                "requires_confirmation": False,
+                "confirmation_token": "a" * 64,
+                "project": {"id": kwargs["project_id"]},
+                "changes": {},
+            }
+        )
+
+    monkeypatch.setattr(server_module, "echome_update_project_git_identity", fake_update)
+
+    result = asyncio.run(
+        server_module.call_tool(
+            "echome_update_project_git_identity",
+            {
+                "project_id": "owner/repo",
+                "git_remote_aliases": ["git@github.com:owner/repo.git"],
+                "confirmed": True,
+                "confirmation_token": "a" * 64,
+            },
+        )
+    )
+
+    assert result.isError is False
+    assert result.structuredContent["status"] == "updated"
+    assert calls == [
+        {
+            "project_id": "owner/repo",
+            "git_remote": None,
+            "git_remote_aliases": ["git@github.com:owner/repo.git"],
+            "confirmed": True,
+            "confirmation_token": "a" * 64,
+        }
+    ]
 
 
 def test_all_structured_tool_outputs_have_object_root_for_client_compatibility(
@@ -593,6 +727,7 @@ def test_explicit_core_profile_keeps_graph_reliability(monkeypatch) -> None:
         "echome_memory_explain",
         "echome_remember",
         "echome_create_project",
+        "echome_update_project_git_identity",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
     }

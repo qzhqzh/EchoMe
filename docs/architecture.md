@@ -74,7 +74,7 @@ Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade h
 
 `echome_mcp` 是协议适配层，通过 Hub REST API 读写数据，不直接连接数据库。
 
-- 默认 `core` profile：9 个高频工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback 和经确认的安全项目创建。
+- 默认 `core` profile：10 个高频工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目创建和经确认的 Git identity 维护。
 - `ECHOME_MCP_PROFILE=full`：暴露 summary-first、Project Knowledge、Sleep 等专业工具。
 - `echome_capabilities` 会根据当前 profile 只推荐实际可调用的工具。
 - Hub 暂时不可达时，仅 `echome_context` 可读取本地 AES-256-GCM last-known-good 缓存；缓存不会回写 Hub。

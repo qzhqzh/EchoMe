@@ -11,6 +11,7 @@ CORE_TOOL_NAMES = frozenset(
         "echome_memory_explain",
         "echome_remember",
         "echome_create_project",
+        "echome_update_project_git_identity",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
     }
