@@ -48,7 +48,11 @@ from echome_mcp.tools.graph import (
     echome_temporal_candidates,
 )
 from echome_mcp.tools.list_by_type import echome_list_by_type
-from echome_mcp.tools.project import echome_create_project, echome_list_projects
+from echome_mcp.tools.project import (
+    echome_create_project,
+    echome_list_projects,
+    echome_update_project_git_identity,
+)
 from echome_mcp.tools.project_context import echome_get_project_context
 from echome_mcp.tools.project_knowledge import (
     echome_constraint_propose,
@@ -105,6 +109,31 @@ PREFLIGHT_OUTPUT_SCHEMA = {
         "unknowns": {"type": "array"},
     },
     "required": ["project_id", "task", "read_only", "decision", "warnings", "unknowns"],
+    "additionalProperties": True,
+}
+
+PROJECT_GIT_IDENTITY_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"const": "echome.project-git-identity.v1"},
+        "status": {
+            "type": "string",
+            "enum": ["confirmation_required", "updated", "unchanged"],
+        },
+        "requires_confirmation": {"type": "boolean"},
+        "confirmation_token": {"type": ["string", "null"]},
+        "project": {"type": "object"},
+        "normalized_git_remote": {"type": ["string", "null"]},
+        "changes": {"type": "object"},
+    },
+    "required": [
+        "schema_version",
+        "status",
+        "requires_confirmation",
+        "confirmation_token",
+        "project",
+        "changes",
+    ],
     "additionalProperties": True,
 }
 
@@ -1158,6 +1187,57 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="echome_update_project_git_identity",
+            description=(
+                "为既有 canonical project 预览或更新 Git remote/alias。"
+                "首次调用保持 confirmed=false；只有用户确认候选确为同一仓库后才设为 true。"
+                "SSH、SCP 风格 SSH 与 HTTPS 使用同一规范化身份，跨项目冲突会被拒绝。"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "已解析并由用户确认的 canonical project ID",
+                    },
+                    "git_remote": {
+                        "type": "string",
+                        "description": "要设置为项目主 remote 的地址（可选）",
+                    },
+                    "git_remote_aliases": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "description": "要补充并激活的额外 Git remote；替换主 remote 后仍需兼容旧地址时应显式包含旧值",
+                    },
+                    "confirmed": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "仅在用户确认预览内容且候选是同一仓库后设为 true",
+                    },
+                    "confirmation_token": {
+                        "type": "string",
+                        "minLength": 64,
+                        "maxLength": 64,
+                        "description": "confirmed=true 时必须回传最近一次预览返回的 token",
+                    },
+                },
+                "required": ["project_id"],
+                "anyOf": [
+                    {"required": ["git_remote"]},
+                    {"required": ["git_remote_aliases"]},
+                ],
+            },
+            outputSchema=_with_error_output(PROJECT_GIT_IDENTITY_OUTPUT_SCHEMA),
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=True,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        ),
+        Tool(
             name="echome_sleep_candidates",
             description=(
                 "Fetch all eligible Memory Sleep candidates page by page. "
@@ -1499,6 +1579,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 path_patterns=arguments.get("path_patterns"),
                 confirmed_new_project=arguments.get("confirmed_new_project", False),
                 confirmed_distinct_project=arguments.get("confirmed_distinct_project", False),
+            )
+        elif name == "echome_update_project_git_identity":
+            result = await echome_update_project_git_identity(
+                project_id=arguments["project_id"],
+                git_remote=arguments.get("git_remote"),
+                git_remote_aliases=arguments.get("git_remote_aliases"),
+                confirmed=arguments.get("confirmed", False),
+                confirmation_token=arguments.get("confirmation_token"),
             )
         elif name == "echome_sleep_candidates":
             result = await echome_sleep_candidates(

@@ -10,7 +10,7 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v7",
+    "capabilities_version": "echome.capabilities.v8",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
@@ -43,6 +43,11 @@ CAPABILITIES: dict[str, Any] = {
             "step": "resolve",
             "tool": "echome_context",
             "when": "Send all known project identity signals. Follow project_resolution retry actions instead of stopping after an unmatched hint.",
+        },
+        {
+            "step": "maintain_identity",
+            "tool": "echome_update_project_git_identity",
+            "when": "After the user confirms a recovered candidate is the same repository, preview and then persist a missing Git remote or alias.",
         },
         {
             "step": "preflight",
@@ -189,6 +194,13 @@ CAPABILITIES: dict[str, Any] = {
                 "when": "Only after echome_context returns project_resolution.status=not_found and the user explicitly confirms this is a new project.",
                 "mutates_state": True,
             },
+            {
+                "tool": "echome_update_project_git_identity",
+                "when": "For an existing canonical project whose confirmed Git remote or alias is missing; preview with confirmed=false before applying.",
+                "mutates_state": True,
+                "requires_confirmation": True,
+                "idempotent": True,
+            },
         ],
         "write": [
             {
@@ -243,7 +255,7 @@ CAPABILITIES: dict[str, Any] = {
         "Follow the completion_contract returned by a recorded non-shadow context run. Outcomes are append-only; use no_signal instead of inventing success or failure, and set policy_effect only when explicit.",
         "Context reliability defaults to shadow mode: decisions are observable but source memories and constraints are never rewritten. Enforce mode also requires an explicit Hub feature flag.",
         "Before any enforce canary, call echome_runtime_health with include_policy_readiness=true. eligible_for_canary never enables enforce automatically.",
-        "When project_resolution requires action, retry with a returned canonical ID; create a project only after status=not_found and explicit user confirmation.",
+        "When project_resolution requires action, retry with a returned canonical ID; update an existing Git identity only after preview and explicit confirmation, or create a project only after status=not_found and explicit confirmation.",
     ],
 }
 
@@ -322,8 +334,9 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
             "Use EchoMe MCP as the memory and project-context layer."
             f"{project_hint}\n\n"
             "Call echome_context first with the current task, project hint, and changed paths when known. "
-            "If it returns project_resolution, retry with a candidate canonical ID; call echome_create_project "
-            "only after status=not_found and explicit user confirmation. "
+            "If it returns project_resolution, retry with a candidate canonical ID. For an existing project, "
+            "preview echome_update_project_git_identity and apply only after explicit confirmation; call "
+            "echome_create_project only after status=not_found and explicit user confirmation. "
             "Use echome_memory_explain before relying on a key memory whose provenance or freshness matters. "
             "When echome_context returns a completion_contract, call echome_context_outcome exactly once "
             "at task end and use no_signal when usefulness is unknown. Record memory feedback only when its "

@@ -29,6 +29,7 @@ from app.services.project_identity import (
     discover_projects,
     normalize_project_hint,
     resolve_project,
+    update_project_git_identity,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -69,6 +70,17 @@ class ProjectDiscoverRequest(BaseModel):
         max_length=10,
     )
     limit: int = Field(5, ge=1, le=20)
+
+
+class ProjectGitIdentityUpdateRequest(BaseModel):
+    project_id: str = Field(..., min_length=1, max_length=128)
+    git_remote: str | None = Field(None, min_length=1, max_length=512)
+    git_remote_aliases: list[Annotated[str, Field(min_length=1, max_length=2048)]] = Field(
+        default_factory=list,
+        max_length=10,
+    )
+    confirmed: bool = False
+    confirmation_token: str | None = Field(None, min_length=64, max_length=64)
 
 
 class ProjectAliasCreate(BaseModel):
@@ -196,6 +208,29 @@ async def discover_project_hints(
     require_safe_content(*body.hints)
     discovery = await discover_projects(session, user_id, body.hints, body.limit)
     return discovery.payload()
+
+
+@router.patch("/git-identity")
+async def patch_project_git_identity(
+    body: ProjectGitIdentityUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, object]:
+    """Preview or apply a confirmed, conflict-checked Git identity update."""
+    require_safe_content(body.project_id, body.git_remote, *body.git_remote_aliases)
+    try:
+        result = await update_project_git_identity(
+            session,
+            user_id,
+            body.project_id,
+            git_remote=body.git_remote,
+            git_remote_aliases=body.git_remote_aliases,
+            confirmed=body.confirmed,
+            confirmation_token=body.confirmation_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result.payload()
 
 
 @router.get("/aliases")

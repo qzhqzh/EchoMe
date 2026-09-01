@@ -576,12 +576,21 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 |---|---|---|
 | `POST` | `/api/v1/projects/resolve` | 按 ID、name、Git remote、path 或 client hint 精确解析 canonical project |
 | `POST` | `/api/v1/projects/discover` | 对最多 10 个身份信号做只读候选发现，返回匹配依据、置信度、workspace 父级和安全下一步 |
+| `PATCH` | `/api/v1/projects/git-identity` | 预览或应用既有项目的主 Git remote 与 active Git remote aliases |
 | `GET` | `/api/v1/projects/aliases` | 查询 proposed/active aliases |
 | `POST` | `/api/v1/projects/aliases` | 创建 proposed alias；不能在创建时直接激活 |
 | `PATCH` | `/api/v1/projects/aliases/{alias_id}` | 显式激活、拒绝或归档 alias |
 
 Alias 不搬迁或覆盖历史数据。读路径可展开 active 的历史 scope；写路径把已知 active alias 统一为
 canonical project，无法解析的旧 scope 为兼容历史客户端而原样保留。
+`/projects/git-identity` 只接受主 remote 和 Git remote aliases，不覆盖名称、描述、kind 或
+`path_patterns`。`confirmed=false` 返回服务端预览与 `confirmation_token` 且不写入；
+`confirmed=true` 必须回传该 token 才会原子应用。项目 remote 或 alias 状态在两次调用之间变化时，
+旧 token 失效并返回 `409 PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED`。
+SCP 风格 SSH、`ssh://` 与 HTTPS 使用同一 `host/owner/repo` 规范化值；等价地址幂等，已属于其他
+canonical project 的 identity 返回 `409 PROJECT_GIT_IDENTITY_CONFLICT`。
+替换主 remote 不会静默保留旧值；若旧地址仍需识别，调用方必须把它显式放入
+`git_remote_aliases`，并由预览展示这项变化。
 `/projects/resolve` 的歧义解析返回 `409`，未知项目返回 `404`；`/context` 和
 `/projects/discover` 则返回非终止性的结构化恢复结果。跨用户 alias 不可见。
 

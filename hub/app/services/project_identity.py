@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
+import json
 import posixpath
 import re
+import secrets
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -131,6 +134,41 @@ class ProjectDiscovery:
                 }
                 for parent_id in workspace_parent_ids
             )
+        if self.status in {"resolved", "needs_confirmation"} and len(self.candidates) == 1:
+            candidate = self.candidates[0].project
+            remote_hint = next(
+                (hint for hint in self.hints if _looks_like_git_remote(hint)),
+                None,
+            )
+            if remote_hint is not None:
+                try:
+                    current_remote = (
+                        normalize_project_hint(candidate.git_remote, "git_remote")
+                        if candidate.git_remote
+                        else None
+                    )
+                    hinted_remote = normalize_project_hint(remote_hint, "git_remote")
+                except ValueError:
+                    current_remote = hinted_remote = None
+                if hinted_remote is not None and hinted_remote != current_remote:
+                    arguments: dict[str, object] = {
+                        "project_id": candidate.id,
+                        "confirmed": False,
+                    }
+                    if candidate.git_remote:
+                        arguments["git_remote_aliases"] = [remote_hint]
+                    else:
+                        arguments["git_remote"] = remote_hint
+                    next_actions.append(
+                        {
+                            "action": "confirm_then_update_project_git_identity",
+                            "description": (
+                                "Preview this Git identity update, then apply it only after the "
+                                "user confirms the candidate is the same repository."
+                            ),
+                            "arguments": arguments,
+                        }
+                    )
         create_proposal = (
             _project_create_proposal(self.hints) if self.status == "not_found" else None
         )
@@ -160,6 +198,92 @@ class ProjectDiscovery:
             "create_proposal": create_proposal,
             "requires_confirmation": self.status != "resolved",
             "next_actions": next_actions,
+        }
+
+
+@dataclass(frozen=True)
+class ProjectGitIdentityUpdate:
+    """A server-owned preview or applied update for one project's Git identity."""
+
+    project: Project
+    before_git_remote: str | None
+    requested_git_remote: str | None
+    normalized_git_remote: str | None
+    aliases_to_create: tuple[str, ...]
+    aliases_to_activate: tuple[str, ...]
+    aliases_unchanged: tuple[str, ...]
+    aliases_covered_by_primary: tuple[str, ...]
+    applied: bool
+
+    @property
+    def primary_changed(self) -> bool:
+        return (
+            self.requested_git_remote is not None
+            and self.requested_git_remote != self.before_git_remote
+        )
+
+    @property
+    def has_changes(self) -> bool:
+        return self.primary_changed or bool(self.aliases_to_create or self.aliases_to_activate)
+
+    @property
+    def confirmation_token(self) -> str | None:
+        if not self.has_changes:
+            return None
+        token_payload = {
+            "project_id": self.project.id,
+            "before_git_remote": self.before_git_remote,
+            "requested_git_remote": self.requested_git_remote,
+            "aliases_to_create": self.aliases_to_create,
+            "aliases_to_activate": self.aliases_to_activate,
+            "aliases_unchanged": self.aliases_unchanged,
+            "aliases_covered_by_primary": self.aliases_covered_by_primary,
+        }
+        encoded = json.dumps(
+            token_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def payload(self) -> dict[str, object]:
+        after_git_remote = (
+            self.requested_git_remote
+            if self.requested_git_remote is not None
+            else self.before_git_remote
+        )
+        if not self.has_changes:
+            update_status = "unchanged"
+        elif self.applied:
+            update_status = "updated"
+        else:
+            update_status = "confirmation_required"
+        return {
+            "schema_version": "echome.project-git-identity.v1",
+            "status": update_status,
+            "requires_confirmation": self.has_changes and not self.applied,
+            "confirmation_token": self.confirmation_token if not self.applied else None,
+            "project": {
+                "id": self.project.id,
+                "name": self.project.name,
+                "kind": self.project.kind,
+                "description": self.project.description,
+                "git_remote": self.project.git_remote,
+                "path_patterns": list(self.project.path_patterns or []),
+            },
+            "normalized_git_remote": self.normalized_git_remote,
+            "changes": {
+                "git_remote": {
+                    "before": self.before_git_remote,
+                    "after": after_git_remote,
+                    "changed": self.primary_changed,
+                },
+                "aliases_to_create": list(self.aliases_to_create),
+                "aliases_to_activate": list(self.aliases_to_activate),
+                "aliases_unchanged": list(self.aliases_unchanged),
+                "aliases_covered_by_primary": list(self.aliases_covered_by_primary),
+            },
         }
 
 
@@ -366,9 +490,187 @@ def _project_create_proposal(hints: tuple[str, ...]) -> dict[str, object] | None
     return proposal
 
 
-async def _all_user_projects(session: AsyncSession, user_id: str) -> list[Project]:
-    result = await session.execute(select(Project).where(Project.user_id == user_id))
+async def _all_user_projects(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    for_update: bool = False,
+) -> list[Project]:
+    query = select(Project).where(Project.user_id == user_id)
+    if for_update:
+        query = (
+            query.order_by(Project.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def update_project_git_identity(
+    session: AsyncSession,
+    user_id: str,
+    project_hint: str,
+    *,
+    git_remote: str | None,
+    git_remote_aliases: list[str],
+    confirmed: bool,
+    confirmation_token: str | None = None,
+) -> ProjectGitIdentityUpdate:
+    """Preview or atomically apply a conflict-checked Git identity update."""
+    requested_git_remote = _normalized_text(git_remote) if git_remote is not None else None
+
+    aliases_by_normalized: dict[str, str] = {}
+    for alias_value in git_remote_aliases:
+        clean_alias = _normalized_text(alias_value)
+        normalized_alias = normalize_project_hint(clean_alias, "git_remote")
+        aliases_by_normalized.setdefault(normalized_alias, clean_alias)
+    if requested_git_remote is None and not aliases_by_normalized:
+        raise ValueError("A git_remote or at least one git_remote_alias is required")
+    project = (await resolve_project(session, user_id, project_hint)).project
+
+    requested_primary_normalized = (
+        normalize_project_hint(requested_git_remote, "git_remote")
+        if requested_git_remote is not None
+        else None
+    )
+    after_git_remote = requested_git_remote or project.git_remote
+    try:
+        normalized_after_git_remote = (
+            normalize_project_hint(after_git_remote, "git_remote")
+            if after_git_remote
+            else None
+        )
+    except ValueError:
+        normalized_after_git_remote = None
+
+    requested_normalized_values = set(aliases_by_normalized)
+    if requested_primary_normalized is not None:
+        requested_normalized_values.add(requested_primary_normalized)
+
+    projects = await _all_user_projects(session, user_id, for_update=confirmed)
+    conflicting_project_ids: set[str] = set()
+    for other_project in projects:
+        if other_project.id == project.id or not other_project.git_remote:
+            continue
+        try:
+            other_normalized = normalize_project_hint(other_project.git_remote, "git_remote")
+        except ValueError:
+            continue
+        if other_normalized in requested_normalized_values:
+            conflicting_project_ids.add(other_project.id)
+
+    alias_query = select(ProjectAlias).where(
+        ProjectAlias.user_id == user_id,
+        ProjectAlias.alias_type == "git_remote",
+        ProjectAlias.normalized_value.in_(requested_normalized_values),
+    )
+    if confirmed:
+        alias_query = alias_query.with_for_update().execution_options(populate_existing=True)
+    alias_result = await session.execute(alias_query)
+    existing_aliases = list(alias_result.scalars().all())
+    conflicting_project_ids.update(
+        alias.canonical_project_id
+        for alias in existing_aliases
+        if alias.canonical_project_id != project.id
+    )
+    if conflicting_project_ids:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "PROJECT_GIT_IDENTITY_CONFLICT",
+                "message": "Git identity is already assigned to another canonical project",
+                "canonical_project_ids": sorted(conflicting_project_ids),
+                "normalized_values": sorted(requested_normalized_values),
+            },
+        )
+
+    existing_aliases_by_normalized = {
+        alias.normalized_value: alias
+        for alias in existing_aliases
+        if alias.canonical_project_id == project.id
+    }
+    aliases_to_create: list[str] = []
+    aliases_to_activate: list[str] = []
+    aliases_unchanged: list[str] = []
+    aliases_covered_by_primary: list[str] = []
+    for normalized_alias, alias_value in aliases_by_normalized.items():
+        if normalized_alias == normalized_after_git_remote:
+            aliases_covered_by_primary.append(alias_value)
+            continue
+        existing_alias = existing_aliases_by_normalized.get(normalized_alias)
+        if existing_alias is None:
+            aliases_to_create.append(alias_value)
+        elif existing_alias.status == "active":
+            aliases_unchanged.append(existing_alias.alias_value)
+        else:
+            aliases_to_activate.append(existing_alias.alias_value)
+
+    before_git_remote = project.git_remote
+    primary_changed = (
+        requested_git_remote is not None and requested_git_remote != before_git_remote
+    )
+    has_changes = primary_changed or bool(aliases_to_create or aliases_to_activate)
+    preview = ProjectGitIdentityUpdate(
+        project=project,
+        before_git_remote=before_git_remote,
+        requested_git_remote=requested_git_remote,
+        normalized_git_remote=normalized_after_git_remote,
+        aliases_to_create=tuple(aliases_to_create),
+        aliases_to_activate=tuple(aliases_to_activate),
+        aliases_unchanged=tuple(aliases_unchanged),
+        aliases_covered_by_primary=tuple(aliases_covered_by_primary),
+        applied=False,
+    )
+    if confirmed and has_changes:
+        expected_token = preview.confirmation_token
+        if (
+            expected_token is None
+            or confirmation_token is None
+            or not secrets.compare_digest(confirmation_token, expected_token)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED",
+                    "message": (
+                        "Preview the current Git identity update and confirm its latest token "
+                        "before applying"
+                    ),
+                },
+            )
+        if primary_changed:
+            project.git_remote = requested_git_remote
+        aliases_to_activate_set = set(aliases_to_activate)
+        for alias in existing_aliases:
+            if alias.alias_value in aliases_to_activate_set:
+                alias.status = "active"
+        for alias_value in aliases_to_create:
+            session.add(
+                ProjectAlias(
+                    user_id=user_id,
+                    canonical_project_id=project.id,
+                    alias_type="git_remote",
+                    alias_value=alias_value,
+                    normalized_value=normalize_project_hint(alias_value, "git_remote"),
+                    status="active",
+                    source="ai",
+                    confidence=1.0,
+                )
+            )
+        await session.flush()
+        return ProjectGitIdentityUpdate(
+            project=project,
+            before_git_remote=before_git_remote,
+            requested_git_remote=requested_git_remote,
+            normalized_git_remote=normalized_after_git_remote,
+            aliases_to_create=tuple(aliases_to_create),
+            aliases_to_activate=tuple(aliases_to_activate),
+            aliases_unchanged=tuple(aliases_unchanged),
+            aliases_covered_by_primary=tuple(aliases_covered_by_primary),
+            applied=True,
+        )
+    return preview
 
 
 async def discover_projects(

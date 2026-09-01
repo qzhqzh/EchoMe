@@ -9,12 +9,15 @@ from fastapi import HTTPException
 from app.models.memory import Project
 from app.models.project_knowledge import ProjectAlias, ProjectRelation
 from app.services.project_identity import (
+    ProjectCandidate,
+    ProjectDiscovery,
     ProjectResolution,
     canonicalize_project_scopes,
     discover_projects,
     normalize_project_hint,
     project_scope_ids,
     resolve_project,
+    update_project_git_identity,
 )
 
 
@@ -25,9 +28,413 @@ def _scalar_result(items: list[object]) -> MagicMock:
 
 
 def test_git_remote_normalization_matches_ssh_and_https() -> None:
-    assert normalize_project_hint(
+    normalized = normalize_project_hint(
         "git@github.com:qzhqzh/EchoMe.git", "git_remote"
-    ) == normalize_project_hint("https://github.com/qzhqzh/EchoMe", "git_remote")
+    )
+    assert normalized == normalize_project_hint(
+        "https://github.com/qzhqzh/EchoMe", "git_remote"
+    )
+    assert normalized == normalize_project_hint(
+        "ssh://git@github.com/qzhqzh/EchoMe.git", "git_remote"
+    )
+
+
+@pytest.mark.asyncio
+async def test_https_git_alias_resolves_scp_style_ssh_remote() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    alias = ProjectAlias(
+        id=uuid.uuid4(),
+        user_id="user",
+        canonical_project_id=project.id,
+        alias_type="git_remote",
+        alias_value="https://github.com/owner/repo.git",
+        normalized_value="github.com/owner/repo",
+        status="active",
+        source="ai",
+        confidence=1.0,
+    )
+    session = AsyncMock()
+    session.scalar = AsyncMock(side_effect=[None, project])
+    session.execute = AsyncMock(return_value=_scalar_result([alias]))
+
+    resolution = await resolve_project(session, "user", "git@github.com:owner/repo.git")
+
+    assert resolution.project.id == project.id
+    assert resolution.matched_by == "alias:git_remote"
+
+
+def test_discovery_offers_confirmed_git_identity_update_for_existing_candidate() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    discovery = ProjectDiscovery(
+        status="needs_confirmation",
+        hints=("git@github.com:owner/repo.git",),
+        candidates=(
+            ProjectCandidate(
+                project=project,
+                confidence=0.8,
+                matched_by=("repository_basename",),
+                matched_hints=("git@github.com:owner/repo.git",),
+            ),
+        ),
+    )
+
+    update_action = next(
+        action
+        for action in discovery.payload()["next_actions"]
+        if action["action"] == "confirm_then_update_project_git_identity"
+    )
+
+    assert update_action["arguments"] == {
+        "project_id": "owner/repo",
+        "confirmed": False,
+        "git_remote": "git@github.com:owner/repo.git",
+    }
+
+
+@pytest.mark.asyncio
+async def test_git_identity_preview_does_not_mutate_project() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+    ):
+        result = await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote="git@github.com:owner/repo.git",
+            git_remote_aliases=[],
+            confirmed=False,
+        )
+
+    payload = result.payload()
+    assert payload["status"] == "confirmation_required"
+    assert payload["requires_confirmation"] is True
+    assert len(payload["confirmation_token"]) == 64
+    assert payload["project"]["git_remote"] is None
+    assert payload["changes"]["git_remote"]["after"] == "git@github.com:owner/repo.git"
+    assert project.git_remote is None
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_confirmed_git_identity_update_sets_remote_and_adds_active_alias() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+    ):
+        preview = await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote="git@github.com:owner/repo.git",
+            git_remote_aliases=["ssh://git@mirror.example.com/owner/repo.git"],
+            confirmed=False,
+        )
+        result = await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote="git@github.com:owner/repo.git",
+            git_remote_aliases=["ssh://git@mirror.example.com/owner/repo.git"],
+            confirmed=True,
+            confirmation_token=preview.confirmation_token,
+        )
+
+    payload = result.payload()
+    assert payload["status"] == "updated"
+    assert project.git_remote == "git@github.com:owner/repo.git"
+    created_alias = session.add.call_args.args[0]
+    assert created_alias.canonical_project_id == project.id
+    assert created_alias.alias_type == "git_remote"
+    assert created_alias.status == "active"
+    assert created_alias.source == "ai"
+    assert created_alias.confidence == 1.0
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_equivalent_ssh_alias_is_covered_by_https_primary() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        git_remote="https://github.com/owner/repo.git",
+        path_patterns=[],
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+    ):
+        result = await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote=None,
+            git_remote_aliases=["git@github.com:owner/repo.git"],
+            confirmed=True,
+        )
+
+    payload = result.payload()
+    assert payload["status"] == "unchanged"
+    assert payload["changes"]["aliases_covered_by_primary"] == [
+        "git@github.com:owner/repo.git"
+    ]
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_confirmed_git_identity_update_activates_existing_alias() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    alias = ProjectAlias(
+        user_id="user",
+        canonical_project_id=project.id,
+        alias_type="git_remote",
+        alias_value="git@github.com:owner/repo.git",
+        normalized_value="github.com/owner/repo",
+        status="proposed",
+        source="ai",
+        confidence=0.8,
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([alias]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+    ):
+        preview = await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote=None,
+            git_remote_aliases=["ssh://git@github.com/owner/repo.git"],
+            confirmed=False,
+        )
+        result = await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote=None,
+            git_remote_aliases=["ssh://git@github.com/owner/repo.git"],
+            confirmed=True,
+            confirmation_token=preview.confirmation_token,
+        )
+
+    assert result.payload()["status"] == "updated"
+    assert alias.status == "active"
+    session.add.assert_not_called()
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_confirmed_git_identity_update_requires_latest_preview_token() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote="git@github.com:owner/repo.git",
+            git_remote_aliases=[],
+            confirmed=True,
+            confirmation_token="0" * 64,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "PROJECT_GIT_IDENTITY_PREVIEW_REQUIRED"
+    assert project.git_remote is None
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_git_identity_update_rejects_another_projects_remote() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    other_project = Project(
+        id="other/repo",
+        user_id="user",
+        name="other",
+        kind="repository",
+        git_remote="https://github.com/other/repo.git",
+        path_patterns=[],
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project, other_project]),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote="git@github.com:other/repo.git",
+            git_remote_aliases=[],
+            confirmed=True,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "PROJECT_GIT_IDENTITY_CONFLICT"
+    assert exc_info.value.detail["canonical_project_ids"] == [other_project.id]
+    assert project.git_remote is None
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_git_identity_update_rejects_alias_owned_by_another_project() -> None:
+    project = Project(
+        id="owner/repo",
+        user_id="user",
+        name="repo",
+        kind="repository",
+        path_patterns=[],
+    )
+    conflicting_alias = ProjectAlias(
+        user_id="user",
+        canonical_project_id="other/repo",
+        alias_type="git_remote",
+        alias_value="https://github.com/other/repo.git",
+        normalized_value="github.com/other/repo",
+        status="active",
+        source="manual",
+        confidence=1.0,
+    )
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_scalar_result([conflicting_alias]))
+    session.flush = AsyncMock()
+
+    with (
+        patch(
+            "app.services.project_identity.resolve_project",
+            new=AsyncMock(return_value=ProjectResolution(project, "project_id", 1.0)),
+        ),
+        patch(
+            "app.services.project_identity._all_user_projects",
+            new=AsyncMock(return_value=[project]),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await update_project_git_identity(
+            session,
+            "user",
+            project.id,
+            git_remote=None,
+            git_remote_aliases=["git@github.com:other/repo.git"],
+            confirmed=False,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["canonical_project_ids"] == ["other/repo"]
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
 
 
 @pytest.mark.asyncio
