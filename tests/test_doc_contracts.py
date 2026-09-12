@@ -1,15 +1,19 @@
 """Drift detection must fail on invalid examples and ignore historical snippets."""
 
 import pytest
-from click import NoSuchOption
 
 from scripts.check_doc_contracts import check_command, check_links, check_mcp_schema
+
+
+@pytest.mark.parametrize("command", ["echome", "echome mcp", "echome mcp serve"])
+def test_help_is_a_valid_documented_command(command):
+    check_command(f"{command} --help")
 
 
 def test_invalid_command_and_option_are_rejected():
     with pytest.raises(ValueError, match="unknown CLI command"):
         check_command("echome absent-command")
-    with pytest.raises(NoSuchOption):
+    with pytest.raises(Exception, match="No such option"):
         check_command("echome mcp serve --not-an-option")
 
 
