@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Embedding service
     embedding_url: str = "http://embedding:20002"
     embedding_dimensions: int = 1024  # Must match bge-m3 model output
+    embedding_max_chars: int = 8000
 
     # Project context compiler (can be disabled for a no-data-loss query rollback)
     context_compiler_enabled: bool = True

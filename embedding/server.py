@@ -1,19 +1,30 @@
-"""EchoMe Embedding Service - BGE-M3 via modelscope + sentence-transformers."""
+"""EchoMe Embedding Service - BGE-M3 via Sentence Transformers and PyTorch."""
 
 import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
+import torch
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger("embedding")
 logging.basicConfig(level=logging.INFO)
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/app/models")
+DEVICE = os.environ.get("ECHOME_EMBEDDING_DEVICE", "cpu").strip().lower()
+USE_FP16 = os.environ.get("ECHOME_EMBEDDING_FP16", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+MAX_SEQ_LENGTH = int(os.environ.get("ECHOME_EMBEDDING_MAX_SEQ_LENGTH", "1024"))
+MAX_TEXT_CHARS = int(os.environ.get("ECHOME_EMBEDDING_MAX_CHARS", "8000"))
+BATCH_SIZE = int(os.environ.get("ECHOME_EMBEDDING_BATCH_SIZE", "8"))
 model: SentenceTransformer | None = None
 
 
@@ -53,12 +64,35 @@ def _find_model_path() -> str:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Load model on startup."""
     global model
+    if DEVICE.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError(
+            f"CUDA device {DEVICE!r} was requested but is unavailable "
+            f"with torch {torch.__version__}"
+        )
+    if USE_FP16 and not DEVICE.startswith("cuda"):
+        raise RuntimeError("FP16 inference is only supported by this service on CUDA")
+
     model_path = _find_model_path()
-    logger.info(f"Loading model from {model_path} ...")
-    model = SentenceTransformer(model_path)
-    logger.info(f"Model loaded. Dimension: {model.get_sentence_embedding_dimension()}")
-    yield
-    del model
+    logger.info("Loading model from %s on %s ...", model_path, DEVICE)
+    model = SentenceTransformer(
+        model_path,
+        device=DEVICE,
+        local_files_only=True,
+        model_kwargs={"torch_dtype": torch.float16} if USE_FP16 else None,
+    )
+    model.max_seq_length = MAX_SEQ_LENGTH
+    logger.info(
+        "Model loaded. Dimension: %s; dtype: %s; max sequence length: %s",
+        model.get_sentence_embedding_dimension(),
+        next(model.parameters()).dtype,
+        model.max_seq_length,
+    )
+    try:
+        yield
+    finally:
+        model = None
+        if DEVICE.startswith("cuda"):
+            torch.cuda.empty_cache()
 
 
 app = FastAPI(
@@ -71,11 +105,15 @@ app = FastAPI(
 
 class EmbedRequest(BaseModel):
     """Request to generate embeddings."""
-    texts: list[str] = Field(..., min_length=1, max_length=100)
+
+    texts: list[Annotated[str, StringConstraints(max_length=MAX_TEXT_CHARS)]] = Field(
+        ..., min_length=1, max_length=100
+    )
 
 
 class EmbedResponse(BaseModel):
     """Embedding response."""
+
     embeddings: list[list[float]]
     dimension: int
     model: str = "BAAI/bge-m3"
@@ -89,7 +127,13 @@ async def health():
     return {
         "status": "ok",
         "model": "BAAI/bge-m3",
+        "backend": "pytorch",
+        "device": str(model.device),
+        "dtype": str(next(model.parameters()).dtype).removeprefix("torch."),
         "dimension": model.get_sentence_embedding_dimension(),
+        "max_seq_length": model.max_seq_length,
+        "max_text_chars": MAX_TEXT_CHARS,
+        "batch_size": BATCH_SIZE,
     }
 
 
@@ -102,6 +146,7 @@ async def embed(request: EmbedRequest):
     try:
         embeddings = model.encode(
             request.texts,
+            batch_size=BATCH_SIZE,
             normalize_embeddings=True,
             show_progress_bar=False,
         )

@@ -13,6 +13,7 @@ services:
         condition: service_healthy
     environment:
       - ECHOME_EMBEDDING_URL=http://embedding:20002
+      - ECHOME_EMBEDDING_MAX_CHARS=8000
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 20000"
 
@@ -30,9 +31,14 @@ services:
     ports:
       - "20002:20002"
     volumes:
-      - ./data/embedding-models:/app/models
+      - ${ECHOME_EMBEDDING_MODELS_HOST_DIR:-/data/models/EchoMe}:/app/models:ro
     environment:
       - MODEL_DIR=/app/models
+      - ECHOME_EMBEDDING_DEVICE=cuda
+      - ECHOME_EMBEDDING_FP16=true
+      - ECHOME_EMBEDDING_MAX_SEQ_LENGTH=1024
+      - ECHOME_EMBEDDING_MAX_CHARS=8000
+      - ECHOME_EMBEDDING_BATCH_SIZE=8
     deploy:
       resources:
         reservations:
