@@ -26,6 +26,8 @@ EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它�
 
 发布快照由 [Archify 规格](docs/echome-architecture-v1.5.archify.json) 生成，独立 HTML 保存在 [docs/echome-architecture-v1.5.html](docs/echome-architecture-v1.5.html)。
 
+补充历史部署视图（v1.5.0）：[交互式快照](https://qzhqzh.github.io/EchoMe/echome-architecture-v1.5.0.html?theme=dark&present=1) · [源规格](docs/echome-architecture-v1.5.0.archify.json) · [静态预览](docs/echome-architecture-v1.5.0.github-dark-present.png)。该视图记录当时的部署归属、检索依赖与降级路径，当前实现仍以[架构文档](docs/architecture.md)为准。
+
 ## 核心能力
 
 ### 统一上下文入口

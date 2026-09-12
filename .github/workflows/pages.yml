@@ -9,6 +9,9 @@ on:
       - "docs/echome-architecture-v1.5.html"
       - "docs/echome-architecture-v1.5.archify.json"
       - "docs/echome-architecture-v1.5.github-dark-present.png"
+      - "docs/echome-architecture-v1.5.0.html"
+      - "docs/echome-architecture-v1.5.0.archify.json"
+      - "docs/echome-architecture-v1.5.0.github-dark-present.png"
       - "README.md"
   workflow_dispatch:
 
@@ -37,6 +40,7 @@ jobs:
           mkdir -p _site
           cp docs/echome-architecture-pages-index.html _site/index.html
           cp docs/echome-architecture-v1.5.html _site/echome-architecture-v1.5.html
+          cp docs/echome-architecture-v1.5.0.html _site/echome-architecture-v1.5.0.html
           touch _site/.nojekyll
 
       - name: Configure Pages
