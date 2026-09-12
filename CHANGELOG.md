@@ -1,3 +1,17 @@
+## v1.9.0
+
+- 937e133 fix(docker): align Hub runtime dependencies with CI lockfile
+- 64c2193 docs(release): refresh guidance and validate release metadata
+- c830f66 fix(memory): enforce scope, lifecycle and context output contracts
+- d481554 fix(embedding): stabilize GPU runtime and model mounts
+- 2d83e9c fix(projects): auto-create or attach aliases (#107)
+- 4fc7372 feat(projects): update existing Git identities (#103)
+- 1410e57 fix(hub): use portable PyPI sources in lockfile (#105)
+- 313a86d fix(projects): recover unresolved project hints (#101)
+- 4ce4dd2 test(sync): 保证 ai_review 参与静态渲染
+- c1c740e feat(projects): add composite workspace memory scopes (#98)
+- 5223603 fix(mcp): declare object root for output schemas (#96)
+
 ## v1.8.0
 
 - 6a46ae3 feat: add trusted memory feedback loop (#94)

@@ -84,7 +84,7 @@ EchoMe/
 
 ## 当前阶段
 
-当前稳定版本为 **v1.8.0**，当前源码 Alembic head 为 `018`、MCP capabilities 为 `echome.capabilities.v9`，新安装使用 10 工具的 `core` profile。主线包含发布后的项目身份恢复改进，不能仅凭包版本判断某个部署已具备全部源码能力。
+当前稳定版本为 **v1.9.0**，当前源码 Alembic head 为 `018`、MCP capabilities 为 `echome.capabilities.v9`，新安装使用 10 工具的 `core` profile。主线包含发布后的项目身份恢复改进，不能仅凭包版本判断某个部署已具备全部源码能力。
 
 当前能力与边界见 `docs/roadmap.md`、`docs/architecture.md`；旧版 Phase 0-6 和版本计划属于历史记录。版本与契约以源码及 `scripts/check_project_truth.py` 为准，实际部署以 runtime health / capabilities 返回值为准。
 

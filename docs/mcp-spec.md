@@ -52,7 +52,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 ```json
 {
   "name": "echome",
-  "version": "1.8.0"
+  "version": "1.9.0"
 }
 ```
 

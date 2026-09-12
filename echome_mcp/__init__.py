@@ -5,4 +5,4 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("echome")
 except PackageNotFoundError:
-    __version__ = "1.8.0"
+    __version__ = "1.9.0"

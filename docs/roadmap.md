@@ -10,7 +10,7 @@
 
 EchoMe 已进入 v1.8 发布后的维护与能力完善阶段。以下区分稳定发布、当前源码和运行中的部署：
 
-- **当前稳定版本**：`echome v1.8.0`；版本记录见 [GitHub Releases](https://github.com/qzhqzh/EchoMe/releases)
+- **当前稳定版本**：`echome v1.9.0`；版本记录见 [GitHub Releases](https://github.com/qzhqzh/EchoMe/releases)
 - **当前生产 schema**：revision `018`；当前源码 Alembic head 也是 `018`，其他部署须通过 runtime health 核实
 - **源码能力契约**：`echome.capabilities.v9`；新安装显式使用 `core` profile，共 10 个工具；未设置 profile 的历史客户端保留 `full`
 - **当前策略状态**：Context Policy 默认 shadow；readiness 只判断 canary 资格，不能自动开启 enforce
