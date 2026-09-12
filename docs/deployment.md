@@ -48,10 +48,25 @@ ECHOME_JWT_SECRET=随机64位hex字符串
 ECHOME_DATABASE_URL=postgresql+asyncpg://echome:echome@postgres:5432/echome
 ```
 
-### Step 3: 启动所有服务
+### Step 3: 准备模型并启动服务
+
+当前 Compose 使用 NVIDIA GPU 和 FP16；需先安装 NVIDIA 驱动及 nvidia-container-toolkit。模型由宿主机提供，镜像构建不再下载模型，容器启动仅加载本地文件。默认只读挂载 `/data/models/EchoMe`，目录可以是模型本身（含 config.json），也可以包含 `BAAI/bge-m3/`。
+
+新环境先下载模型，例如使用仓库的锁定依赖组：
 
 ```bash
-docker compose up -d
+mkdir -p ./data/embedding-models
+MODEL_DIR="$PWD/data/embedding-models" uv run --project embedding --group download python embedding/download_model.py
+export ECHOME_EMBEDDING_MODELS_HOST_DIR="$PWD/data/embedding-models"
+```
+
+已有模型时，将 `ECHOME_EMBEDDING_MODELS_HOST_DIR` 设置为其真实目录即可，不搬移或删除旧数据。`MODEL_REVISION` 可固定下载版本；下载脚本跳过 ONNX/OpenVINO 文件，因为当前服务使用 PyTorch。若在无 GPU 主机运行，需在自有 Compose override 中移除 GPU reservation，设置 `ECHOME_EMBEDDING_DEVICE=cpu` 与 `ECHOME_EMBEDDING_FP16=false`。
+
+默认推理参数为序列长度 1024、每批 8 条、单条最多 8000 字符。Hub 在安全检查后截取 embedding 输入，不截短存储的记忆正文；单独调用 embedding 服务的超长输入返回 422。启动后通过 `/health` 核对 device、dtype、dimension 和边界配置。
+
+
+```bash
+docker compose up -d --build
 ```
 
 启动的服务：
@@ -104,7 +119,8 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 # 后端健康检查
 curl https://echome.qzhqzh.com/health
-# 应返回: {"status":"ok","version":"0.1.0"}
+# 基础存活响应示例: {"status":"ok","version":"1.8.0","embedding_model":"BAAI/bge-m3"}
+# 版本以实际部署为准；依赖和 schema 检查使用 /api/v1/context/runtime/health（需认证）
 
 # 前端
 # 浏览器访问 https://echome.qzhqzh.com 应看到登录页
@@ -225,23 +241,26 @@ echome add
 # 快速模式
 echome add "PR 必须带工单号" \
   -c "所有 PR 标题以 [JIRA-XXX] 开头" \
-  -t workflow --layer L0 -p 9 --tags "git,pr"
+  -t method --layer L0 -p 9 --tags "git,pr"
 ```
 
 #### 5. 同步到 AI CLI
 
 ```bash
 echome sync
-# 将 L0 记忆写入 ~/.claude/CLAUDE.md
-# 将 L1 记忆写入当前项目的 CLAUDE.md
+# 按检测到的目标渲染全局 L0 到 Claude/Codex 配置
+
+# 项目 L1 需要显式指定已存在的项目；同时刷新全局 L0
+echome sync --project qzhqzh/EchoMe
 ```
 
 #### 6. 注册 MCP Server
 
 ```bash
 echome mcp install
-# 自动写入 ~/.claude/mcp.json
-# 重启 Claude Code 后生效
+# Claude Code 注册到 user scope（文件回退为 ~/.claude.json）
+# Codex 写入 ~/.codex/config.toml；新安装默认 core profile
+# 重启客户端后，实际调用 echome_capabilities / echome_runtime_health 验证
 ```
 
 之后 Claude Code / Codex CLI 就能通过 MCP 实时查询你的记忆了。
@@ -278,7 +297,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   https://echome.qzhqzh.com/api/v1/memories \
-  -d '{"title": "新规则", "content": "详细内容", "type": "workflow", "layer": "L0"}'
+  -d '{"title": "新规则", "content": "详细内容", "type": "method", "layer": "L0"}'
 ```
 
 完整 API 文档见 [api-spec.md](api-spec.md)。
@@ -298,7 +317,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   echome login → echome add → echome sync → AI 自动读取
 
 AI 写入记忆:
-  AI 对话中调用 echome_remember → 记忆进入 pending → 用户 echome review 确认
+  AI 对话中调用 echome_remember → 记忆进入 ai_review（可立即检索）→ 用户 echome review 确认或归档
 
 记忆共享:
   设置 visibility=public → 出现在 Market → 其他用户可 Fork

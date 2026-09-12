@@ -42,7 +42,11 @@ jobs:
             echo "Releases must run from main" >&2
             exit 1
           fi
-          git pull --ff-only origin main
+          git fetch origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "main advanced after dispatch; verify its CI before retrying release" >&2
+            exit 1
+          fi
 
       - name: Get current version
         id: current
@@ -106,14 +110,15 @@ jobs:
         run: |
           sed -i 's/__version__ = "${{ steps.current.outputs.version }}"/__version__ = "${{ steps.bump.outputs.version }}"/' echome_mcp/__init__.py
           sed -i 's/app_version: str = "${{ steps.current.outputs.version }}"/app_version: str = "${{ steps.bump.outputs.version }}"/' hub/app/core/config.py
-          sed -Ei 's/当前稳定版本为 \*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*/当前稳定版本为 **v${{ steps.bump.outputs.version }}**/' README.md
+          sed -Ei 's/当前稳定版本为 \*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*/当前稳定版本为 **v${{ steps.bump.outputs.version }}**/' README.md AGENTS.md CLAUDE.md
           sed -Ei 's/\*\*当前稳定版本\*\*：`echome v[0-9]+\.[0-9]+\.[0-9]+`/**当前稳定版本**：`echome v${{ steps.bump.outputs.version }}`/' docs/roadmap.md
-          sed -Ei 's/current deployed application version is `[0-9]+\.[0-9]+\.[0-9]+`/current deployed application version is `${{ steps.bump.outputs.version }}`/' docs/project-knowledge.md
+          sed -Ei 's/current released package version is `[0-9]+\.[0-9]+\.[0-9]+`/current released package version is `${{ steps.bump.outputs.version }}`/' docs/project-knowledge.md
+          sed -Ei 's/"version": "[0-9]+\.[0-9]+\.[0-9]+"/"version": "${{ steps.bump.outputs.version }}"/' docs/mcp-spec.md
 
       - name: Synchronize lockfile
         run: |
           pip install uv
-          uv lock
+          uv lock --default-index https://pypi.org/simple
 
       - name: Verify release version files
         env:
@@ -139,11 +144,17 @@ jobs:
               in Path("echome_mcp/__init__.py").read_text(encoding="utf-8"),
               "hub/app/core/config.py": f'app_version: str = "{version}"'
               in Path("hub/app/core/config.py").read_text(encoding="utf-8"),
+              "AGENTS.md": f"当前稳定版本为 **v{version}**"
+              in Path("AGENTS.md").read_text(encoding="utf-8"),
+              "CLAUDE.md": f"当前稳定版本为 **v{version}**"
+              in Path("CLAUDE.md").read_text(encoding="utf-8"),
+              "docs/mcp-spec.md": f'"version": "{version}"'
+              in Path("docs/mcp-spec.md").read_text(encoding="utf-8"),
               "README.md": f"当前稳定版本为 **v{version}**"
               in Path("README.md").read_text(encoding="utf-8"),
               "docs/roadmap.md": f"**当前稳定版本**：`echome v{version}`"
               in Path("docs/roadmap.md").read_text(encoding="utf-8"),
-              "docs/project-knowledge.md": f"current deployed application version is `{version}`"
+              "docs/project-knowledge.md": f"current released package version is `{version}`"
               in Path("docs/project-knowledge.md").read_text(encoding="utf-8"),
           }
           failed = [path for path, passed in checks.items() if not passed]
@@ -188,14 +199,18 @@ jobs:
 
       - name: Smoke test
         run: |
-          pip install dist/*.whl
-          echome --help
+          uv venv /tmp/echome-release-test
+          uv export --frozen --no-hashes --no-dev --no-emit-project --output-file /tmp/echome-release-constraints.txt
+          uv pip install --python /tmp/echome-release-test/bin/python --constraint /tmp/echome-release-constraints.txt dist/*.whl
+          /tmp/echome-release-test/bin/echome --help
+          python scripts/smoke_mcp_stdio.py --python /tmp/echome-release-test/bin/python
+          /tmp/echome-release-test/bin/python scripts/check_doc_contracts.py --surface client
 
       - name: Commit version bump + changelog
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml uv.lock echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md docs/roadmap.md docs/project-knowledge.md CHANGELOG.md
+          git add pyproject.toml uv.lock echome/__init__.py echome_mcp/__init__.py hub/app/core/config.py README.md AGENTS.md CLAUDE.md docs/mcp-spec.md docs/roadmap.md docs/project-knowledge.md CHANGELOG.md
           git commit -m "release: v${{ steps.bump.outputs.version }}"
 
       - name: Create tag

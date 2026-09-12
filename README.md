@@ -243,16 +243,21 @@ CI 对 CLI/MCP、Hub 和 Web 分别执行 lockfile 安装、Ruff、pytest 与 pr
 
 ## 文档
 
+当前行为以源码、[当前进度与能力边界](docs/roadmap.md)及下列接口文档为准；版本计划保留当时的设计与验收快照，不代表当前待办。部署是否具备主线能力，应通过 `echome_runtime_health` 和 `echome_capabilities` 确认。
+
+- [开发优先级与 issue 状态复核（2026-09-12）](docs/development-priorities.md)
 - [系统架构](docs/architecture.md)
 - [v1.5 规划与验收](docs/next-version-plan-v1.5.md)
 - [v1.6 Trusted Context Policy 历史基线](docs/next-version-plan-v1.6.md)
-- [v1.7 Trusted Context Calibration 计划](docs/next-version-plan-v1.7.md)
-- [v1.8 可信记忆闭环候选计划](docs/next-version-plan-v1.8.md)
+- [v1.7 Trusted Context Calibration 历史记录](docs/next-version-plan-v1.7.md)
+- [v1.8 可信记忆闭环实施记录（发布前快照）](docs/next-version-plan-v1.8.md)
 - [记忆模型](docs/memory-model.md)
 - [记忆检索设计](docs/memory-retrieval.md)
 - [Memory Sleep](docs/memory-sleep.md)
 - [Hub API 规范](docs/api-spec.md)
 - [MCP Server 规范](docs/mcp-spec.md)
+- [DSH 接入与兼容性检查](docs/dsh-integration.md)
+- [开发验证与文档契约](docs/development-checks.md)
 - [数据生命周期](docs/data-lifecycle.md)
 - [开发路线图](docs/roadmap.md)
 - [用户指南](docs/user-guide.md)

@@ -1,5 +1,7 @@
 # EchoMe 记忆检索设计
 
+> 按 2026-09-12 当前源码校准。任务默认入口为 `echome_context`；summary-first 是 full profile 中的专业浏览流程。工具可用性以实际 capabilities 和 `tools/list` 为准。
+
 ## 目标
 
 EchoMe 的记忆会持续增长，尤其是项目级记忆、历史决策和工作流规则。检索设计的目标不是“返回尽可能多的全文”，而是让 AI 能稳定找到相关记忆，并只把当前任务需要的内容加载进上下文。
@@ -13,9 +15,29 @@ EchoMe 的记忆会持续增长，尤其是项目级记忆、历史决策和工�
 - 泛化规则、早期高相似度记忆容易长期占据结果位。
 - AI 很难知道“还有哪些候选记忆没有被返回”。
 
-## 方案：summary-first
+## 默认方案：按任务获取上下文
 
-EchoMe 采用 **summary-first** 工作流：先返回记忆摘要索引，再按 UUID 精读全文。
+新安装默认使用 core profile：
+
+```text
+首次使用或不确定工具
+  -> echome_capabilities
+收到任务
+  -> echome_context(task, project_hint, changed_paths)
+  -> 查看 evidence / conflicts / unknowns / answerability
+  -> 必要时 echome_memory_explain(memory_id)
+任务完成且结果明确
+  -> echome_memory_feedback
+  -> 按 completion contract 提交 echome_context_outcome
+```
+
+`echome_context` 根据任务及项目线索选择 personal、project、impact 或 temporal 路径。未解析项目会返回结构化身份恢复结果；没有相关记忆或明确存在 unknowns 时，不应为凑结果扩大查询。
+
+Memory search 与 personal context 使用共享的有界向量 + 词法召回，embedding 不可用时可降级为词法。项目 Context Compiler 还组合制品、约束、事件、派生视图以及图/时间证据；两者不能用同一个简单评分公式解释。详细参数和静态渲染区别见 [记忆模型](memory-model.md)。
+
+## full profile：summary-first
+
+需要浏览较多候选、手动选择精读条目时，显式启用 full profile，再使用 **summary-first**：先返回记忆摘要索引，再按 UUID 精读全文。该流程不要求默认 core 客户端调用未暴露的工具。
 
 ```text
 AI 需要上下文
@@ -38,17 +60,17 @@ AI 需要上下文
 - `echome_temporal_candidates`：列出可能需要复核的记忆，不修改状态；长期未访问不会被单独视为过时，搁置项目会单独归类。
 - `echome_memory_feedback` / `echome_memory_feedback_batch`：在记忆被使用后记录有效性信号，不直接修改记忆状态。
 
-AI 的默认策略是：先检索，再精读；当记忆涉及项目决策、历史方案、可能过时的环境/版本/部署信息，或多条记忆存在整理关系时，再调用记忆图工具做稳定性检查。
+AI 的默认策略是：先获取任务上下文，再按需精读；当记忆涉及项目决策、历史方案、可能过时的环境/版本/部署信息，或多条记忆存在整理关系时，再调用记忆图工具做稳定性检查。
 
 
 ## 触发策略
 
 EchoMe 不要求 AI 在同一会话的每一轮都查询记忆，而是采用 **首轮启动 + 后续按需触发**：
 
-- **首轮启动**：第一次收到任务时，AI 先调用 `echome_search_summary` 查询相关的个人习惯、开发规范、技术偏好、项目规范和历史决策。
+- **首轮启动**：第一次收到任务时，AI 调用 `echome_context`，传入 task、已知 project hint 和 changed paths；首次使用先通过 `echome_capabilities` 发现工作流。
 - **规范确认**：如果找到相关规范，AI 只精读必要条目，并用 1-3 句复述本次会遵守的关键规范。
 - **后续按需**：后续只有在任务涉及偏好、规范、历史决策、项目约定、高风险改动或用户说“按老规矩/继续/记住/以后/永远/always”时再查。
-- **无命中即停止**：如果摘要没有相关项，AI 不应盲目扩大搜索。
+- **无命中即停止**：如果 context 没有相关记忆或明确返回 unknowns，AI 不应盲目扩大搜索。full profile 的摘要浏览同样遵循此规则。
 
 这个策略避免了“每轮都查”的噪音，同时保留首轮加载规范和后续主动触发的能力。
 
@@ -57,6 +79,9 @@ EchoMe 不要求 AI 在同一会话的每一轮都查询记忆，而是采用 **
 | Tool | 用途 |
 |---|---|
 | `echome_capabilities` | 返回 EchoMe MCP 能力目录、工具分组、推荐工作流；AI 不确定怎么用 EchoMe 时先调用 |
+| `echome_context` | 默认任务入口，自动选择个人/项目上下文路径 |
+| `echome_runtime_health` | 检查运行中的版本、schema、依赖与 profile |
+| `echome_context_outcome` | 按完成契约为 Context Run 追加幂等结果 |
 | `echome_search_summary` | 返回紧凑候选索引：编号、UUID、标题、类型、标签、更新时间和简短摘要 |
 | `echome_get_memories` | 按 UUID 批量读取选中记忆全文 |
 | `echome_search` | 保留给明确、小范围的语义搜索 |
@@ -66,6 +91,8 @@ EchoMe 不要求 AI 在同一会话的每一轮都查询记忆，而是采用 **
 | `echome_temporal_candidates` | 只读列出可能需要复核的时间敏感记忆 |
 | `echome_memory_feedback` | 记录单条记忆的有效性反馈，不自动修改记忆状态 |
 | `echome_memory_feedback_batch` | 任务结束时批量记录多条记忆的有效性反馈 |
+
+表中的摘要、精读、邻居、时态候选和批量反馈等专业工具需要 full profile；core 的准确列表见 [MCP 规范](mcp-spec.md)。摘要与按类型工具默认显式筛选 active；Memory search 与 context 默认有效集合包含 active + ai_review。
 
 ## 能力发现
 
@@ -81,7 +108,8 @@ EchoMe 不假设用户或 AI 记得工具名。MCP server 同时提供三种发�
 
 Hub 记录检索调试日志，用于排查“AI 为什么找到/没找到某条记忆”：
 
-- MCP `echome_search_summary` 会记录 query、轻量检索命中数、semantic fallback 是否触发、Top 结果和中间步骤。
+- `echome_context` 可记录 Context Run，并返回按需提交的 completion contract；outcome 与 policy effect 保留为可追溯结果信号。
+- full profile 的 `echome_search_summary` 会记录 query、轻量检索命中数、semantic fallback 是否触发、Top 结果和中间步骤。
 - Web `/logs` 提供“记忆检索调试器”，可以输入 query、期望 memory id，查看 expected rank、Top 结果和 retrieval steps。
 - Web `/eval` 用固定样例做快速回归；`/logs` 更适合临时排查真实查询。
 
@@ -101,10 +129,11 @@ Hub 记录检索调试日志，用于排查“AI 为什么找到/没找到某条
 
 ## 使用规则
 
-- 宽泛问题、项目规范、历史决策、用户偏好：优先调用 `echome_search_summary`。
+- 项目规范、历史决策、用户偏好或任务约束：默认调用 `echome_context`。
+- full profile 中需要浏览更多候选时，再调用 `echome_search_summary`。
 - 只对相关摘要条目调用 `echome_get_memories`。
 - 如果摘要里没有相关记忆，不要为了凑结果盲目扩大搜索。
-- 非常明确的小范围问题可以直接调用 `echome_search`。
+- full profile 中非常明确的小范围问题可以直接调用 `echome_search`。
 - 使用一条关键记忆做项目判断前，优先调用 `echome_memory_explain` 检查是否稳定、是否 time-sensitive、是否被整理/替代。
 - 当用户纠正记忆、AI 明确依赖了某条记忆，或任务结束时能判断记忆是否有用/过时/冲突，调用 `echome_memory_feedback` 记录信号；不要每轮都打扰用户。
 
@@ -116,5 +145,6 @@ Hub 记录检索调试日志，用于排查“AI 为什么找到/没找到某条
 - 已实现 `echome_memory_explain`、`echome_memory_neighbors`、`echome_temporal_candidates`。
 - 已实现 `echome_memory_feedback`、`echome_memory_feedback_batch` 和 Web 观测页反馈按钮。
 - 已实现 retrieval logs 和 Web `/logs` 检索调试器。
-- 已将渲染到 AGENTS/CLAUDE 的 MCP 指令切换为 summary-first。
+- 已将渲染到 AGENTS/CLAUDE 的 MCP 默认指令切换为 capability discovery + `echome_context`，保留 full profile 的 summary-first。
+- 已实现 Context Run、Context Outcome、runtime health 和相同请求键的加密只读缓存降级；缓存不是本地 vault 同步。
 - Hub 列表接口支持 `query` 轻量过滤，用于摘要索引。

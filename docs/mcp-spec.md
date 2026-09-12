@@ -2,7 +2,9 @@
 
 ## 1. 概览
 
-EchoMe MCP Server 是运行在用户本地的进程，向 AI CLI (Claude Code, Codex CLI 等) 暴露用户记忆的查询和写入能力。
+EchoMe MCP Server 向 AI 客户端暴露个人记忆、项目上下文、证据查询和受控写入能力，通常作为本地 stdio 进程运行，也支持 Streamable HTTP。
+
+本文按 2026-09-12 当前源码校准；完整工具 schema 以 [server.py](../echome_mcp/server.py) 和客户端实际的 `tools/list` 为准。包版本、capabilities 版本和 MCP 协议版本是三个不同概念，部署可能尚未加载主线能力。
 
 **运行方式**：
 ```bash
@@ -13,14 +15,14 @@ echome mcp serve --http --host 127.0.0.1 --port 20003
 
 **注册方式（Claude Code）**：
 
-`~/.claude/mcp.json`:
+`echome mcp install` 优先通过 `claude mcp add --scope user` 注册；文件回退位置为 `~/.claude.json` 的 `mcpServers`：
 ```json
 {
   "mcpServers": {
     "echome": {
       "command": "echome",
       "args": ["mcp", "serve"],
-      "env": {}
+      "env": {"ECHOME_MCP_PROFILE": "core"}
     }
   }
 }
@@ -34,6 +36,7 @@ echome mcp serve --http --host 127.0.0.1 --port 20003
 [mcp_servers.echome]
 command = "echome"
 args = ["mcp", "serve"]
+env = { ECHOME_MCP_PROFILE = "core" }
 enabled = true
 ```
 
@@ -41,7 +44,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ## 2. MCP 协议版本
 
-- Protocol: MCP 2024-11-05
+- Protocol: 由当前安装的 MCP SDK 与客户端在 `initialize` 时协商，不固定为早期的 `2024-11-05`
 - Transport: stdio (默认) / Streamable HTTP
 
 ## 3. Server Info
@@ -49,14 +52,13 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 ```json
 {
   "name": "echome",
-  "version": "0.1.0",
-  "description": "Personal memory and context layer - search and manage your knowledge, preferences, and workflow rules"
+  "version": "1.8.0"
 }
 ```
 
 ## 4. Tools
 
-### 4.0 v1.8 默认入口与运行契约
+### 4.0 当前源码的默认入口与运行契约
 
 - `echome_context`：任务默认入口；可同时推断当前 Git remote 与 repository root，解析 canonical project，并返回统一 context envelope。
 - `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界；传
@@ -92,7 +94,7 @@ MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `messag
 - 因为尚未生成可使用的 context，该结果不返回 completion contract；Hub 可将诊断 run 记为
   `failed/PROJECT_RESOLUTION_REQUIRED`，与传输或编译错误分开统计。
 
-v1.7 延续 `echome_context` 与 `echome_project_context` 的 `policy_mode`：
+当前 `echome_context` 与 `echome_project_context` 支持 `policy_mode`：
 
 - 默认 `shadow`，返回 reliability、intervention 和 policy trace，但不改变选入结果。
 - `off` 跳过策略计算。
@@ -113,6 +115,26 @@ full profile 还提供 evidence-backed Reflect：
 
 readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不得把它解释为已经开启 enforce，
 也不得自动修改 Hub feature flag。
+
+下列 4.1-4.5、4.7 是 `full` profile 的专业/兼容工具；4.6 的 `echome_remember` 同时在 `core` 中提供。默认任务查询使用 `echome_context`，不要在 core 客户端里要求调用未暴露的工具。
+
+### 完整输出预算
+
+`token_budget/token_used` 保持既有内容选择口径。`echome_context` 新增 `output_mode="compact"` 与 `max_output_tokens`（256–200000，省略时沿用 token_budget）；默认 `full` 保留既有字段。
+
+<!-- echome-contract: mcp echome_context -->
+```json
+{
+  "task": "检查当前项目的兼容性约束",
+  "project_hint": "qzhqzh/EchoMe",
+  "output_mode": "compact",
+  "max_output_tokens": 6000
+}
+```
+
+compact 省略重复诊断，必要时整条移除可选内容，并通过 `omitted_counts`、unknowns 与 answerability 显示不足。保留 guardrails、constraints、冲突、preflight 的风险/要求、来源 ID、策略干预和 completion contract；必要结构仍放不下时返回 `OUTPUT_BUDGET_TOO_SMALL` 和最低需求，不提供残缺规则。已记录 run 的完整检索诊断可从 `diagnostics.href` 读取，需同一用户认证；用 `output_mode="full"` 可重新获取完整上下文。
+
+`output_usage.tokens_upper_bound` 计量**单份紧凑 JSON 的全部 UTF-8 字节**，包含该统计字段；它是字节型 tokenizer 的保守 token 上界，不是模型精确计费值。英文通常会低于可容纳的实际 token 容量，换取离线、跨客户端的一致上界。MCP text 和 structuredContent 各含一份相同对象：调用方只注入其中一份；若两份都注入，应分别计量，并另计 MCP/消息包装。缓存降级后重新统计；旧 Hub 忽略 compact 参数时客户端也不会静默交付超限结果。静态 sync 的 `output_usage` 另统计完整渲染文本，不对正文外引导强加截断。
 
 ### 4.1 echome_search_summary
 
@@ -175,7 +197,7 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
     },
     "type": {
       "type": "string",
-      "enum": ["persona", "workflow", "tech", "constraint", "snippet", "decision", "knowledge", "interaction", "project"],
+      "enum": ["identity", "guardrail", "reasoning", "method", "stack", "style", "decision", "context", "template", "project"],
       "description": "可选，按记忆类型过滤"
     },
     "project_id": {
@@ -198,7 +220,7 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 ```json
 {
   "query": "提交 PR 有什么要求",
-  "type": "workflow"
+  "type": "method"
 }
 ```
 
@@ -207,13 +229,13 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 找到 2 条相关记忆：
 
 ## 1. PR 必须带工单号 (score: 0.94)
-类型: workflow | 标签: git, pr, ticket
+类型: method | 标签: git, pr, ticket
 
 所有 PR 的标题必须以 `[JIRA-XXX]` 工单号开头。
 如果当前 branch 名包含工单号，默认从 branch 提取；否则需要先问用户。
 
 ## 2. PR 合并要求 (score: 0.87)
-类型: workflow | 标签: git, pr, review
+类型: method | 标签: git, pr, review
 
 合并 PR 前必须满足：
 - 至少 1 个 reviewer approve
@@ -254,7 +276,7 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["persona", "workflow", "tech", "constraint", "snippet", "decision", "knowledge", "interaction", "project"],
+      "enum": ["identity", "guardrail", "reasoning", "method", "stack", "style", "decision", "context", "template", "project"],
       "description": "记忆类型"
     },
     "status": {
@@ -288,7 +310,7 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
     },
     "type": {
       "type": "string",
-      "enum": ["persona", "workflow", "tech", "constraint", "snippet", "decision", "knowledge", "interaction", "project"],
+      "enum": ["identity", "guardrail", "reasoning", "method", "stack", "style", "decision", "context", "template", "project"],
       "description": "记忆类型"
     },
     "tags": {
@@ -302,9 +324,9 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
       "default": "L2",
       "description": "建议的加载层级"
     },
-    "project_id": {
+    "project": {
       "type": "string",
-      "description": "如果是项目专属记忆，指定项目 ID"
+      "description": "所有类型均可传已存在的 canonical project 或 active alias；type=project 必填"
     }
   },
   "required": ["title", "content", "type", "tags"]
@@ -316,7 +338,7 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 ✓ 记忆已保存（ai_review）
 
 标题: 用户偏好 ruff 作为 Python linter
-类型: tech
+类型: stack
 状态: ai_review（AI 可立即检索；用户可通过 `echome review` 提升或归档）
 ```
 
@@ -325,12 +347,14 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 - 用户明确表达"记住/以后/总是/永远"等意图时必须调用
 - 不要写入密码/密钥/隐私敏感内容、一次性临时事实、低置信度猜测
 - 默认写入 ai_review，会立即参与后续 AI 检索；用户通过 `echome review` 做事后清理或提升为 active
+- 项目参数名是 `project`，不是搜索接口使用的 `project_id`；所有类型均可绑定已有项目，active alias 会解析到 canonical ID；type=project 仍要求项目，remember 不创建项目
+- 项目记忆通常建议 `L1`；需要创建项目范围的 `decision/method/guardrail` 等其他类型时，使用 Web 或 REST 设置 scope，不能把数据模型的三轴正交理解为此 MCP 写入入口已完整支持
 
 ---
 
 ### 4.7 echome_get_project_context
 
-**描述**: 获取当前项目的完整上下文，包括项目描述、技术栈、注意事项等。
+**描述**: 兼容的项目 Memory 列表入口，不是结构化 Project Context Compiler。需要自动项目身份解析、workspace 继承或证据编译时使用 `echome_context`。
 
 **Input Schema**:
 ```json
@@ -339,52 +363,32 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
   "properties": {
     "project_id": {
       "type": "string",
-      "description": "项目 ID，如 'qzhqzh/EchoMe'。如果不提供，尝试从当前 git remote 推断"
+      "description": "项目 ID，如 'qzhqzh/EchoMe'。此兼容工具不自动推断，缺省时仅返回提示"
     }
   },
   "required": []
 }
 ```
 
-**Output**: 返回项目相关的所有 active 记忆汇总。
+**Output**: 按类型汇总该项目的有效 Memory（active + ai_review），当前最多读取前 50 条；不返回完整 Artifact/Constraint/Event 上下文。
 
 ---
 
-## 5. Resources（可选，远期）
+## 5. Resources
+
+当前实现提供一个 resource：
 
 | URI | 描述 |
 |---|---|
-| `echome://profile` | 用户个人画像 |
-| `echome://projects` | 项目列表 |
-| `echome://project/{id}` | 单个项目上下文 |
+| `echome://capabilities` | JSON 能力目录、工具分组、推荐工作流和使用规则 |
 
-> MVP 阶段以 Tools 为主，Resources 后续按需添加。
+`echome://profile`、`echome://projects` 和 `echome://project/{id}` 是早期设想，目前未注册。
 
-## 6. Prompts（Slash Commands）
+## 6. Prompts
 
-### /echome-load
+当前提供 `echome_retrieval_workflow`，接受可选的 `project_id`，返回可复用的能力发现、上下文检索、图解释和记忆写入指引。
 
-**描述**: 手动触发加载当前项目的完整上下文到对话中。
-
-**Arguments**:
-```json
-{
-  "project_id": {
-    "type": "string",
-    "description": "项目 ID（可选，默认当前项目）"
-  }
-}
-```
-
-**行为**: 调用 echome_search + echome_get_project_context，把 L1 + L2 层相关记忆全部拉入。
-
----
-
-### /echome-status
-
-**描述**: 显示当前对话中已加载的 EchoMe 上下文状态。
-
----
+客户端是否将 MCP prompt 展示为 slash command，由客户端决定。服务端没有注册早期文档中的 `/echome-load` 或 `/echome-status` 命令。
 
 ## 7. AI 何时调用 MCP
 
@@ -394,26 +398,27 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 
 ```markdown
 ### 如何获取更多上下文
-当你遇到以下情况时，必须先调用 EchoMe MCP 工具搜索：
-1. 用户询问工作流规范（如何提 PR、如何写 commit）
-2. 需要了解项目背景或历史决策
-3. 用户提到"之前讨论过"、"按照惯例"等暗示已有上下文
-4. 开始一个新任务前，查询是否有相关约束或偏好
-5. 用户说"记住这个"、"以后都这样"时，调用 echome_remember
-6. 观察到稳定偏好、项目决策、工作流约定、反复纠正或可复用上下文时，可以主动调用 echome_remember 写入 ai_review 记忆
+1. 首次使用或不确定工具时，先调用 echome_capabilities。
+2. 首条任务消息后调用 echome_context，传入任务、已知 project hint 和 changed paths。
+3. 命中规范时只复述与任务有关的关键点；后续按需查询，无命中就停止扩展。
+4. 使用可能过时的项目决策、版本或环境信息前，调用 echome_memory_explain 检查来源。
+5. 用户要求记住，或发现稳定且可复用的信息时，调用 echome_remember 写入 ai_review。
+6. 明确有用、过时或冲突的记忆可提交 memory feedback；任务结束按 completion contract 提交 context outcome。
 ```
+
+这是简化示例；实际同步引导由 [renderer.py](../hub/app/services/renderer.py) 生成。
 
 ### 7.2 触发时机总结
 
 | 场景 | 触发的 Tool |
 |---|---|
-| 写 PR / commit | echome_search "PR 规范" |
-| 开始新任务 | echome_get_project_context |
-| 用户说"按老规矩" | echome_search + 相关上下文 |
-| 用户说"记住/以后" | echome_remember |
-| 观察到稳定偏好/决策/约定 | echome_remember（ai_review） |
-| 技术选型问题 | echome_search "技术偏好" |
-| 不确定项目约定 | echome_search |
+| 首次能力发现 | `echome_capabilities` |
+| 开始任务、PR 规范、历史决策或不确定项目约定 | `echome_context` |
+| 关键记忆可能过时或存在替代关系 | `echome_memory_explain` |
+| 用户说“记住/以后”或观察到稳定约定 | `echome_remember` |
+| 需要额外浏览候选/精读，且已启用 full | `echome_search_summary` → `echome_get_memories` |
+| 记忆有效性已有明确结果 | `echome_memory_feedback` |
+| 已记录的 Context Run 完成 | `echome_context_outcome` |
 
 ### 7.3 不应调用的场景
 
@@ -423,28 +428,33 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 
 ## 8. 错误处理
 
-MCP Tool 调用失败时返回：
+结构化工具的错误使用 `echome.error.v1`。以下是错误 payload 示例；MCP 响应还包含 `isError` 和可读的 content，部分 legacy 工具仍保留文本输出：
 
 ```json
 {
-  "isError": true,
-  "content": [
-    {
-      "type": "text",
-      "text": "EchoMe Hub 连接失败，请检查网络或运行 `echome status`"
-    }
-  ]
+  "schema_version": "echome.error.v1",
+  "error": {
+    "code": "HUB_UNAVAILABLE",
+    "message": "EchoMe Hub is unavailable",
+    "retryable": true,
+    "request_id": "example-request-id",
+    "degraded": true,
+    "suggested_action": "Check Hub connectivity and retry."
+  }
 }
 ```
 
 **降级策略**：
-- Hub 不可达 → 读取本地 ~/.echome/vault/ 缓存
-- 本地缓存也没有 → 返回提示，不阻断对话
+
+- `echome_context` 遇到可降级故障时，只能复用相同请求键的加密只读缓存，并标明 degraded 和数据来源。
+- 没有可用缓存时返回错误或缺失上下文提示，不能把无数据解释为“没有相关记忆”。
+- 本地 vault 不是当前 fallback；写入失败直接报告，不使用离线队列或假成功响应。
+- `scope=project_resolution` 是需要恢复项目身份的正常结构化结果，不等于传输错误。
 
 ## 9. 安全考虑
 
 - MCP Server 以用户身份运行，继承用户文件权限
 - 不暴露 Hub token 给 AI（MCP Server 内部使用）
 - echome_remember 写入的内容默认 ai_review，允许 AI 自主学习，同时保留人工事后纠偏
-- 不支持删除操作（AI 不能删用户记忆）
-- 内容不包含密码/密钥等敏感信息（CLI 层过滤）
+- 没有通用物理删除 Memory 的 MCP 工具；Sleep apply 可以在已确认的 proposal 范围内归档来源，不能把它理解成纯只读工具
+- 客户端应避免提交密码/密钥等敏感内容；Hub 对写入和 embedding 外发执行最终内容校验，不能只依赖 CLI 过滤

@@ -1,6 +1,6 @@
 # EchoMe Web Console
 
-A modern dark-themed memory management dashboard for EchoMe Hub.
+The Vue console for EchoMe's personal memories and project context: authoring, review, project knowledge, diagnostics, and quality evaluation.
 
 ## Tech Stack
 
@@ -13,14 +13,14 @@ A modern dark-themed memory management dashboard for EchoMe Hub.
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (matches repository CI)
 - EchoMe Hub running on port 20000 (or configure via login page)
 
 ### Install dependencies
 
 ```bash
 cd web
-npm install
+npm ci
 ```
 
 ### Development
@@ -43,10 +43,11 @@ Output is in `dist/`. Serve statically with any web server.
 
 On the login page, you can configure:
 
-- **API Token**: Your Bearer token (set in Hub's `.env`)
-- **Hub URL**: If Hub is not on the same origin (e.g., `http://localhost:20000`)
+- **GitHub login**: The default authentication flow; configure OAuth on the Hub first.
+- **Manual token login**: An optional entry for an existing EchoMe token. Current user login issues JWTs; a shared token in `.env` is a legacy compatibility path.
+- **Hub URL**: An advanced setting for a different API origin; otherwise requests use the same origin and the development proxy.
 
-Both are stored in `localStorage`.
+The browser stores the token, user metadata, and optional API base in `localStorage`. See the [deployment guide](../docs/deployment.md) for Hub configuration.
 
 ## Features
 
@@ -54,7 +55,11 @@ Both are stored in `localStorage`.
 - **Memories**: Full CRUD with filters (type, layer, status, tags), search, pagination
 - **Memory Detail**: View/edit/delete with full metadata display
 - **Review Queue**: Approve or reject AI-suggested memories
-- **Projects**: Manage project scopes for memory targeting
+- **Projects**: Create/edit projects, configure Git remote and path patterns, and browse associated memories
+- **Project Workspace**: Inspect artifacts, constraints, context, and project quality evaluation
+- **Diagnostics**: Memory graph, retrieval debugging, Context Runs/Outcomes, and Memory Eval
+- **Memory Sleep**: Review proposals and inspect derived/source relationships
+- **Market and Admin**: Public memory sharing and role-gated user administration
 
 ## Architecture
 
@@ -62,7 +67,7 @@ Both are stored in `localStorage`.
 src/
 ├── api/client.ts      # Typed API client with auth handling
 ├── stores/
-│   ├── auth.ts        # Token + API base management
+│   ├── auth.ts        # Token, user metadata, and API base management
 │   └── toast.ts       # Toast notification state
 ├── components/        # Reusable UI components
 ├── views/             # Page-level components

@@ -1,6 +1,8 @@
-# EchoMe v1.8 候选计划：可信记忆闭环
+# EchoMe v1.8 实施记录：可信记忆闭环
 
-状态日期：2026-08-26。
+原计划日期：2026-08-26。归档说明更新于 2026-09-12。
+
+> v1.8.0 已于 2026-08-30 发布。下文保留发布前的设计和验收快照；其中的 capabilities v6、core 8 工具、schema `017`、测试计数及“剩余步骤”均是当时状态，不代表当前主线或待办。当前进度见 [roadmap.md](roadmap.md)，当前契约见 [mcp-spec.md](mcp-spec.md)。
 
 本计划针对一个反复出现的问题：单次修正文档、记忆或检索规则后，系统仍可能因为旧状态、缺失反馈或弱评估门槛再次给出同类错误。v1.8 不引入新的主存储，也不自动改写权威记忆；重点是把正确性变成可执行协议和持续门禁。
 
@@ -66,7 +68,7 @@
 - REST v1、Memory Sleep v1/v2、旧 MCP 文本输出和历史 full profile 保持兼容。
 - Reflect、自动化和 Context Policy 均不获得静默修改权；Context Policy 继续保持 shadow。
 
-## 当前验收
+## 发布前验收快照（2026-08-26）
 
 - Root CLI/MCP：`32 passed`。
 - Hub：`186 passed, 1 skipped`。
@@ -74,7 +76,7 @@
 - Web：TypeScript 检查和 Vite production build 通过。
 - Project truth：`version=1.7.1, alembic_head=017, capabilities=echome.capabilities.v6`。
 
-## 发布前剩余步骤
+## 当时的发布前检查清单（历史）
 
 1. 在当前生产数据上运行只读 runtime health、project context、preflight 和 Reflect prepare smoke。
 2. 运行一条新的 Project Quality snapshot，确认五能力真实结果；snapshot 只追加评估记录。
