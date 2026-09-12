@@ -57,7 +57,8 @@ def check_links(path: Path, text: str) -> list[str]:
 
 def check_command(line: str) -> None:
     """Parse command/option syntax; never invoke a CLI callback or command."""
-    import click
+    from typer import Exit
+    from typer.core import TyperGroup
     from typer.main import get_command
 
     from echome.main import app
@@ -71,13 +72,12 @@ def check_command(line: str) -> None:
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 context = command.make_context("echome", args)
-        except (click.exceptions.Exit, SystemExit) as exc:
-            exit_code = exc.exit_code if isinstance(exc, click.exceptions.Exit) else exc.code
-            if exit_code in (None, 0):
+        except Exit as exc:
+            if exc.exit_code == 0:
                 return
             raise
         with context:
-            if not isinstance(command, click.Group):
+            if not isinstance(command, TyperGroup):
                 return
             # Click <=8 stores a group's command separately; Click 9 moves it
             # into args. Avoid the deprecated protected_args property.
