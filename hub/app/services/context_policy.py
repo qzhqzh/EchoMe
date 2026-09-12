@@ -111,9 +111,12 @@ def _intervention(
     *,
     mode: str,
     has_evidence: bool,
+    authority: str = "authoritative",
 ) -> dict[str, Any]:
-    if support_state == "current_supported":
-        action = "inject"
+    if authority == "quarantined":
+        action = "abstain"
+    elif support_state == "current_supported":
+        action = "inject_with_warning" if authority == "provisional" else "inject"
     elif support_state == "historical":
         action = "inject_with_warning" if mode == "temporal" else "silent"
     elif support_state == "needs_verification":
@@ -122,10 +125,13 @@ def _intervention(
         action = "inject_with_warning"
     else:
         action = "abstain"
+    reason = f"support_state:{support_state}"
+    if authority != "authoritative":
+        reason = f"{reason};authority:{authority}"
     return {
         "action": action,
         "include": action not in {"silent", "abstain"},
-        "reason": f"support_state:{support_state}",
+        "reason": reason,
     }
 
 
@@ -237,6 +243,13 @@ def _assess_memory(
     now: datetime,
 ) -> dict[str, Any]:
     assessment_class, reasons = _memory_class(memory)
+    authority = {
+        "active": "authoritative",
+        "ai_review": "provisional",
+        "pending": "quarantined",
+    }.get(memory.status, "inactive")
+    if authority == "provisional":
+        reasons.append("status:ai_review")
     evidence_refs: list[dict[str, str]] = []
     edge_relations = {edge.relation for edge in edges}
     is_superseded_source = any(
@@ -312,6 +325,7 @@ def _assess_memory(
     return {
         "schema_version": ASSESSMENT_SCHEMA_VERSION,
         "classification": assessment_class,
+        "authority": authority,
         "support_state": support_state,
         "confidence": round(float(confidence), 2),
         "reason_codes": sorted(set(reasons)),
@@ -412,6 +426,7 @@ async def _persist_assessments(
         reliability = row["reliability"]
         fingerprint_payload = {
             "classification": reliability["classification"],
+            "authority": reliability.get("authority", "authoritative"),
             "support_state": reliability["support_state"],
             "reason_codes": reliability["reason_codes"],
             "evidence_refs": reliability["evidence_refs"],
@@ -552,6 +567,7 @@ async def apply_context_policy(
             reliability["support_state"],
             mode=query_mode,
             has_evidence=bool(reliability["evidence_refs"]),
+            authority=reliability["authority"],
         )
         payload["reliability"] = reliability
         payload["intervention"] = intervention

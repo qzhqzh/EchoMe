@@ -12,6 +12,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 AUTHORITATIVE_DOCS = (
     "README.md",
+    "AGENTS.md",
+    "CLAUDE.md",
     "docs/roadmap.md",
     "docs/project-knowledge.md",
     "docs/memory-model.md",
@@ -130,10 +132,12 @@ def check_project_truth() -> list[str]:
             f"**当前生产 schema**：revision `{head}`",
         ),
         "docs/project-knowledge.md": (
-            f"current deployed application version is `{version}`",
+            f"current released package version is `{version}`",
             f"current production Alembic revision is `{head}`",
         ),
-        "docs/mcp-spec.md": (f"`{capabilities}`",),
+        "AGENTS.md": (f"当前稳定版本为 **v{version}**",),
+        "CLAUDE.md": (f"当前稳定版本为 **v{version}**",),
+        "docs/mcp-spec.md": (f"`{capabilities}`", f'"version": "{version}"'),
     }
     for path, snippets in required_snippets.items():
         text = (ROOT / path).read_text(encoding="utf-8")

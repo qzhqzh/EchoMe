@@ -687,6 +687,26 @@ async def test_discovery_auto_resolves_unique_environment_path_variant() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("component", ["api", "web"])
+async def test_logical_project_parent_is_a_recovery_candidate(component) -> None:
+    project = Project(id="OKB", name="OKB", user_id="user", kind="repository", path_patterns=[])
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[
+        _scalar_result([project]), _scalar_result([]), _scalar_result([]),
+    ])
+    with patch(
+        "app.services.project_identity.resolve_project",
+        new=AsyncMock(side_effect=HTTPException(status_code=404, detail="Project not found")),
+    ):
+        discovery = await discover_projects(session, "user", [f"/workspace/okb/{component}"])
+    assert discovery.status == "needs_confirmation"
+    assert discovery.resolution is None
+    assert discovery.candidates[0].project.id == "OKB"
+    assert "project_id:repository_parent_identity" in discovery.candidates[0].matched_by
+    assert discovery.payload()["create_proposal"] is None
+
+
+@pytest.mark.asyncio
 async def test_discovery_refuses_to_guess_between_environment_variants() -> None:
     projects = [
         Project(

@@ -1,7 +1,7 @@
 """Tests for high-confidence secret rejection at the Hub trust boundary."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -74,6 +74,22 @@ async def test_embedding_client_blocks_sensitive_text_before_network() -> None:
 
     assert result is None
     client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_truncates_oversized_safe_text() -> None:
+    response = MagicMock()
+    response.json.return_value = {"embeddings": [[0.1]]}
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.post.return_value = response
+
+    with patch("app.services.embedding.httpx.AsyncClient", return_value=client):
+        result = await get_embeddings(["a" * 9000])
+
+    assert result == [[0.1]]
+    sent_text = client.post.await_args.kwargs["json"]["texts"][0]
+    assert len(sent_text) == 8000
 
 
 def test_findings_report_location_not_secret_value() -> None:

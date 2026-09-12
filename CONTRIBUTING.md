@@ -19,16 +19,17 @@ git clone https://github.com/qzhqzh/EchoMe.git
 cd EchoMe
 
 # 2. 安装 CLI（开发模式）
-pip install -e ".[mcp,dev]"
+uv sync --locked --extra dev
+uv sync --project hub --locked --extra dev
 
 # 3. 启动 Hub + 数据库
 cp hub/.env.example hub/.env
-# 编辑 hub/.env，设置 JWT_SECRET 和 GitHub OAuth
+# 编辑 hub/.env，设置 ECHOME_JWT_SECRET 和 GitHub OAuth
 docker compose up -d
 
 # 4. 前端开发
 cd web
-npm install
+npm ci
 npm run dev
 ```
 
@@ -40,7 +41,12 @@ npm run dev
 
 ```bash
 # 检查代码
-ruff check echome/ echome_mcp/ hub/app/
+uv run ruff check echome/ echome_mcp/ hub/app/
+
+# 按改动范围运行测试；文档/发布说明更新时检查项目真相
+uv run pytest tests
+uv run --directory hub pytest tests
+uv run python scripts/check_project_truth.py
 
 # 类型检查
 cd web && npx vue-tsc --noEmit
@@ -90,3 +96,5 @@ EchoMe/
 ## 联系
 
 如有问题，欢迎在 Issues 中讨论。
+
+文档示例和接口变更还需运行 [文档契约与隔离集成检查](docs/development-checks.md)。

@@ -7,27 +7,35 @@
 - **内容格式**: JSON (`Content-Type: application/json`)
 - **版本**: v1 (URL path versioning)
 
+本文按 2026-09-12 当前源码校准，JSON 响应可省略部分可选字段。完整 schema 见 Hub 的 `/openapi.json` 和 [schemas](../hub/app/schemas/)；路由挂载以 [main.py](../hub/app/main.py) 为准。基础 `/health` 位于 API 前缀之外。
+
 ## 2. 认证
 
-### POST /auth/token
+当前支持 GitHub OAuth、JWT 与按用户隔离的数据访问：
 
-验证 token 有效性并返回用户信息。
+| Method | Endpoint | 说明 |
+|---|---|---|
+| GET | `/auth/github` | 返回 GitHub 授权 URL：`{"url": "..."}` |
+| GET | `/auth/github/callback?code=...` | 用 OAuth code 换取 EchoMe JWT 和用户信息 |
+| GET | `/auth/me` | 用当前 Bearer JWT 获取用户信息 |
+| POST | `/auth/refresh` | 刷新当前用户 JWT |
 
-```http
-POST /api/v1/auth/token
-Authorization: Bearer <token>
-```
+callback / refresh 返回 `access_token`、`token_type`、`expires_in`（秒）和 `user`。`GET /auth/me` 响应示例：
 
-**Response 200**:
 ```json
 {
-  "user_id": "default",
-  "valid": true,
-  "expires_at": null
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "github_id": 12345,
+  "username": "example-user",
+  "email": null,
+  "avatar_url": null,
+  "role": "user",
+  "created_at": "2026-09-01T10:00:00Z",
+  "last_login_at": "2026-09-12T10:00:00Z"
 }
 ```
 
-> 单租户模式下 token 在服务端配置文件中定义，不提供注册/登录接口。
+不存在 `POST /auth/token`。旧静态 token 兼容不能代替当前的用户登录与 JWT 流程。
 
 ---
 
@@ -35,16 +43,17 @@ Authorization: Bearer <token>
 
 ### GET /memories
 
-列出记忆（支持过滤和分页）。
+列出记忆（支持过滤和分页）。类型使用 [记忆模型](memory-model.md) 中的 10 种规范值。
 
 **Query Parameters**:
 | 参数 | 类型 | 必选 | 说明 |
 |---|---|---|---|
 | type | string | 否 | 按 type 过滤 |
 | layer | string | 否 | L0/L1/L2 |
-| status | string | 否 | active/ai_review/pending/deprecated/archived，默认 active |
+| status | string | 否 | active/ai_review/pending/deprecated/archived；省略时返回 active + ai_review |
 | tags | string | 否 | 逗号分隔，AND 匹配 |
 | project_id | string | 否 | 过滤 scope 包含该项目的记忆 |
+| query | string | 否 | 对标题、正文和标签做轻量词法过滤 |
 | offset | int | 否 | 分页偏移，默认 0 |
 | limit | int | 否 | 每页数量，默认 50，最大 200 |
 
@@ -58,7 +67,8 @@ Authorization: Bearer <token>
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "PR 必须带工单号",
-      "type": "workflow",
+      "content": "所有 PR 的标题必须以 `[JIRA-XXX]` 工单号开头...",
+      "type": "method",
       "layer": "L0",
       "priority": 9,
       "tags": ["git", "pr", "ticket"],
@@ -89,7 +99,7 @@ Authorization: Bearer <token>
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "title": "PR 必须带工单号",
   "content": "所有 PR 的标题必须以 `[JIRA-XXX]` 工单号开头...",
-  "type": "workflow",
+  "type": "method",
   "layer": "L0",
   "priority": 9,
   "tags": ["git", "pr", "ticket"],
@@ -117,7 +127,7 @@ Authorization: Bearer <token>
 {
   "title": "PR 必须带工单号",
   "content": "所有 PR 的标题必须以 `[JIRA-XXX]` 工单号开头...",
-  "type": "workflow",
+  "type": "method",
   "layer": "L0",
   "priority": 9,
   "tags": ["git", "pr", "ticket"],
@@ -149,7 +159,7 @@ Authorization: Bearer <token>
 
 更新记忆（全量替换）。
 
-**Request Body**: 同 POST，所有字段必填。
+**Request Body**: `title/content/type/layer/priority/tags/status/scope/source` 必填，`visibility` 默认 `private`；以 `MemoryUpdate` schema 为准。
 
 **Response 200**: 返回更新后的完整记忆。
 
@@ -188,7 +198,7 @@ Authorization: Bearer <token>
 
 ### POST /memories/search
 
-语义 + 关键词混合搜索。
+语义 + 词法混合搜索，默认检索 active + ai_review；embedding 不可用时可降级为词法召回。`top_k` 默认 5、最大 20，`min_score` 默认 0.3。
 
 **Request Body**:
 ```json
@@ -211,7 +221,7 @@ Authorization: Bearer <token>
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "PR 必须带工单号",
       "content": "所有 PR 的标题必须以...",
-      "type": "workflow",
+      "type": "method",
       "layer": "L0",
       "score": 0.92,
       "tags": ["git", "pr", "ticket"]
@@ -227,7 +237,7 @@ Authorization: Bearer <token>
 
 ### POST /sync/push
 
-CLI 批量上传本地 vault 到 Hub。
+批量提交 JSON 记忆到 Hub。REST 接口已实现；文件式 `echome push` 命令仍未实现，不能据此假定本地 vault 会自动上传或具备冲突合并。
 
 **Request Body**:
 ```json
@@ -237,7 +247,7 @@ CLI 批量上传本地 vault 到 Hub。
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "...",
       "content": "...",
-      "type": "workflow",
+      "type": "method",
       "layer": "L0",
       "priority": 9,
       "tags": ["git"],
@@ -247,7 +257,7 @@ CLI 批量上传本地 vault 到 Hub。
       "updated_at": "2026-05-21T10:00:00Z"
     }
   ],
-  "client_info": "echome/0.1.0 linux"
+  "client_info": "echome/1.8.0 linux"
 }
 ```
 
@@ -265,7 +275,7 @@ CLI 批量上传本地 vault 到 Hub。
 
 ### POST /sync/pull
 
-从 Hub 拉取最新记忆到本地。
+从 Hub 获取记忆 JSON，支持 `since` 增量过滤；接口本身不写本地文件。文件式 `echome pull` 命令仍未实现。
 
 **Request Body**:
 ```json
@@ -278,8 +288,8 @@ CLI 批量上传本地 vault 到 Hub。
 **Response 200**:
 ```json
 {
-  "memories": [...],
-  "total": 15,
+  "memories": [],
+  "total": 0,
   "server_time": "2026-05-21T12:00:00Z"
 }
 ```
@@ -329,25 +339,9 @@ CLI 批量上传本地 vault 到 Hub。
 
 ### GET /review/pending
 
-获取待审核记忆列表。
+默认返回 `ai_review`，可传 `status=pending` 查看旧严格审核队列；支持 `offset` 和 `limit`。响应为 `MemoryListResponse`，与 `GET /memories` 的分页结构相同。
 
-**Response 200**:
-```json
-{
-  "items": [
-    {
-      "id": "...",
-      "title": "用户偏好 ruff 作为 Python linter",
-      "content": "...",
-      "type": "tech",
-      "suggested_layer": "L0",
-      "source": "ai_suggested",
-      "ai_context": "用户在对话中说：'以后所有 Python 项目都用 ruff'",
-      "created_at": "2026-05-21T11:00:00Z"
-    }
-  ]
-}
-```
+条目使用 `layer`、`status`、`source` 和 `scope` 等 Memory 字段；没有独立的 `suggested_layer` 或 `ai_context` 响应字段。`suggested_layer` 是 MCP 写入参数，写入后存为 Memory 的 `layer`。
 
 ### POST /review/{id}/approve
 
@@ -369,16 +363,18 @@ CLI 批量上传本地 vault 到 Hub。
 
 ## 8. 渲染
 
-### POST /render
+### POST /sync/render
 
-根据目标 CLI 和项目，渲染应该注入的内容。
+根据目标 CLI 和项目，渲染应该注入的内容。省略 `layer` 时，全局选择全局 L0，带项目时选择全局 L0 + 全局或项目匹配的 L1；有效状态为 active + ai_review。显式 `layer` 会覆盖默认层选择。
+
+正文超出预算时跳过条目，不自动降级 layer。最终 `token_count` 还包含引导和 marker，不能把配置的正文预算当作完整输出硬上限。`output_usage` 给出含正文、引导与 marker 的完整文本 UTF-8 字节 token 上界。项目排除规则与 Context Compiler 一致；全局渲染省略带项目排除的条件规则，workspace 继承仍仅用于 Context Compiler，详见 [记忆模型](memory-model.md)。
 
 **Request Body**:
 ```json
 {
   "target": "claude",
   "project_id": "qzhqzh/EchoMe",
-  "layer": "L0",
+  "layer": null,
   "format": "markdown"
 }
 ```
@@ -397,14 +393,15 @@ CLI 批量上传本地 vault 到 Hub。
 
 ## 9. 健康检查
 
-### GET /health
+### GET /health（无 `/api/v1` 前缀）
+
+基础存活检查；不实际探测数据库或 embedding 服务。依赖健康、schema 与 feature flags 使用 `GET /api/v1/context/runtime/health`。
 
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
-  "db": "connected",
-  "embedding_model": "text-embedding-3-small"
+  "version": "1.8.0",
+  "embedding_model": "BAAI/bge-m3"
 }
 ```
 
@@ -412,33 +409,31 @@ CLI 批量上传本地 vault 到 Hub。
 
 ## 10. 错误格式
 
-所有错误返回统一格式：
+普通 REST 路由主要使用 FastAPI 的 `detail` 格式；例如资源不存在：
 
 ```json
 {
-  "error": {
-    "code": "MEMORY_NOT_FOUND",
-    "message": "Memory with id xxx not found",
-    "details": null
-  }
+  "detail": "Memory not found"
 }
 ```
+
+请求 schema 校验失败通常为 `422`，`detail` 是包含字段位置和错误信息的数组。Context Runtime 与 MCP 的结构化错误使用 `echome.error.v1`，不能假定所有历史 REST 路由都已采用该 envelope。
 
 **HTTP Status Codes**:
 | Code | 场景 |
 |---|---|
-| 400 | 请求体校验失败 |
+| 400 | 无效业务参数或操作 |
 | 401 | Token 无效或缺失 |
 | 404 | 资源不存在 |
-| 409 | 冲突（如 push 时版本冲突） |
-| 422 | 业务逻辑错误 |
+| 409 | 项目身份、来源版本、预览确认或幂等请求冲突 |
+| 422 | 请求 schema 校验失败或内容安全校验拒绝 |
 | 500 | 服务端错误 |
 
 ---
 
 ## 11. Rate Limiting
 
-所有 API 均有请求频率限制，基于客户端 IP 地址。超限时返回 `429 Too Many Requests`。
+限流按已配置的路由装饰器生效，基于客户端 IP 地址。超限时返回 `429 Too Many Requests`；不能仅凭 `RATE_DEFAULT` 常量认定每个路由都已启用限流。
 
 ### 限制规则
 
@@ -448,17 +443,11 @@ CLI 批量上传本地 vault 到 Hub。
 | `POST /memories` | 30 次/分钟 | 记忆创建写入限制 |
 | `POST /memories/search` | 60 次/分钟 | 搜索限制（稍宽松） |
 | `POST /sync/push` | 10 次/分钟 | 批量同步不需要太频繁 |
-| 其他所有端点 | 120 次/分钟 | 通用默认限制 |
+| 使用 `RATE_DEFAULT` 的端点 | 120 次/分钟 | 是否启用以各路由装饰器为准 |
 
 ### 响应 Header
 
-每个响应都包含以下 header：
-
-```
-X-RateLimit-Limit: 30
-X-RateLimit-Remaining: 29
-X-RateLimit-Reset: 1716300060
-```
+当前 limiter 未启用统一的限流响应 header，不能依赖每个响应都有 `X-RateLimit-*` 字段。
 
 ### 超限响应
 
@@ -475,7 +464,7 @@ HTTP Status: `429 Too Many Requests`
 | 字段 | 限制 | 说明 |
 |------|------|------|
 | `title` | 最长 256 字符 | 记忆标题 |
-| `content` | 最长 100,000 字符 (~25,000 汉字) | 记忆正文 |
+| `content` | 最长 100,000 字符（按字符计，不是 token） | 记忆正文 |
 | `tags` | 最多 20 个 | 标签数量 |
 
 ---
@@ -551,7 +540,7 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 `POST /context` 支持 `task`、`project_hint`、`project_hints`、`changed_paths`、`mode`、`token_budget`、
 `limit`、`as_of`、`valid_at`、`request_id`、`client`、`client_version` 和 `policy_mode`。`mode=auto`
 在有项目提示时解析 canonical project；没有项目提示时走 bounded personal memory route。
-当前 personal route 使用有界词法召回；图与时间多路召回尚未进入本轮发布候选。
+当前 personal route 使用共享的有界 Memory 混合召回（向量 + 词法），embedding 不可用时降级为词法；它不等同于项目 Context Compiler 的图/时间多路召回。
 
 `project_hints` 最多接收 10 个额外身份信号。精确解析失败后，Hub 会执行无向量、可解释的候选发现：
 唯一高置信候选只用于本次只读 context；歧义或无候选时返回 `scope=project_resolution`、候选及
@@ -630,3 +619,11 @@ helpful/harmful 与 coverage 只统计实际 intervention runs；截断证据窗
 判定，响应中的展示精度不会放宽门禁。
 结果只有 `insufficient_data | hold | eligible_for_canary`，并固定返回
 `auto_enforce=false`。它是发布证据，不是策略开关。
+
+## 14. 完整输出预算与诊断
+
+`POST /api/v1/context` 的默认响应仍为完整模式，新增 `output_usage`。请求可设置 `output_mode="compact"`，用 `max_output_tokens` 指定单份最终 JSON 上限；省略上限时使用 token_budget。正文的 `token_used` 保持原含义，不当作完整响应 token 数。
+
+`output_usage` 使用 `utf8_bytes_upper_bound`，覆盖整个紧凑 JSON，包括统计字段本身。必要规则或 completion 放不下时返回 `echome.error.v1` / `OUTPUT_BUDGET_TOO_SMALL`；该 run 记为 failed，不允许报告成功 outcome。保留字段、裁剪规则与 MCP 双表示口径详见 [MCP 规范](mcp-spec.md)。
+
+`GET /api/v1/context/runs/{run_id}` 返回同一用户的已记录 run、selected IDs 与完整检索 trace；不属于当前用户或不存在的 run 返回 404。未记录的请求没有诊断 URL，可重新请求 full 模式。

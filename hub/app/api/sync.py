@@ -22,6 +22,7 @@ from app.schemas.memory import (
     SyncPushResponse,
 )
 from app.services.content_safety import require_safe_content
+from app.services.memory_scope import exclude_projects
 from app.services.project_identity import canonicalize_project_scopes, project_scope_ids
 from app.services.renderer import render_memories
 from app.services.token_counter import count_tokens
@@ -71,6 +72,8 @@ async def push_sync(
                 unchanged += 1
                 continue
 
+            if existing.title != item.title or existing.content != item.content:
+                existing.embedding = None
             existing.title = item.title
             existing.content = item.content
             existing.type = item.type.value
@@ -175,6 +178,11 @@ async def render(
     if body.project_id:
         canonical = await canonicalize_project_scopes(session, user_id, [body.project_id])
         render_project_ids = await project_scope_ids(session, user_id, canonical[0])
+        query = query.where(exclude_projects(render_project_ids))
+    else:
+        # Global files cannot express a conditional exception. These rules remain
+        # available to project-aware rendering/retrieval where scope is known.
+        query = query.where(Memory.scope_exclude == [])
     project_filter = (
         or_(*(Memory.scope_projects.contains([item]) for item in render_project_ids))
         if render_project_ids
@@ -223,4 +231,11 @@ async def render(
         token_count=token_count,
         memories_included=included,
         memories_truncated=truncated,
+        output_usage={
+            "tokens_upper_bound": len(content.encode("utf-8")),
+            "counter": "utf8_bytes_upper_bound",
+            "representation": "complete_rendered_text",
+            "includes": ["memory_body", "mcp_instructions", "markers"],
+            "body_token_budget": max_tokens,
+        },
     )

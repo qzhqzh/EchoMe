@@ -2,17 +2,23 @@
 
 ## 项目概述
 
-EchoMe 是一个**跨 AI 的个人上下文同步层**，包含三个核心组件：
-1. **Hub** (FastAPI 服务端) — 存储和检索记忆
-2. **CLI** (echome 命令行) — 管理本地 vault 并同步到 Hub
-3. **MCP Server** — 向 AI CLI 暴露记忆查询/写入能力
+EchoMe 是面向 AI Agent 的**个人记忆与项目上下文层**，当前主要组件为：
+1. **Hub** (FastAPI) — 记忆与项目知识存储、混合检索、Context Compiler、证据与反馈
+2. **CLI** (`echome`) — 连接 Hub、管理记忆、将 L0/L1 渲染到 AI 客户端配置
+3. **MCP Server** — 以 `echome_context` 为默认入口，提供上下文、记忆写入和运行诊断
+4. **Web Console** (Vue 3) — 记忆/项目工作台、审核、Sleep、Diagnostics 与质量评估
+5. **Embedding** — BGE-M3 向量服务，供 Hub 检索使用
+
+Hub 是当前权威存储；本地文件式 vault `push/pull` 尚未实现，不能视为双向同步能力。
 
 ## 技术栈
 
 - **语言**: Python 3.11+
 - **Hub**: FastAPI + SQLAlchemy 2.0 (async) + Alembic + PostgreSQL 16 + pgvector
 - **CLI**: Typer + Rich + httpx
-- **MCP**: mcp (官方 Python SDK)
+- **MCP**: mcp (官方 Python SDK)，支持 stdio / Streamable HTTP
+- **Web**: Vue 3 + TypeScript + Vite + Tailwind CSS
+- **Embedding**: BGE-M3，1024 维
 - **包管理**: uv
 - **部署**: Docker Compose
 - **测试**: pytest + pytest-asyncio + httpx
@@ -21,37 +27,23 @@ EchoMe 是一个**跨 AI 的个人上下文同步层**，包含三个核心组�
 
 ```
 EchoMe/
-├── hub/                    # FastAPI 服务端
-│   ├── app/
-│   │   ├── main.py         # FastAPI app 入口
-│   │   ├── api/            # 路由
-│   │   ├── models/         # SQLAlchemy models
-│   │   ├── schemas/        # Pydantic schemas
-│   │   ├── services/       # 业务逻辑
-│   │   └── core/           # 配置、依赖、中间件
+├── echome/                 # CLI：main.py、commands/、core/、targets/
+├── echome_mcp/             # MCP：server.py、tools/、Hub client 与上下文缓存
+├── tests/                  # CLI/MCP 测试
+├── hub/
+│   ├── app/                # api/、models/、schemas/、services/、core/
 │   ├── alembic/            # 数据库迁移
-│   ├── tests/
-│   └── pyproject.toml
-├── cli/                    # CLI 客户端
-│   ├── echome/
-│   │   ├── __init__.py
-│   │   ├── main.py         # Typer app
-│   │   ├── commands/       # 子命令
-│   │   ├── targets/        # 目标适配器 (claude, codex)
-│   │   └── core/           # 配置、同步逻辑
-│   ├── tests/
-│   └── pyproject.toml
-├── mcp_server/             # MCP Server
-│   ├── echome_mcp/
-│   │   ├── __init__.py
-│   │   ├── server.py       # MCP server 入口
-│   │   └── tools/          # Tool 实现
-│   ├── tests/
-│   └── pyproject.toml
-├── docs/                   # 文档
+│   ├── tests/              # Hub API 与服务测试
+│   └── pyproject.toml      # Hub 依赖
+├── web/                    # Vue 3 + TypeScript Web Console
+├── embedding/              # BGE-M3 服务
+├── scripts/                # 项目真相检查等脚本
+├── docs/                   # 当前说明及历史计划
+├── pyproject.toml          # CLI + MCP 统一 Python 包
+├── uv.lock
 ├── docker-compose.yaml
-├── CLAUDE.md               # Claude Code 入口
-├── AGENTS.md               # 本文件
+├── CLAUDE.md               # Claude Code 开发入口
+├── AGENTS.md               # Codex 开发入口
 └── README.md
 ```
 
@@ -92,22 +84,35 @@ EchoMe/
 
 ## 当前阶段
 
-Phase 0 — 项目骨架搭建。参考 `docs/roadmap.md` 了解完整计划。
+当前稳定版本为 **v1.8.0**，当前源码 Alembic head 为 `018`、MCP capabilities 为 `echome.capabilities.v9`，新安装使用 10 工具的 `core` profile。主线包含发布后的项目身份恢复改进，不能仅凭包版本判断某个部署已具备全部源码能力。
+
+当前能力与边界见 `docs/roadmap.md`、`docs/architecture.md`；旧版 Phase 0-6 和版本计划属于历史记录。版本与契约以源码及 `scripts/check_project_truth.py` 为准，实际部署以 runtime health / capabilities 返回值为准。
 
 ## 常见任务
 
-### 启动 Hub 开发环境
+### 安装开发依赖
 ```bash
-cd hub
-docker compose up -d postgres
-uv run uvicorn app.main:app --reload
+# 仓库根目录：CLI + MCP
+uv sync --locked --extra dev
+# Hub 使用独立项目环境
+uv sync --project hub --locked --extra dev
 ```
+
+### 启动 Hub 开发环境
+先按 `docs/deployment.md` 配置 `hub/.env`，再从仓库根目录运行：
+
+```bash
+docker compose up -d --build
+```
+
+服务与端口以 `docker-compose.yaml` 为准；前端单独开发见 `web/README.md`。
 
 ### 运行测试
 ```bash
-cd hub && uv run pytest
-cd cli && uv run pytest
-cd mcp_server && uv run pytest
+# 均从仓库根目录运行
+uv run pytest tests
+uv run --directory hub pytest tests
+uv run python scripts/check_project_truth.py
 ```
 
 ### 数据库迁移

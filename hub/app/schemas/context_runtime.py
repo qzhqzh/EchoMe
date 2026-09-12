@@ -16,6 +16,8 @@ class UnifiedContextRequest(BaseModel):
     changed_paths: list[str] = Field(default_factory=list, max_length=200)
     mode: Literal["auto", "personal", "project", "impact", "temporal"] = "auto"
     token_budget: int = Field(6000, ge=256, le=50_000)
+    output_mode: Literal["full", "compact"] = "full"
+    max_output_tokens: int | None = Field(None, ge=256, le=200_000)
     limit: int = Field(20, ge=1, le=100)
     as_of: datetime | None = None
     valid_at: datetime | None = None

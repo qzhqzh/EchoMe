@@ -1,27 +1,39 @@
 # EchoMe 开发路线图
 
-> v1.4 的实施记录见 [next-update-plan-2026-08.md](next-update-plan-2026-08.md)，v1.7 的发布与
-> 安全验收见 [next-version-plan-v1.7.md](next-version-plan-v1.7.md)，下一版本候选见
-> [next-version-plan-v1.8.md](next-version-plan-v1.8.md)。下方 Phase 0-6 仅保留为
-> 早期历史，不再作为当前任务清单。
+> v1.4、v1.7 和 v1.8 的历史记录分别见
+> [v1.4 实施计划](next-update-plan-2026-08.md)、
+> [v1.7 发布与安全验收](next-version-plan-v1.7.md)和
+> [v1.8 实施记录](next-version-plan-v1.8.md)。下方 Phase 0-6 保留原始设计，
+> 其中的未勾选项、命令和预计时间均不作为当前待办或使用说明。
 
-## 当前实际进度（2026-08-26）
+## 当前实际进度（2026-09-12）
 
-代码实现已经超过原始 Phase 0/1 计划，当前仓库处于早期可用发布态：
+EchoMe 已进入 v1.8 发布后的维护与能力完善阶段。以下区分稳定发布、当前源码和运行中的部署：
 
-- **当前稳定版本**：`echome v1.8.0`
-- **当前生产 schema**：revision `018`
-- **当前策略状态**：Context Policy 保持 shadow；readiness 只用于 canary 资格判断，不能自动开启 enforce
-- **Hub**：已实现认证、多用户、memories CRUD/search、projects、sync/render、review、market、admin、embedding 接入和 rate limit
-- **CLI**：已实现 `init/login/add/list/search/sync/review/market/doctor/seed/update/status/version`；文件式 local-vault `push/pull` 仍是保留接口，会明确返回未实现
-- **MCP Server**：除 summary-first Memory 工作流外，已实现结构化 Project Context、Impact、Event、Preflight 和 evidence-backed Reflect 工具
-- **Project Knowledge**：已实现制品版本、chunk/FTS/vector 索引、约束版本图、时间与新鲜度、Context Compiler、Project Events 和受控复核
-- **Web Console**：已实现 Memory/Project 工作台，以及统一 Diagnostics 下的图观测、检索调试、Memory Eval 和 31 条五能力 Project Context Quality Eval
-- **v1.5 实现**：canonical project aliases、统一 `echome_context`、运行时健康/结构化错误/只读缓存、Context Runs Web 观测和 append-only Context Outcomes 已完成
-- **v1.8 候选工作区**：项目真相门禁、Context Outcome 完成契约、五能力 Eval、evidence-backed Reflect
-  和 Hub 敏感内容防线已经实现；尚未执行版本发布或生产数据写入
+- **当前稳定版本**：`echome v1.8.0`；版本记录见 [GitHub Releases](https://github.com/qzhqzh/EchoMe/releases)
+- **当前生产 schema**：revision `018`；当前源码 Alembic head 也是 `018`，其他部署须通过 runtime health 核实
+- **源码能力契约**：`echome.capabilities.v9`；新安装显式使用 `core` profile，共 10 个工具；未设置 profile 的历史客户端保留 `full`
+- **当前策略状态**：Context Policy 默认 shadow；readiness 只判断 canary 资格，不能自动开启 enforce
+- **Hub**：认证与多用户隔离、Memory CRUD/混合检索、项目身份与 workspace 组合、sync/render、review、market、admin、embedding 和 rate limit
+- **CLI**：记忆管理、`init/login/sync/review/market/doctor/seed/update/status/version` 及 `mcp install/serve`；配置文件注入支持 Claude Code 和 Codex
+- **MCP Server**：默认任务入口 `echome_context`；full profile 提供 summary-first、Project Knowledge、Impact、Event、Preflight、Sleep 与 evidence-backed Reflect
+- **Project Knowledge**：不可变制品 revision、chunk/FTS/vector 索引、约束版本与关系、时态查询、Context Compiler、Project Events 和受控复核
+- **Web Console**：Memory/Project 工作台，以及 Diagnostics 下的图观测、检索调试、Context Runs/Outcomes、Memory Eval 和 31 条五能力 Project Context Quality Eval
+- **v1.8 已交付**：项目真相门禁、Context Outcome 完成契约、五能力 Eval、evidence-backed Reflect 和 Hub 敏感内容防线
+- **发布后主线改进**：项目身份发现、Git identity 预览确认、active aliases 恢复等；包版本相同不代表运行中的 MCP 已加载这些能力
 
-下面的 Phase 计划保留为原始路线图参考，不代表当前完成度。
+## 当前能力边界与待办入口
+
+本次 issue 复核、开发顺序与验收条件见 [开发优先级（2026-09-12）](development-priorities.md)；该文档记录本轮 9 项实现与验证结果，合并及发布状态以 GitHub 为准，部署状态需核对实际运行版本。
+
+- Hub 是权威存储。`echome sync` 将 Hub 渲染结果写入客户端配置；文件式 local-vault `push/pull` 仍是保留命令，会返回未实现。
+- L0/L1 静态渲染在预算内选择记忆，超出时跳过条目；不会自动修改记忆 layer。完整输出还包含引导段，不能把正文预算当作最终响应硬上限。
+- 项目 context 支持 workspace 继承和路径选择；静态 `sync/render` 未复用 workspace/路径选择；带项目参数的排除规则已统一，全局文件会省略带项目例外的规则。
+- 已实现的质量门禁不等于所有客户端、真实任务和故障恢复路径都经过端到端验证。
+- 当前待办以 [GitHub Issues](https://github.com/qzhqzh/EchoMe/issues) 中的复现与验收条件为准；历史计划里的勾选状态不能用来判断 issue 是否仍需执行。
+- 文档更新时运行版本真相与 [文档契约检查](development-checks.md)；具体行为仍需核对源码，部署状态通过 `echome_runtime_health` / `echome_capabilities` 核实。
+
+以下为历史路线图，保留原文，不代表当前完成度。
 
 ## 总体目标
 

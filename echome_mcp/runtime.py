@@ -225,7 +225,7 @@ def error_contract(exc: Exception, request_id: str | None = None) -> dict[str, A
     }
 
 
-async def _local_project_hints() -> list[str]:
+async def _local_project_hints(directory: Path | None = None) -> list[str]:
     """Read all available Git identity signals without mutating the repository."""
     commands = [
         ("config", "--get", "remote.origin.url"),
@@ -238,6 +238,7 @@ async def _local_project_hints() -> list[str]:
             process = await asyncio.create_subprocess_exec(
                 "git",
                 *arguments,
+                cwd=directory,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
@@ -273,6 +274,8 @@ async def echome_context(
     policy_mode: str = "shadow",
     client: str | None = None,
     client_version: str | None = None,
+    output_mode: str = "full",
+    max_output_tokens: int | None = None,
 ) -> str:
     """Call the unified Hub route and degrade only to an exact last-known-good read."""
     request_id = str(uuid.uuid4())
@@ -283,8 +286,20 @@ async def echome_context(
             if hint.strip()
         )
     )
-    if not inferred_hints and mode != "personal":
-        inferred_hints = await _local_project_hints()
+    if mode != "personal":
+        if not inferred_hints:
+            inferred_hints = await _local_project_hints()
+        else:
+            # An explicit absolute path is the caller's evidence. Never combine an
+            # unrelated MCP host cwd with a canonical ID, remote, or foreign path.
+            directories = []
+            for hint in inferred_hints:
+                path = Path(hint).expanduser()
+                if path.is_absolute() and path.is_dir() and path not in directories:
+                    directories.append(path)
+            for directory in directories[:2]:
+                inferred_hints.extend(await _local_project_hints(directory))
+            inferred_hints = list(dict.fromkeys(inferred_hints))[:11]
     inferred_hint = inferred_hints[0] if inferred_hints else None
     payload: dict[str, Any] = {
         "task": task,
@@ -302,6 +317,14 @@ async def echome_context(
         "client": client or "mcp",
         "client_version": client_version or __version__,
     }
+    if output_mode != "full" or max_output_tokens is not None:
+        payload.update(output_mode=output_mode, max_output_tokens=max_output_tokens)
+    from echome_mcp.context_output import serialize_context
+
+    def serialize(value: dict[str, Any]) -> str:
+        return serialize_context(
+            value, compact=output_mode == "compact", limit=max_output_tokens or token_budget,
+        )
     client_instance = MCPHubClient()
     cache_namespace = client_instance.cache_namespace
     cache_encryption_key = _cache_encryption_key() if client_instance.cache_enabled else None
@@ -330,8 +353,8 @@ async def echome_context(
                 "required_at_task_end": False,
                 "reason": "Cached context is read-only and does not represent a new context run.",
             }
-            return json.dumps(cached, ensure_ascii=False, indent=2)
-        return json.dumps(failure, ensure_ascii=False, indent=2)
+            return serialize(cached)
+        return serialize(failure)
     runtime = context.get("runtime") if isinstance(context, dict) else None
     resolution_required = (
         bool(runtime.get("resolution_required")) if isinstance(runtime, dict) else False
@@ -339,7 +362,7 @@ async def echome_context(
     if not resolution_required:
         with suppress(OSError, TypeError):
             _write_cache(payload, context, cache_namespace, cache_encryption_key)
-    return json.dumps(context, ensure_ascii=False, indent=2)
+    return serialize(context)
 
 
 async def echome_runtime_health(

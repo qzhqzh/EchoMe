@@ -306,3 +306,4 @@ class RenderResponse(BaseModel):
     token_count: int
     memories_included: int
     memories_truncated: int
+    output_usage: dict[str, Any] = Field(default_factory=dict)

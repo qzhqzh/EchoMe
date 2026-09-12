@@ -1,6 +1,7 @@
 """Embedding service client — calls the local BGE-M3 embedding container."""
 
 import logging
+from typing import cast
 
 import httpx
 
@@ -25,16 +26,17 @@ async def get_embeddings(
             "Embedding request blocked by content safety for %d document(s)", blocked
         )
         return None
+    prepared_texts = [text[: settings.embedding_max_chars] for text in texts]
 
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             resp = await client.post(
                 f"{settings.embedding_url}/embed",
-                json={"texts": texts},
+                json={"texts": prepared_texts},
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["embeddings"]
+            return cast(list[list[float]], data["embeddings"])
     except Exception as e:
         logger.warning(f"Embedding service unavailable: {e}")
         return None

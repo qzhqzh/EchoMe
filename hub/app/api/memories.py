@@ -26,6 +26,7 @@ from app.schemas.memory import (
 from app.services.content_safety import require_safe_content
 from app.services.embedding import get_embedding
 from app.services.memory_retrieval import memory_query_tokens, retrieve_memories
+from app.services.memory_scope import exclude_projects
 from app.services.project_identity import (
     canonicalize_project_scopes,
     project_scope_ids,
@@ -83,13 +84,20 @@ async def _compute_and_store_embedding(memory_id: uuid.UUID, text: str) -> None:
 
         async with async_session_factory() as session:
             result = await session.execute(
-                sql_update(Memory).where(Memory.id == memory_id).values(embedding=embedding)
+                sql_update(Memory)
+                .where(
+                    Memory.id == memory_id,
+                    (Memory.title + "\n" + Memory.content) == text,
+                    Memory.status.notin_(["archived", "deprecated"]),
+                    Memory.superseded_by.is_(None),
+                )
+                .values(embedding=embedding, updated_at=Memory.updated_at)
             )
             if cast(Any, result).rowcount > 0:
                 await session.commit()
                 logger.info(f"Stored embedding for memory {memory_id}")
             else:
-                logger.info(f"Memory not found while storing embedding: {memory_id}")
+                logger.info(f"Skipped stale, inactive or missing embedding target: {memory_id}")
     except Exception as e:
         # Log but never raise — background task failures must not affect the main request
         logger.warning(f"Failed to compute/store embedding for {memory_id}: {e}")
@@ -126,7 +134,8 @@ async def list_memories(
     if project_id:
         scope_ids = await _query_project_scope_ids(session, user_id, project_id)
         query = query.where(
-            or_(*(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids))
+            or_(*(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids)),
+            exclude_projects(scope_ids),
         )
     relevance: Any = None
     if isinstance(search_query, str) and search_query:

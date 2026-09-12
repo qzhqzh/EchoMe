@@ -20,11 +20,26 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --extra dev
       - run: uv run python scripts/check_project_truth.py
-      - run: uv run ruff check echome echome_mcp tests
+      - run: uv run python scripts/check_doc_contracts.py --surface client
+      - run: uv run ruff check echome echome_mcp tests scripts/check_doc_contracts.py scripts/smoke_mcp_stdio.py
       - run: uv run pytest
 
   test-hub:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_USER: echome_test
+          POSTGRES_DB: echome_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U echome_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ECHOME_INTEGRATION_DATABASE_URL: postgresql+asyncpg://echome_test@127.0.0.1:5432/echome_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,6 +50,12 @@ jobs:
         working-directory: hub
       - run: uv run ruff check app tests alembic/versions
         working-directory: hub
+      - run: uv run python ../scripts/check_doc_contracts.py --surface hub
+        working-directory: hub
+      - run: uv run alembic upgrade head
+        working-directory: hub
+        env:
+          ECHOME_DATABASE_URL: ${{ env.ECHOME_INTEGRATION_DATABASE_URL }}
       - run: uv run pytest
         working-directory: hub
 
@@ -65,6 +86,7 @@ jobs:
       - run: uv venv /tmp/echome-wheel-test
       - run: uv pip install --python /tmp/echome-wheel-test/bin/python dist/*.whl
       - run: /tmp/echome-wheel-test/bin/echome --help
+      - run: python scripts/smoke_mcp_stdio.py --python /tmp/echome-wheel-test/bin/python
       - uses: actions/upload-artifact@v4
         with:
           name: dist
