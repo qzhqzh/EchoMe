@@ -27,7 +27,7 @@
 
 ## 同批纳入的运行配置与发布修正
 
-- Embedding 固定 Sentence Transformers 6.0.0、PyTorch 2.7.1 CUDA 11.8 并纳入 lockfile；模型改为预先下载、只读挂载，明确 GPU/FP16 和输入长度限制。模型下载依赖移到可选依赖组，Hub 和 embedding 镜像排除本机环境与测试文件。启动前提见[部署指南](deployment.md)。
+- Embedding 固定 Sentence Transformers 6.0.0、PyTorch 2.7.1 CUDA 11.8 并纳入 lockfile；模型改为预先下载、只读挂载，明确 GPU/FP16 和输入长度限制。模型下载依赖移到可选依赖组，Hub 和 embedding 镜像排除本机环境与测试文件，并按各自 lockfile 安装依赖，避免与 CI 漂移。启动前提见[部署指南](deployment.md)。
 - `ai_review` 明确标为 provisional 并附警告，`pending` 标为 quarantined 并拒绝注入；正文安全检查先于 embedding 输入截断。
 - 发布工作流同步 README、AGENTS、CLAUDE、MCP 规范及其他版本说明，验证干净 wheel 的 stdio 握手；发布开始时核对 main 未前移，避免发布未经确认的新提交。
 - 包发布记录与 Hub 部署事实分开维护，避免仅发布 PyPI 就把运行服务标为新版本。
