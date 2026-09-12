@@ -71,8 +71,9 @@ def check_command(line: str) -> None:
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 context = command.make_context("echome", args)
-        except click.exceptions.Exit as exc:
-            if exc.exit_code == 0:
+        except (click.exceptions.Exit, SystemExit) as exc:
+            exit_code = exc.exit_code if isinstance(exc, click.exceptions.Exit) else exc.code
+            if exit_code in (None, 0):
                 return
             raise
         with context:

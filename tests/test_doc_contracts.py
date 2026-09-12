@@ -6,6 +6,11 @@ from click import NoSuchOption
 from scripts.check_doc_contracts import check_command, check_links, check_mcp_schema
 
 
+@pytest.mark.parametrize("command", ["echome", "echome mcp", "echome mcp serve"])
+def test_help_is_a_valid_documented_command(command):
+    check_command(f"{command} --help")
+
+
 def test_invalid_command_and_option_are_rejected():
     with pytest.raises(ValueError, match="unknown CLI command"):
         check_command("echome absent-command")
