@@ -613,7 +613,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "project": {
                         "type": "string",
-                        "description": "项目名称（仅 project 类型需要）",
+                        "description": "已存在的 canonical project 或 active alias；所有类型均可设置，project 类型必须提供",
                     },
                 },
                 "required": ["title", "content", "type", "tags"],
@@ -691,6 +691,14 @@ async def list_tools() -> list[Tool]:
                         "default": 6000,
                     },
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                    "output_mode": {
+                        "type": "string", "enum": ["full", "compact"], "default": "full",
+                        "description": "Compact bounds one context JSON copy; full preserves diagnostics.",
+                    },
+                    "max_output_tokens": {
+                        "type": "integer", "minimum": 256, "maximum": 200000,
+                        "description": "Compact output cap, using a conservative UTF-8 byte token upper bound. Defaults to token_budget. Text and structuredContent each contain one copy.",
+                    },
                     "as_of": {"type": "string", "format": "date-time"},
                     "valid_at": {"type": "string", "format": "date-time"},
                     "policy_mode": {
@@ -1400,6 +1408,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 policy_mode=arguments.get("policy_mode", "shadow"),
                 client=arguments.get("client"),
                 client_version=arguments.get("client_version"),
+                output_mode=arguments.get("output_mode", "full"),
+                max_output_tokens=arguments.get("max_output_tokens"),
             )
         elif name == "echome_runtime_health":
             result = await echome_runtime_health(

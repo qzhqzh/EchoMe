@@ -31,6 +31,7 @@ from app.services.content_safety import find_sensitive_content
 from app.services.context_completion import completion_contract
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.embedding import get_embedding, get_embeddings
+from app.services.memory_scope import exclude_projects
 from app.services.project_identity import ProjectContextScope, project_context_scope
 from app.services.reflection import (
     REFLECTION_SCHEMA_VERSION,
@@ -519,10 +520,7 @@ async def compile_project_context(
             Memory.scope_global.is_(True),
             *(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids),
         ),
-        *(
-            ~Memory.scope_exclude.contains([scope_id])
-            for scope_id in sorted(exclusion_scope_ids)
-        ),
+        exclude_projects(exclusion_scope_ids),
     ]
     if body.as_of:
         memory_filter.append(Memory.updated_at <= body.as_of)

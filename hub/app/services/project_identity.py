@@ -37,6 +37,7 @@ ENVIRONMENT_SUFFIXES = {
     "uat",
 }
 WORKSPACE_GENERIC_TOKENS = {"ecosystem", "suite", "workspace"}
+REPOSITORY_COMPONENT_NAMES = {"api", "web", "frontend", "backend", "server", "client"}
 AUTO_RESOLVE_CONFIDENCE = 0.86
 AUTO_RESOLVE_MARGIN = 0.08
 
@@ -467,6 +468,19 @@ def _score_identity_match(
         if max(len(key) for key in exact_matches) >= 4:
             return 0.9, "derived_identity"
         return 0.76, "short_derived_identity"
+
+    # A logical product can contain generic api/web repositories. A matching
+    # parent name is a recovery candidate, never enough to auto-resolve identity.
+    if _looks_like_path(hint) or _looks_like_git_remote(hint):
+        path = (
+            _normalize_git_remote(hint)
+            if _looks_like_git_remote(hint)
+            else hint.replace("\\", "/").rstrip("/")
+        )
+        if posixpath.basename(path).casefold() in REPOSITORY_COMPONENT_NAMES:
+            parent_keys = _identity_keys(posixpath.basename(posixpath.dirname(path)))
+            if any(len(key) >= 3 for key in parent_keys & candidate_keys):
+                return 0.8, "repository_parent_identity"
 
     environment_hint_keys = _environment_keys(hint)
     environment_candidate_keys = _environment_keys(candidate_value, candidate_type)

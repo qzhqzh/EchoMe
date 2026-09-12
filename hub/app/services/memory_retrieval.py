@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.memory import Memory
 from app.services.content_safety import find_sensitive_content
 from app.services.embedding import get_embedding
+from app.services.memory_scope import exclude_projects
 
 ACTIVE_MEMORY_STATUSES = ("active", "ai_review")
 QUERY_ALIASES = {
@@ -133,6 +134,9 @@ async def retrieve_memories(
                 *(Memory.scope_projects.contains([item]) for item in project_scope_ids),
             )
         )
+
+    if project_scope_ids:
+        filters.append(exclude_projects(project_scope_ids))
 
     total_result = await session.execute(select(func.count()).select_from(Memory).where(*filters))
     total_candidates = total_result.scalar_one()

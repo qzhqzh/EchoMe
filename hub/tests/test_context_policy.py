@@ -106,6 +106,52 @@ def test_explicit_conflict_wins_over_recency() -> None:
     assert result["confidence"] == 0.9
 
 
+def test_ai_review_memory_remains_usable_but_is_marked_provisional() -> None:
+    memory = _memory(status="ai_review")
+
+    result = _assess_memory(
+        memory,
+        edges=[],
+        feedback=[],
+        activity={"project": datetime.now(timezone.utc)},
+        now=datetime.now(timezone.utc),
+    )
+    intervention = _intervention(
+        result["support_state"],
+        mode="project",
+        has_evidence=False,
+        authority=result["authority"],
+    )
+
+    assert result["support_state"] == "current_supported"
+    assert result["authority"] == "provisional"
+    assert "status:ai_review" in result["reason_codes"]
+    assert intervention["action"] == "inject_with_warning"
+    assert intervention["include"] is True
+
+
+def test_pending_memory_is_quarantined_if_it_reaches_policy_evaluation() -> None:
+    memory = _memory(status="pending")
+
+    result = _assess_memory(
+        memory,
+        edges=[],
+        feedback=[],
+        activity={"project": datetime.now(timezone.utc)},
+        now=datetime.now(timezone.utc),
+    )
+    intervention = _intervention(
+        result["support_state"],
+        mode="project",
+        has_evidence=False,
+        authority=result["authority"],
+    )
+
+    assert result["authority"] == "quarantined"
+    assert intervention["action"] == "abstain"
+    assert intervention["include"] is False
+
+
 def test_superseded_by_edge_only_marks_the_source_as_historical() -> None:
     source = _memory()
     replacement = _memory()

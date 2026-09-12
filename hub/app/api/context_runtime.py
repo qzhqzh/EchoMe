@@ -27,6 +27,7 @@ from app.schemas.project_knowledge import ProjectContextRequest, ProjectPrefligh
 from app.services.content_safety import find_sensitive_content
 from app.services.context_compiler import compile_project_context
 from app.services.context_completion import completion_contract
+from app.services.context_output import context_output
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import ProjectDiscovery, discover_projects
@@ -472,7 +473,26 @@ async def get_unified_context(
     route = _runtime_route(body)
     audit: dict[str, str | None] = {"project_id": None}
     try:
-        return await _build_unified_context(body, session, user_id, audit)
+        context = await _build_unified_context(body, session, user_id, audit)
+        output = context_output(
+            context, mode=body.output_mode,
+            limit=body.max_output_tokens or body.token_budget,
+        )
+        if context.get("context_run_id"):
+            run = await session.get(ContextRun, uuid.UUID(context["context_run_id"]))
+            if run is not None:
+                run.trace = {**run.trace, "output_usage": output["output_usage"],
+                             "omitted_counts": output.get("omitted_counts", {})}
+                if body.output_mode == "compact":
+                    run.trace = {**run.trace, "compiled_selected": run.selected}
+                    run.selected = {
+                        key: [item["id"] for item in output.get(key, [])]
+                        for key in run.selected
+                    }
+                if output.get("error"):
+                    run.status = "failed"
+                    run.error_code = "OUTPUT_BUDGET_TOO_SMALL"
+        return output
     except Exception as exc:
         await session.rollback()
         await _record_failed_context(
@@ -484,6 +504,21 @@ async def get_unified_context(
             audit["project_id"],
         )
         return _runtime_error_response(exc, request_id)
+
+
+@router.get("/runs/{run_id}")
+async def context_run_diagnostics(
+    run_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    run = await session.scalar(select(ContextRun).where(
+        ContextRun.id == run_id, ContextRun.user_id == user_id,
+    ))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Context run not found")
+    return {"context_run_id": str(run.id), "status": run.status,
+            "selected": run.selected, "trace": run.trace}
 
 
 @router.get("/runtime/health")
