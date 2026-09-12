@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "EchoMe v1.5.0 系统与部署架构",
+    "output": "docs/echome-architecture-v1.5.0.html",
+    "quality_profile": "showcase",
+    "engineering_profile": "deployment-ownership",
+    "repository": {
+      "url": "https://github.com/qzhqzh/EchoMe",
+      "revision": "134ed7432a1c39b45bd84d0806711dc59b7dcbb1"
+    },
+    "viewBox": [1460, 840],
+    "views": [
+      {
+        "id": "ai-context-path",
+        "label": "AI 上下文主链",
+        "focus": ["ai_clients", "mcp_runtime", "hub_api", "context_runtime", "postgres"],
+        "note": "AI 客户端经本地 MCP 调用 Hub，再由统一上下文运行时组合权威数据与证据。"
+      },
+      {
+        "id": "web-governance",
+        "label": "Web 治理与观测",
+        "focus": ["browser", "web_console", "hub_api", "governance", "postgres"],
+        "note": "浏览器通过 Nginx 进入 Hub，执行记忆、项目知识、Sleep、观测与质量评估。"
+      },
+      {
+        "id": "retrieval-dependencies",
+        "label": "检索依赖与降级",
+        "focus": ["mcp_runtime", "encrypted_cache", "context_runtime", "embedding", "postgres", "redis"],
+        "note": "PostgreSQL 是权威数据源；BGE-M3 提供可降级向量召回，本地缓存仅作精确只读降级。"
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": { "label": "客户端与管理界面" },
+        "backend": { "label": "应用与上下文运行时" },
+        "database": { "label": "权威或本地持久状态" },
+        "security": { "label": "受控协议入口" },
+        "messagebus": { "label": "已部署基础服务" },
+        "external": { "label": "外部使用者" }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "ai_clients",
+      "type": "external",
+      "label": "Codex / Claude / Cursor",
+      "sublabel": "AI Agent 与开发者任务",
+      "pos": [40, 330],
+      "size": [180, 70]
+    },
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "浏览器",
+      "sublabel": "管理、观测与评估",
+      "pos": [40, 650],
+      "size": [180, 70]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "EchoMe CLI",
+      "sublabel": "init / sync / review / sleep",
+      "tag": "EchoMe client",
+      "sources": [
+        { "path": "echome/main.py", "label": "Typer 入口" },
+        { "path": "echome/core/client.py", "label": "Hub HTTP 客户端" }
+      ],
+      "pos": [280, 150],
+      "size": [180, 70]
+    },
+    {
+      "id": "mcp_runtime",
+      "type": "security",
+      "label": "EchoMe MCP Runtime",
+      "sublabel": "stdio / loopback Streamable HTTP",
+      "tag": "EchoMe client",
+      "sources": [
+        { "path": "echome_mcp/server.py", "label": "MCP 工具与传输" },
+        { "path": "echome_mcp/hub_client.py", "label": "Hub API 代理" }
+      ],
+      "pos": [280, 330],
+      "size": [180, 70]
+    },
+    {
+      "id": "encrypted_cache",
+      "type": "database",
+      "label": "Encrypted LKG Cache",
+      "sublabel": "AES-256-GCM 精确只读降级",
+      "tag": "local operator",
+      "sources": [
+        { "path": "echome_mcp/runtime.py", "label": "统一路由与缓存降级" }
+      ],
+      "pos": [280, 530],
+      "size": [180, 70]
+    },
+    {
+      "id": "web_console",
+      "type": "frontend",
+      "label": "Web Console + Nginx",
+      "sublabel": "Vue SPA 与 /api 反向代理",
+      "tag": "EchoMe web",
+      "sources": [
+        { "path": "web/src/router.ts", "label": "管理与观测路由" },
+        { "path": "web/nginx.conf", "label": "Hub 反向代理" }
+      ],
+      "pos": [600, 650],
+      "size": [190, 70]
+    },
+    {
+      "id": "hub_api",
+      "type": "backend",
+      "label": "Hub API",
+      "sublabel": "FastAPI /api/v1 与身份边界",
+      "tag": "EchoMe Hub",
+      "sources": [
+        { "path": "hub/app/main.py", "label": "路由装配与生命周期" },
+        { "path": "hub/app/core/database.py", "label": "异步事务会话" }
+      ],
+      "pos": [600, 330],
+      "size": [190, 70]
+    },
+    {
+      "id": "context_runtime",
+      "type": "backend",
+      "label": "Context Compiler",
+      "sublabel": "memory + constraint + artifact + graph",
+      "tag": "EchoMe Hub",
+      "sources": [
+        { "path": "hub/app/api/context_runtime.py", "label": "统一上下文入口" },
+        { "path": "hub/app/services/context_compiler.py", "label": "证据优先检索融合" }
+      ],
+      "pos": [900, 330],
+      "size": [200, 70]
+    },
+    {
+      "id": "governance",
+      "type": "backend",
+      "label": "Memory & Project Governance",
+      "sublabel": "Sleep / Knowledge / Eval / Observability",
+      "tag": "EchoMe Hub",
+      "sources": [
+        { "path": "hub/app/api/memory_sleep.py", "label": "Sleep 提案与应用" },
+        { "path": "hub/app/api/project_knowledge.py", "label": "项目知识与约束" },
+        { "path": "hub/app/api/observability.py", "label": "图与运行观测" }
+      ],
+      "pos": [900, 540],
+      "size": [200, 70]
+    },
+    {
+      "id": "embedding",
+      "type": "backend",
+      "label": "BGE-M3 Embedding",
+      "sublabel": "本地 GPU /embed，可降级",
+      "tag": "EchoMe deploy",
+      "sources": [
+        { "path": "embedding/server.py", "label": "SentenceTransformer 服务" },
+        { "path": "hub/app/services/embedding.py", "label": "Hub HTTP 调用与降级" }
+      ],
+      "pos": [920, 100],
+      "size": [160, 70]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 16 + pgvector",
+      "sublabel": "权威记忆、知识、关系与证据",
+      "tag": "EchoMe deploy",
+      "sources": [
+        { "path": "hub/app/models/memory.py", "label": "记忆与检索模型" },
+        { "path": "hub/app/models/project_knowledge.py", "label": "项目知识与运行证据" },
+        { "path": "hub/alembic/versions/015_context_outcomes.py", "label": "当前迁移链末端" }
+      ],
+      "pos": [1180, 330],
+      "size": [210, 70]
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis 7",
+      "sublabel": "Compose 已部署；未发现业务调用",
+      "tag": "EchoMe deploy",
+      "sources": [
+        { "path": "docker-compose.yaml", "label": "部署与 Hub 依赖" },
+        { "path": "hub/app/core/config.py", "label": "连接配置" }
+      ],
+      "pos": [1200, 540],
+      "size": [170, 70]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "本地客户端主机 / Python 包运行时",
+      "wraps": ["ai_clients", "browser", "cli", "mcp_runtime", "encrypted_cache"],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "Docker Compose 单机部署边界",
+      "wraps": ["web_console", "hub_api", "context_runtime", "governance", "embedding", "postgres", "redis"],
+      "pad": 30
+    },
+    {
+      "kind": "security-group",
+      "label": "客户端受控本地状态 / 仅当前账号可读",
+      "wraps": ["mcp_runtime", "encrypted_cache"],
+      "pad": 22
+    },
+    {
+      "kind": "security-group",
+      "label": "Compose 内部数据平面 / 未映射宿主机端口",
+      "wraps": ["postgres", "redis"],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    { "id": "agent-mcp", "from": "ai_clients", "to": "mcp_runtime", "label": "MCP stdio / HTTP", "variant": "emphasis", "labelAt": [250, 414] },
+    { "id": "agent-cli", "from": "ai_clients", "to": "cli", "label": "命令行操作" },
+    { "id": "mcp-hub", "from": "mcp_runtime", "to": "hub_api", "label": "Bearer HTTP /api/v1", "variant": "security", "labelAt": [530, 414] },
+    { "id": "cli-hub", "from": "cli", "to": "hub_api", "label": "sync / review / sleep" },
+    { "id": "mcp-cache", "from": "mcp_runtime", "to": "encrypted_cache", "label": "精确请求键缓存", "variant": "dashed", "labelAt": [370, 414] },
+    { "id": "browser-web", "from": "browser", "to": "web_console", "label": "HTTP :20001", "variant": "emphasis" },
+    { "id": "web-hub", "from": "web_console", "to": "hub_api", "label": "Nginx /api 代理", "variant": "emphasis" },
+    { "id": "hub-context", "from": "hub_api", "to": "context_runtime", "label": "统一上下文编译", "variant": "emphasis" },
+    { "id": "hub-governance", "from": "hub_api", "to": "governance", "label": "提案 / 校验 / 观测" },
+    { "id": "context-embedding", "from": "context_runtime", "to": "embedding", "label": "POST /embed", "variant": "dashed" },
+    { "id": "context-postgres", "from": "context_runtime", "to": "postgres", "label": "SQL + vector retrieval", "variant": "emphasis", "labelAt": [1140, 326] },
+    { "id": "governance-postgres", "from": "governance", "to": "postgres", "label": "append-only / versioned writes", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "运行与部署归属",
+      "items": [
+        "CLI 与 MCP 作为 Python 包运行在客户端主机",
+        "Web、Hub、Embedding、PostgreSQL 与 Redis 由 Docker Compose 部署"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "权威数据与降级",
+      "items": [
+        "PostgreSQL + pgvector 是服务端唯一权威数据层",
+        "Embedding 不可用时退化检索；本地 LKG 只读且按精确请求键命中"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "治理边界",
+      "items": [
+        "Sleep 与约束复核遵循 proposal → validate → apply",
+        "Redis 当前仅有部署与配置证据，未画出不存在的业务数据流"
+      ]
+    }
+  ]
+}
