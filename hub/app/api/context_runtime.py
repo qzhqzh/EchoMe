@@ -27,7 +27,12 @@ from app.schemas.project_knowledge import ProjectContextRequest, ProjectPrefligh
 from app.services.content_safety import find_sensitive_content
 from app.services.context_compiler import compile_project_context
 from app.services.context_completion import completion_contract
-from app.services.context_output import context_output
+from app.services.context_output import (
+    MEMORY_INDEX_NOTICE,
+    content_tokens,
+    context_output,
+    memory_reference,
+)
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
 from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import ProjectDiscovery, discover_projects
@@ -216,9 +221,6 @@ async def _personal_context(
         }
         for item in selected
     ]
-    while payloads and count_tokens(str(payloads)) > body.token_budget:
-        payloads.pop()
-    token_used = count_tokens(str(payloads))
     context: dict[str, Any] = {
         "schema_version": "echome.context.v1",
         "scope": "personal",
@@ -233,7 +235,7 @@ async def _personal_context(
         "stale_warnings": [],
         "unknowns": [] if payloads else ["No supported personal memory matched the task."],
         "token_budget": body.token_budget,
-        "token_used": token_used,
+        "token_used": count_tokens(str(payloads)),
         "retrieval_trace": {
             **retrieval.trace,
             "selected_count": len(payloads),
@@ -250,6 +252,41 @@ async def _personal_context(
         query_mode="personal",
         valid_at=body.valid_at,
     )
+    # Assess before packing so references cannot expose a policy-withheld memory.
+    # Preserve hard rules; compact output will return an explicit budget error
+    # when the complete mandatory envelope cannot fit.
+    candidates = context["memories"]
+    protected = {
+        item["id"]
+        for item in candidates
+        if item.get("type") == "guardrail" or item.get("layer") == "L0"
+    }
+    retained_ids = set(protected)
+    source_payloads = {
+        item["id"]: {
+            key: value for key, value in item.items() if key not in {"reliability", "intervention"}
+        }
+        for item in candidates
+    }
+    for item in candidates:
+        if item["id"] in retained_ids:
+            continue
+        trial_ids = retained_ids | {item["id"]}
+        trial = [source_payloads[row["id"]] for row in candidates if row["id"] in trial_ids]
+        if count_tokens(str(trial)) <= body.token_budget:
+            retained_ids = trial_ids
+    context["memories"] = [item for item in candidates if item["id"] in retained_ids]
+    context["token_used"] = count_tokens(
+        str([source_payloads[item["id"]] for item in context["memories"]])
+    )
+    omitted = [item for item in candidates if item["id"] not in retained_ids]
+    if omitted and retained_ids == protected:
+        context["memory_index"] = [memory_reference(item) for item in omitted]
+        context["unknowns"].append(MEMORY_INDEX_NOTICE)
+    if omitted:
+        context["retrieval_trace"]["budget_omitted_memory_ids"] = [
+            item["id"] for item in omitted
+        ]
     record_policy_diagnostic_overhead(context)
     context["retrieval_trace"]["selected_count"] = len(context["memories"])
     if not context["memories"] and not context["unknowns"]:
@@ -475,19 +512,28 @@ async def get_unified_context(
     try:
         context = await _build_unified_context(body, session, user_id, audit)
         output = context_output(
-            context, mode=body.output_mode,
+            context,
+            mode=body.output_mode,
             limit=body.max_output_tokens or body.token_budget,
         )
         if context.get("context_run_id"):
             run = await session.get(ContextRun, uuid.UUID(context["context_run_id"]))
             if run is not None:
-                run.trace = {**run.trace, "output_usage": output["output_usage"],
-                             "omitted_counts": output.get("omitted_counts", {})}
+                run.trace = {
+                    **run.trace,
+                    "output_usage": output["output_usage"],
+                    "omitted_counts": output.get("omitted_counts", {}),
+                    "compiled_content_tokens": content_tokens(context),
+                    "delivered_content_tokens": output.get("delivered_content_tokens", 0),
+                    "memory_index_tokens": output.get("memory_index_tokens", 0),
+                    "referenced_memory_ids": [
+                        item["id"] for item in output.get("memory_index", [])
+                    ],
+                }
                 if body.output_mode == "compact":
                     run.trace = {**run.trace, "compiled_selected": run.selected}
                     run.selected = {
-                        key: [item["id"] for item in output.get(key, [])]
-                        for key in run.selected
+                        key: [item["id"] for item in output.get(key, [])] for key in run.selected
                     }
                 if output.get("error"):
                     run.status = "failed"

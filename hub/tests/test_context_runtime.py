@@ -4,6 +4,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -22,6 +23,7 @@ from app.core.auth import verify_token
 from app.core.database import get_session
 from app.models.memory import Memory
 from app.schemas.context_runtime import UnifiedContextRequest
+from app.services.context_output import context_output, measure_output
 from app.services.project_identity import ProjectDiscovery
 
 
@@ -140,6 +142,73 @@ async def test_personal_context_trace_reflects_token_budget_truncation() -> None
 
     assert context["memories"] == []
     assert context["retrieval_trace"]["selected_count"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["short_after_long", "policy_filtered_index", "guardrail", "L0"])
+async def test_personal_budget_packing_keeps_complete_rules_and_policy_eligible_sources(
+    monkeypatch, case: str,
+) -> None:
+    memories = [
+        Memory(
+            id=uuid.uuid4(), user_id="user", title="完整开发约定", content="完整规则。" * 2000,
+            type="method", layer="L1", scope_global=True, priority=8, tags=[], status="active",
+            updated_at=datetime.now(timezone.utc),
+        ),
+        Memory(
+            id=uuid.uuid4(), user_id="user", title="沟通偏好", content="中文简洁回复。",
+            type="style", layer="L1", scope_global=True, priority=7, tags=[], status="active",
+            updated_at=datetime.now(timezone.utc),
+        ),
+    ]
+    if case == "policy_filtered_index":
+        memories[1].content = "只能作为索引展开的完整开发约定。" * 2000
+    elif case == "guardrail":
+        memories[0].type = "guardrail"
+    elif case == "L0":
+        memories[0].layer = "L0"
+    retrieval = SimpleNamespace(
+        items=[SimpleNamespace(memory=item) for item in memories],
+        trace={"strategy": "hybrid_memory"}, total_candidates=2,
+    )
+    monkeypatch.setattr(
+        "app.api.context_runtime.retrieve_memories", AsyncMock(return_value=retrieval),
+    )
+
+    async def apply_policy(*_args, **kwargs):
+        context = kwargs["context"]
+        context["context_policy"] = {"effective_mode": "enforce", "enforced": True}
+        if case == "policy_filtered_index":
+            context["memories"] = context["memories"][1:]
+        for item in context["memories"]:
+            item["reliability"] = {"reason_codes": ["diagnostic" * 2000]}
+        return context
+
+    monkeypatch.setattr("app.api.context_runtime.apply_context_policy", apply_policy)
+    context = await _personal_context(
+        AsyncMock(), UnifiedContextRequest(task="开发约定", token_budget=256, record_run=False),
+        "user", "request-id",
+    )
+    output = context_output(context, mode="compact", limit=2000)
+
+    assert measure_output(output) <= 2000
+    if case == "short_after_long":
+        assert [item["id"] for item in context["memories"]] == [str(memories[1].id)]
+        assert output["memories"][0]["content"] == memories[1].content
+        assert context["retrieval_trace"]["selected_count"] == 1
+        assert context["token_used"] <= 256
+    elif case == "policy_filtered_index":
+        assert context["memories"] == []
+        assert context["retrieval_trace"]["selected_count"] == 0
+        assert [item["id"] for item in output["memory_index"]] == [str(memories[1].id)]
+        assert str(memories[0].id) not in json.dumps(output)
+        assert output["delivered_content_tokens"] == 0
+        assert output["memory_index_tokens"] > 0
+    else:
+        assert context["memories"][0]["content"] == memories[0].content
+        assert context["token_used"] > 256
+        assert output["error"]["code"] == "OUTPUT_BUDGET_TOO_SMALL"
+        assert "memory_index" not in output
 
 
 @pytest.mark.asyncio
