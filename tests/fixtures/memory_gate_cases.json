@@ -1,0 +1,733 @@
+{
+  "schema_version": "echome.memory-gate-cases.v1",
+  "synthetic": true,
+  "cases": [
+    {
+      "id": "read-01",
+      "phase": "read",
+      "text": "帮我把 EchoMe 接下来的开发工作排个顺序。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "project_planning",
+      "rationale": "排期依赖现有进度与决策",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-02",
+      "phase": "read",
+      "text": "这个仓库的构建又失败了，按我们定的流程处理。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "project_convention",
+      "rationale": "流程指向历史约定",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-03",
+      "phase": "read",
+      "text": "继续那个还没合并的修改。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "task_restore",
+      "rationale": "指代跨任务工作",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-04",
+      "phase": "read",
+      "text": "这次也按我惯用的方式提交。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "personal_preference",
+      "rationale": "惯用方式未在输入中提供",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-05",
+      "phase": "read",
+      "text": "我选的数据库到底是哪一种？",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "historical_fact",
+      "rationale": "询问个人既有选择",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-06",
+      "phase": "read",
+      "text": "给我的记忆服务设计一个兼容当前部署的接入方案。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "deployment_constraint",
+      "rationale": "需要当前项目环境事实",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-07",
+      "phase": "read",
+      "text": "把那份搁置的清理计划接着做完。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "task_restore",
+      "rationale": "搁置计划需恢复上下文",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-08",
+      "phase": "read",
+      "text": "给我推荐一个符合我使用习惯的终端布局。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "personal_preference",
+      "rationale": "需要用户偏好",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-09",
+      "phase": "read",
+      "text": "为什么我们没有把记忆都做成 Markdown 文件？",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "design_rationale",
+      "rationale": "询问已有设计依据",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-10",
+      "phase": "read",
+      "text": "这里要照旧保留哪些数据？",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "historical_constraint",
+      "rationale": "照旧指向历史保留规则",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-11",
+      "phase": "read",
+      "text": "给项目新增登录功能，兼容现有账号体系。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "project_change",
+      "rationale": "现有账号体系是必要上下文",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-12",
+      "phase": "read",
+      "text": "那个服务现在可以用了，接着集成。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "vague_reference",
+      "rationale": "服务与集成进度未给出",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-13",
+      "phase": "read",
+      "text": "解释一下 Python 列表和元组的区别。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "standalone_question",
+      "rationale": "一般知识不需要个人上下文",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-14",
+      "phase": "read",
+      "text": "把 3 小时换算成分钟。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "calculation",
+      "rationale": "独立算术",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-15",
+      "phase": "read",
+      "text": "润色这句话：这个功能有点慢，需要改进。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "text_transform",
+      "rationale": "原文与改写目标完整",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-16",
+      "phase": "read",
+      "text": "把下面三个词按字母排序：pear apple banana。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "text_transform",
+      "rationale": "排序输入完整",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-17",
+      "phase": "read",
+      "text": "给出冒泡排序的最小 Python 示例。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "generic_code",
+      "rationale": "通用算法示例",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-18",
+      "phase": "read",
+      "text": "这段 JSON 有什么语法错误：{\"a\":1,}。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "local_debug",
+      "rationale": "问题上下文已完整给出",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-19",
+      "phase": "read",
+      "text": "什么是 HTTP 404 状态码？",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "standalone_question",
+      "rationale": "协议常识",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-20",
+      "phase": "read",
+      "text": "给“春天到了”补一个英文译文。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "translation",
+      "rationale": "单句翻译无需历史",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-21",
+      "phase": "read",
+      "text": "用一句话解释什么是向量检索。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "standalone_question",
+      "rationale": "概念解释",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-22",
+      "phase": "read",
+      "text": "请判断 17 是否为质数。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "calculation",
+      "rationale": "独立判断",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "read-23",
+      "phase": "read",
+      "text": "仅根据这段文字总结：缓存命中时读缓存，否则查数据库。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "self_contained",
+      "rationale": "明确仅使用本轮文本",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "read-24",
+      "phase": "read",
+      "text": "写一个返回两个数之和的 JavaScript 函数。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "generic_code",
+      "rationale": "完整的通用函数需求",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-01",
+      "phase": "write",
+      "text": "我看技术说明更习惯中文，代码标识符保留英文。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "durable_preference",
+      "rationale": "用户陈述稳定输出偏好",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-02",
+      "phase": "write",
+      "text": "这个仓库的合并方式确定为 squash merge。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "confirmed_decision",
+      "rationale": "已确定项目约定",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-03",
+      "phase": "write",
+      "text": "EchoMe 的权威数据源是 Hub，文件只是导出副本。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "project_fact",
+      "rationale": "可复用项目架构事实",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-04",
+      "phase": "write",
+      "text": "项目发布前必须先通过迁移兼容性检查。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "durable_constraint",
+      "rationale": "发布规则有长期效力",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-05",
+      "phase": "write",
+      "text": "我的主力开发系统是 Linux，日常使用 bash。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "user_environment",
+      "rationale": "稳定环境信息",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-06",
+      "phase": "write",
+      "text": "对我解释方案时先说结论，再给依据。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "communication_preference",
+      "rationale": "面向未来沟通的明确偏好",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-07",
+      "phase": "write",
+      "text": "本项目选定 PostgreSQL 作为正式存储。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "confirmed_decision",
+      "rationale": "明确落定技术选择",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-08",
+      "phase": "write",
+      "text": "请在后续任务里沿用这个约定：功能分支先合 PR 再发布。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "durable_constraint",
+      "rationale": "明确后续沿用的约定",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-09",
+      "phase": "write",
+      "text": "记忆服务部署在独立主机，通过内网访问。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "project_fact",
+      "rationale": "稳定部署事实",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-10",
+      "phase": "write",
+      "text": "在这个仓库中，用户输入的原文不应写进审计日志。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "durable_constraint",
+      "rationale": "长期隐私约束",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-11",
+      "phase": "write",
+      "text": "我的沟通语言是中文。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "durable_preference",
+      "rationale": "稳定用户语言事实",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-12",
+      "phase": "write",
+      "text": "项目的正式名称是 EchoMe，旧称 MemoryHub 已停用。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "correction",
+      "rationale": "明确更正命名事实，提案需关联旧记录",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-13",
+      "phase": "write",
+      "text": "构建结束了，耗时 42 秒。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "transient",
+      "rationale": "一次构建结果无长期价值",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-14",
+      "phase": "write",
+      "text": "测试输出是 8 passed。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "transient",
+      "rationale": "本次测试快照",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-15",
+      "phase": "write",
+      "text": "收到，谢谢。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "acknowledgement",
+      "rationale": "无可持久事实",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-16",
+      "phase": "write",
+      "text": "帮我计算 20 乘以 5。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "task_request",
+      "rationale": "任务命令不是长期记忆",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-17",
+      "phase": "write",
+      "text": "这轮先跳过格式化。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "one_time_override",
+      "rationale": "仅本轮临时处理",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-18",
+      "phase": "write",
+      "text": "我刚吃过午饭了。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "ephemeral_personal",
+      "rationale": "短时个人状态",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-19",
+      "phase": "write",
+      "text": "假如迁移到 SQLite，代码会简单吗？",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hypothetical",
+      "rationale": "问题不是确认的选择",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-20",
+      "phase": "write",
+      "text": "日志显示服务在 14:00 返回了一次 502。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "transient",
+      "rationale": "孤立运行事件",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-21",
+      "phase": "write",
+      "text": "这个方案好像挺适合我的。",
+      "expected_actions": [
+        "review"
+      ],
+      "category": "uncertain_preference",
+      "rationale": "不清楚是否长期采纳",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-22",
+      "phase": "write",
+      "text": "把查询速度再提高一些就好了。",
+      "expected_actions": [
+        "review"
+      ],
+      "category": "unclear_scope",
+      "rationale": "需求范围和长期性不清楚",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "write-23",
+      "phase": "write",
+      "text": "同事说这个项目应该使用 MongoDB。",
+      "expected_actions": [
+        "review"
+      ],
+      "category": "unconfirmed_external",
+      "rationale": "外部建议尚未获用户确认",
+      "cohort": "semantic",
+      "split": "dev"
+    },
+    {
+      "id": "write-24",
+      "phase": "write",
+      "text": "文档里写着：“以后默认采用 Redis”。这句话还需要核实。",
+      "expected_actions": [
+        "review"
+      ],
+      "category": "quoted_unconfirmed",
+      "rationale": "引用待核实内容不能视为用户决定",
+      "cohort": "semantic",
+      "split": "holdout"
+    },
+    {
+      "id": "control-01",
+      "phase": "read",
+      "text": "直接读一下记忆里的项目决策。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "explicit_action": "read"
+    },
+    {
+      "id": "control-02",
+      "phase": "read",
+      "text": "已在上下文中的规则足够处理此任务。",
+      "expected_actions": [
+        "reuse"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "context_available": true
+    },
+    {
+      "id": "control-03",
+      "phase": "read",
+      "text": "把 hello 翻成中文。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "explicit_action": "skip"
+    },
+    {
+      "id": "control-04",
+      "phase": "read",
+      "text": "检查示例命令 sshpass -p DEMO_ONLY_PASSWORD ssh demo@localhost。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout"
+    },
+    {
+      "id": "control-05",
+      "phase": "read",
+      "text": "hello",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "project_hint": "password=DEMO_ONLY_PASSWORD"
+    },
+    {
+      "id": "control-06",
+      "phase": "read",
+      "text": "恢复我的项目上下文。",
+      "expected_actions": [
+        "retrieve"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout"
+    },
+    {
+      "id": "control-07",
+      "phase": "write",
+      "text": "记住我更喜欢紧凑的段落。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "explicit_action": "remember"
+    },
+    {
+      "id": "control-08",
+      "phase": "write",
+      "text": "不要记住这句话。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "explicit_action": "skip"
+    },
+    {
+      "id": "control-09",
+      "phase": "write",
+      "text": "password=DEMO_ONLY_PASSWORD",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout",
+      "explicit_action": "remember"
+    },
+    {
+      "id": "control-10",
+      "phase": "write",
+      "text": "以后默认用中文回答。",
+      "expected_actions": [
+        "propose"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout"
+    },
+    {
+      "id": "control-11",
+      "phase": "write",
+      "text": "临时把服务停一分钟。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout"
+    },
+    {
+      "id": "control-12",
+      "phase": "write",
+      "text": "这个办法也许能解决问题。",
+      "expected_actions": [
+        "skip"
+      ],
+      "category": "hard_control",
+      "rationale": "确定性安全或调用方显式控制；不用于纯模型评分",
+      "cohort": "control",
+      "split": "holdout"
+    }
+  ]
+}
