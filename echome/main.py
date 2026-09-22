@@ -11,6 +11,7 @@ from rich.panel import Panel
 
 from echome.commands.clean import clean
 from echome.commands.doctor import doctor
+from echome.commands.gate import gate_app
 from echome.commands.init import init
 from echome.commands.login import login, logout, whoami
 from echome.commands.market import market_app
@@ -249,6 +250,9 @@ app.add_typer(market_app, name="market")
 
 # Memory Sleep subcommand group
 app.add_typer(sleep_app, name="sleep")
+
+# Shadow-only memory interaction decisions
+app.add_typer(gate_app, name="gate")
 
 
 # MCP subcommand group

@@ -24,6 +24,8 @@ EchoMe 已进入 v1.8 发布后的维护与能力完善阶段。以下区分稳�
 
 ## 当前能力边界与待办入口
 
+2026-09-22 开始的 [Memory Gate 试点](memory-gate.md)提供规则/Kev/Laya 的 shadow 判断与中文评测，以及 context 预算交付改进。客户端自动入口、隔离提案箱和自动写入尚未实现；开发顺序与验收条件见试点文档。
+
 本次 issue 复核、开发顺序与验收条件见 [开发优先级（2026-09-12）](development-priorities.md)；该文档记录本轮 9 项实现与验证结果，合并及发布状态以 GitHub 为准，部署状态需核对实际运行版本。
 
 - Hub 是权威存储。`echome sync` 将 Hub 渲染结果写入客户端配置；文件式 local-vault `push/pull` 仍是保留命令，会返回未实现。
