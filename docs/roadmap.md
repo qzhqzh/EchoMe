@@ -6,19 +6,20 @@
 > [v1.8 实施记录](next-version-plan-v1.8.md)。下方 Phase 0-6 保留原始设计，
 > 其中的未勾选项、命令和预计时间均不作为当前待办或使用说明。
 
-## 当前实际进度（2026-09-12）
+## 当前实际进度（2026-10-04）
 
-EchoMe 已进入 v1.8 发布后的维护与能力完善阶段。以下区分稳定发布、当前源码和运行中的部署：
+EchoMe 已进入 v1.9 发布后的维护与能力完善阶段。以下区分稳定发布、当前源码和运行中的部署：
 
 - **当前稳定版本**：`echome v1.9.0`；版本记录见 [GitHub Releases](https://github.com/qzhqzh/EchoMe/releases)
-- **当前生产 schema**：revision `018`；当前源码 Alembic head 也是 `018`，其他部署须通过 runtime health 核实
-- **源码能力契约**：`echome.capabilities.v9`；新安装显式使用 `core` profile，共 10 个工具；未设置 profile 的历史客户端保留 `full`
+- **已验证本机生产 schema**：revision `020`（2026-10-04）；当前源码 Alembic head 为 `020`，其他部署须通过 runtime health 核实
+- **源码能力契约**：`echome.capabilities.v11`；新安装显式使用 `core` profile，共 16 个工具；未设置 profile 的历史客户端保留 `full`
 - **当前策略状态**：Context Policy 默认 shadow；readiness 只判断 canary 资格，不能自动开启 enforce
 - **Hub**：认证与多用户隔离、Memory CRUD/混合检索、项目身份与 workspace 组合、sync/render、review、market、admin、embedding 和 rate limit
-- **CLI**：记忆管理、`init/login/sync/review/market/doctor/seed/update/status/version` 及 `mcp install/serve`；配置文件注入支持 Claude Code 和 Codex
+- **CLI**：记忆管理、`scenario`、`init/login/sync/review/market/doctor/seed/update/status/version` 及 `mcp install/serve`；配置文件注入支持 Claude Code 和 Codex
 - **MCP Server**：默认任务入口 `echome_context`；full profile 提供 summary-first、Project Knowledge、Impact、Event、Preflight、Sleep 与 evidence-backed Reflect
 - **Project Knowledge**：不可变制品 revision、chunk/FTS/vector 索引、约束版本与关系、时态查询、Context Compiler、Project Events 和受控复核
-- **Web Console**：Memory/Project 工作台，以及 Diagnostics 下的图观测、检索调试、Context Runs/Outcomes、Memory Eval 和 31 条五能力 Project Context Quality Eval
+- **Web Console**：Memory/Project/高频场景工作台，以及 Diagnostics 下的图观测、检索调试、Context Runs/Outcomes、Memory Eval 和 31 条五能力 Project Context Quality Eval
+- **当前源码新增**：逐条场景资料与校正历史、SOP 证据门槛，以及独立流程版本、持续事项、租约与运行记录；持续检查由外部执行器触发，详见 [场景说明](scenarios.md)
 - **v1.8 已交付**：项目真相门禁、Context Outcome 完成契约、五能力 Eval、evidence-backed Reflect 和 Hub 敏感内容防线
 - **发布后主线改进**：项目身份发现、Git identity 预览确认、active aliases 恢复等；包版本相同不代表运行中的 MCP 已加载这些能力
 

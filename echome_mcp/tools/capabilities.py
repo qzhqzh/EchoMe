@@ -10,12 +10,26 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v9",
+    "capabilities_version": "echome.capabilities.v11",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
     "recommended_start": "echome_capabilities",
     "default_context_tool": "echome_context",
+    "scenario_workflow": [
+        {"step": "read_knowledge", "tool": "echome_scene_read",
+         "when": "A user names a recurring scene; read its dated facts, observations, active SOPs, cautions and current work before acting."},
+        {"step": "maintain_knowledge", "tool": "echome_scene_write",
+         "when": "After checking source evidence, add atomic items individually or in one batch, or correct one exact revision; keep untested operations in work, not SOP."},
+        {"step": "resolve", "tool": "echome_scenario_resolve",
+         "when": "The user explicitly names a published executable procedure, after reading any related scene knowledge."},
+        {"step": "resume", "tool": "echome_scenario_item",
+         "when": "The user wants to continue work across chats; list with data.query or data.scenario_slug, then get its pinned version or standalone plan and state."},
+        {"step": "execute", "tool": "echome_scenario_run",
+         "when": "Before actual execution, claim a lease; then finish with evidence and the next check time."},
+        {"step": "maintain", "tool": "echome_scenario_catalog",
+         "when": "Save a draft, then publish only after validation evidence exists."},
+    ],
     "default_retrieval_workflow": [
         {
             "step": "discover",
@@ -81,6 +95,14 @@ CAPABILITIES: dict[str, Any] = {
         },
     ],
     "tool_groups": {
+        "scenarios": [
+            {"tool": "echome_scene_read", "when": "Read a named scene document, atomic items, and correction history.", "mutates_state": False},
+            {"tool": "echome_scene_write", "when": "Create a scene, add or correct sourced items, or publish a repeatedly validated SOP.", "mutates_state": True},
+            {"tool": "echome_scenario_resolve", "when": "Resolve a user-named scenario without guessing or executing.", "mutates_state": False},
+            {"tool": "echome_scenario_catalog", "when": "Create and version a scenario; publish only with validation evidence.", "mutates_state": True},
+            {"tool": "echome_scenario_item", "when": "Create or resume a standalone or pinned item; pause, complete, upgrade, or explicitly bind it.", "mutates_state": True},
+            {"tool": "echome_scenario_run", "when": "Claim and finish an execution attempt or inspect its history.", "mutates_state": True},
+        ],
         "orientation": [
             {
                 "tool": "echome_capabilities",
@@ -89,7 +111,7 @@ CAPABILITIES: dict[str, Any] = {
             },
             {
                 "tool": "echome_context",
-                "when": "Default single entry for personal or project work; routes automatically and returns answerability, reliability interventions, and runtime metadata.",
+                "when": "Use when historical preferences or project context affect the task; routes automatically and returns answerability, reliability interventions, and runtime metadata.",
                 "mutates_state": False,
             },
             {
@@ -243,8 +265,13 @@ CAPABILITIES: dict[str, Any] = {
         ],
     },
     "rules": [
-        "Use echome_context as the default initial call; use specialized tools only when its conflicts, unknowns, or recommended actions require focused follow-up.",
-        "Do not assume user workflow or project conventions when EchoMe is connected; retrieve relevant memories first.",
+        "Scene knowledge is text-first. Read the named scene with echome_scene_read before adding or correcting; preserve each fact, observation and caution as one sourced item.",
+        "A procedure is not a formal SOP until repeated independent effective runs support it. Keep one-off or untested actions in the current work record.",
+        "When new evidence conflicts with a current scene fact, mark it needs_review or correct that exact revision with a reason and source; never silently overwrite unrelated items.",
+        "When execution of a published procedure is requested, resolve that executable scenario before planning. A ready_for_manual_checks result still requires applicability review and normal task authorization.",
+        "EchoMe stores scenario state and due times but does not execute tasks or schedule a worker; a connected executor must claim, run, and finish each check.",
+        "Use echome_context when historical preferences or project conventions materially affect the task; do not query it mechanically for every request.",
+        "When historical workflow or project conventions matter, retrieve relevant context before assuming them.",
         "Use summary-first for broad questions; avoid relying on top_k=5 semantic search for complete project context.",
         "Use graph explanation after reading a key memory if the task depends on its correctness or freshness.",
         "Ask for or record feedback only when a memory clearly influenced the task, the user corrected it, or the memory appears outdated/conflicting; do not interrupt every turn.",
@@ -304,6 +331,7 @@ def capabilities_payload() -> dict[str, Any]:
             "when": "Create silently after not_found, or attach aliases to one reusable candidate; do not ask for user confirmation unless candidates are genuinely ambiguous.",
         },
     ]
+    payload["scenario_workflow"] = CAPABILITIES["scenario_workflow"]
     payload["tool_groups"] = {
         group: [entry for entry in entries if entry["tool"] in CORE_TOOL_NAMES]
         for group, entries in payload["tool_groups"].items()
@@ -312,7 +340,11 @@ def capabilities_payload() -> dict[str, Any]:
         group: entries for group, entries in payload["tool_groups"].items() if entries
     }
     payload["rules"] = [
-        "Use echome_context as the default initial call for personal and project work.",
+        "Read a named scene with echome_scene_read before using its facts or SOPs. Historical observations are not current measurements.",
+        "Use echome_scene_write to add atomic sourced entries or correct an exact revision. Keep untested actions in work; formal SOP requires repeated independent evidence.",
+        "When execution of a published procedure is requested, resolve it before choosing steps. Check applicability and current authorization before executing.",
+        "Continuous items need an external scheduler; EchoMe stores due times, leases, status, and run history.",
+        "Use echome_context when historical preferences or project context matter; do not call it mechanically for every request.",
         "Use echome_memory_explain when a key memory may be stale, replaced, or conflicting.",
         "Archived/deprecated memories are provenance, not active facts.",
         "Use echome_remember only for durable context and never store secrets.",

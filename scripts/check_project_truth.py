@@ -125,18 +125,20 @@ def check_project_truth() -> list[str]:
     required_snippets = {
         "README.md": (
             f"当前稳定版本为 **v{version}**",
-            f"当前生产 schema revision 为 `{head}`",
+            f"当前源码 Alembic head 为 `{head}`",
         ),
         "docs/roadmap.md": (
             f"**当前稳定版本**：`echome v{version}`",
-            f"**当前生产 schema**：revision `{head}`",
+            f"当前源码 Alembic head 为 `{head}`",
         ),
         "docs/project-knowledge.md": (
             f"current released package version is `{version}`",
-            f"current production Alembic revision is `{head}`",
+            f"current source Alembic head is `{head}`",
         ),
-        "AGENTS.md": (f"当前稳定版本为 **v{version}**",),
-        "CLAUDE.md": (f"当前稳定版本为 **v{version}**",),
+        "AGENTS.md": (
+            f"当前稳定版本为 **v{version}**",
+            f"当前源码 Alembic head 为 `{head}`",
+        ),
         "docs/mcp-spec.md": (f"`{capabilities}`", f'"version": "{version}"'),
     }
     for path, snippets in required_snippets.items():
@@ -144,6 +146,10 @@ def check_project_truth() -> list[str]:
         for snippet in snippets:
             if snippet not in text:
                 errors.append(f"{path} is missing current-truth marker: {snippet}")
+
+    claude_text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    if f"当前稳定版本为 **v{version}**" not in claude_text and "@AGENTS.md" not in claude_text:
+        errors.append("CLAUDE.md needs the released version or an @AGENTS.md reference")
 
     forbidden = {
         "docs/memory-model.md": (
@@ -167,18 +173,15 @@ def check_project_truth() -> list[str]:
     current_version_claim = re.compile(
         r"当前稳定版本(?:为|[：:])\s*(?:\*\*)?`?v?(\d+\.\d+\.\d+)"
     )
-    current_schema_claim = re.compile(
-        r"当前(?:生产)?(?:数据库|\s*schema).*?(?:revision\s*(?:为|[：:])?|为)\s*`?(\d{3})`?",
-        re.IGNORECASE,
-    )
+    source_schema_claim = re.compile(r"当前源码 Alembic head 为\s*`?(\d{3})`?")
     for path in AUTHORITATIVE_DOCS:
         text = (ROOT / path).read_text(encoding="utf-8")
         for claimed in current_version_claim.findall(text):
             if claimed != version:
                 errors.append(f"{path} claims current version {claimed}, expected {version}")
-        for claimed in current_schema_claim.findall(text):
+        for claimed in source_schema_claim.findall(text):
             if claimed != head:
-                errors.append(f"{path} claims current schema {claimed}, expected {head}")
+                errors.append(f"{path} claims source schema {claimed}, expected {head}")
     return errors
 
 

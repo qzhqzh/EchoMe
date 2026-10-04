@@ -4,7 +4,7 @@
 
 EchoMe MCP Server 向 AI 客户端暴露个人记忆、项目上下文、证据查询和受控写入能力，通常作为本地 stdio 进程运行，也支持 Streamable HTTP。
 
-本文按 2026-09-12 当前源码校准；完整工具 schema 以 [server.py](../echome_mcp/server.py) 和客户端实际的 `tools/list` 为准。包版本、capabilities 版本和 MCP 协议版本是三个不同概念，部署可能尚未加载主线能力。
+本文按 2026-10-04 当前源码校准；完整工具 schema 以 [server.py](../echome_mcp/server.py) 和客户端实际的 `tools/list` 为准。包版本、capabilities 版本和 MCP 协议版本是三个不同概念，部署可能尚未加载主线能力。
 
 **运行方式**：
 ```bash
@@ -70,7 +70,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
   替换主 remote 时不会自动保留旧地址；仍需兼容时应在同一预览中显式提交旧地址 alias。
 - `echome_create_project`：项目发现为 `not_found` 时直接静默创建；只有一个可复用候选时不创建重复项目，
   而是原子补录 active aliases。`confirmed_new_project` 仅为旧客户端保留，不再作为创建门禁；多个冲突候选仍停止。
-- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护等 10 个高频入口。
+- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护，以及 2 个场景资料入口和 4 个流程/事项入口，共 16 个工具。
 - `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
 - 为保持升级兼容，未配置 `ECHOME_MCP_PROFILE` 的历史客户端继续使用 `full`。
 
@@ -100,7 +100,7 @@ MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `messag
 - `off` 跳过策略计算。
 - `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
 
-`echome_capabilities` 当前契约版本为 `echome.capabilities.v9`。core profile 包含 10 个工具；AI 可通过
+`echome_capabilities` 当前契约版本为 `echome.capabilities.v11`。core profile 包含 16 个工具；AI 可通过
 `echome_runtime_health(include_policy_readiness=true)` 读取校准门禁。
 `echome_sleep_candidates` 默认返回
 `memory_sleep_plan.v2`，也可显式请求 v1；v2 proposal 由 Hub 生成 server-owned simulation，并在
@@ -117,6 +117,18 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 也不得自动修改 Hub feature flag。
 
 下列 4.1-4.5、4.7 是 `full` profile 的专业/兼容工具；4.6 的 `echome_remember` 同时在 `core` 中提供。默认任务查询使用 `echome_context`，不要在 core 客户端里要求调用未暴露的工具。
+
+### 场景工具（core 与 full）
+
+`echome_scene_read` 的 `list/get/history` 可按名称或别名读取逐条资料、组合 Markdown 和修订历史。
+用户可以明确说“去 EchoMe 读取家庭网络场景资料”；AI 先用 `get` 读取该名称或别名，
+如名称不确定再用 `list` 查询，不需要猜测或执行场景流程。
+`echome_scene_write` 的 `create/add/add_batch/correct/publish_sop` 用于创建资料、单条或批量补充来源明确的知识、
+按 `expected_revision` 校正现有条目、录入经过至少 3 次独立有效实测且跨 2 次会话的正式 SOP。
+事实和观测必须带证据时间；临时步骤放在进行中。其他 AI 应先读资料和当前 revision，发现冲突时
+标为待核实或提交有来源的校正，不覆盖无关条目。SOP 证据由提交方提供，EchoMe 不替代现场验证。
+
+需要执行已发布流程时，用 `echome_scenario_resolve` 检查发布状态、结构化输入和环境约束；返回 `ready_for_manual_checks` 后仍需核对文本适用条件与本次任务授权。知识资料无需有已发布流程，也能独立读取。`echome_scenario_catalog` 管理流程草稿、发布证据、旧版本激活和停用。`echome_scenario_item` 可先建立带 `working_plan` 的独立事项；新聊天先用 `list` 的 `data.query` 或 `data.scenario_slug` 定位事项，再用 `get` 恢复状态，也可用 `bind` 显式绑定已发布场景。绑定或切换版本需 revision 与原因。`echome_scenario_run` 提供领取租约、完成和历史；领取本身不执行任务。持续事项由外部执行器轮询到期列表；MCP 不提供内置定时调度。完整字段见 [场景说明](scenarios.md)。
 
 ### 完整输出预算
 

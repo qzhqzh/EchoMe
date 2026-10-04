@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import json
 import os
 import stat
+import subprocess
 import uuid
 from contextlib import suppress
 from pathlib import Path
@@ -233,23 +233,18 @@ async def _local_project_hints(directory: Path | None = None) -> list[str]:
     ]
     hints: list[str] = []
     for arguments in commands:
-        process = None
         try:
-            process = await asyncio.create_subprocess_exec(
-                "git",
-                *arguments,
+            process = subprocess.run(
+                ["git", *arguments],
                 cwd=directory,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
             )
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=2)
-        except (OSError, TimeoutError):
-            if process is not None and process.returncode is None:
-                process.kill()
-                with suppress(OSError):
-                    await process.wait()
+        except (OSError, subprocess.TimeoutExpired):
             continue
-        value = stdout.decode().strip()
+        value = process.stdout.decode().strip()
         if process.returncode == 0 and value and value not in hints:
             hints.append(value)
     return hints

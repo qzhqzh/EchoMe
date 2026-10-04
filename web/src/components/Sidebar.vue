@@ -31,6 +31,7 @@ const navItems = computed<NavItem[]>(() => {
     { name: t('nav_memories'), path: '/memories', icon: 'memories' },
     { name: t('nav_review'), path: '/review', icon: 'review' },
     { name: t('nav_projects'), path: '/projects', icon: 'projects' },
+    { name: t('nav_scenarios'), path: '/scenarios', icon: 'scenarios' },
   ]
   if (import.meta.env.VITE_ECHOME_MARKET_ENABLED === 'true') {
     items.push({ name: t('nav_market'), path: '/market', icon: 'market' })
@@ -118,6 +119,9 @@ function toggleLocale(): void {
         </svg>
         <svg v-else-if="item.icon === 'projects'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+        </svg>
+        <svg v-else-if="item.icon === 'scenarios'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h10M4 18h16m-4-9 3 3-3 3" />
         </svg>
         <svg v-else-if="item.icon === 'market'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />

@@ -2,12 +2,13 @@
 
 ## 1. 系统定位
 
-EchoMe 是面向 AI Agent 的**个人记忆与项目上下文层**。它保存两类长期知识，并通过统一上下文入口交付给 Codex、Claude Code、Cursor 等客户端：
+EchoMe 是面向 AI Agent 的**个人记忆与项目上下文层**。它保存三类长期知识，并通过上下文和场景资料入口交付给 Codex、Claude Code、Cursor 等客户端：
 
 - **Personal Memory**：个人习惯、偏好、工作方法、跨项目约定和可复用经验。
 - **Project Knowledge**：项目制品、约束、关系、事件、验证证据和影响范围。
+- **Scene Knowledge**：高频或持续场景的逐条事实、观察、注意事项、当前工作与经过实测的 SOP。
 
-两类数据共享身份、项目解析和运行时，但保持独立模型与生命周期，避免把项目事实混入个人偏好。
+三类数据共享用户身份和运行时，但保持独立模型与生命周期，避免把不同用途的知识混在一起。
 
 v1.5.0 发布快照：[`echome-architecture-v1.5.html`](echome-architecture-v1.5.html)。该版本化图保留当时拓扑；本页文本描述当前工作树，下一次发布会生成新文件而不覆盖旧图。
 
@@ -54,6 +55,8 @@ Codex / Claude Code / Cursor
 | `api/project_knowledge.py` | 项目制品、约束、关系、事件、Context Runs 和质量评估 |
 | `services/context_compiler.py` | 证据优先的项目上下文编译 |
 | `api/context_runtime.py` | `personal/project/impact/temporal` 统一路由与错误契约 |
+| `api/scenarios.py` | 显式场景路由、版本发布、事项状态与执行租约 |
+| `api/scene_knowledge.py` | 逐条场景知识、纯文档组合、校正历史与 SOP 准入 |
 | `api/observability.py` | 记忆图、邻居和 Sleep 观测 |
 | `api/retrieval_debug.py` | 检索 trace 与元数据日志，不复制记忆正文 |
 
@@ -66,6 +69,8 @@ Hub 使用请求内异步事务。记忆写入成功后，embedding 通过 FastA
 - memories、projects、memory edges、Sleep sessions 和 feedback；
 - project artifacts、artifact versions/chunks、constraints、constraint edges 和 events；
 - context runs、context outcomes、retrieval logs 和 quality snapshots；
+- scenarios、scenario versions、scenario items 和 scenario runs；
+- scene knowledge、atomic entries 和 correction history；
 - 用于语义召回的 pgvector embedding。
 
 Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade head`，因此发布前必须先在隔离数据库完成升级、降级和数据保留验证。
@@ -74,14 +79,14 @@ Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade h
 
 `echome_mcp` 是协议适配层，通过 Hub REST API 读写数据，不直接连接数据库。
 
-- 默认 `core` profile：10 个高频工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目创建和经确认的 Git identity 维护。
+- 默认 `core` profile：当前源码 16 个工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目身份维护、2 个场景资料工具和 4 个流程/事项工具。
 - `ECHOME_MCP_PROFILE=full`：暴露 summary-first、Project Knowledge、Sleep 等专业工具。
 - `echome_capabilities` 会根据当前 profile 只推荐实际可调用的工具。
 - Hub 暂时不可达时，仅 `echome_context` 可读取本地 AES-256-GCM last-known-good 缓存；缓存不会回写 Hub。
 
 ### 3.4 CLI
 
-CLI 负责配置、Hub 操作、规则渲染、MCP 注册、Sleep 和诊断。`echome sync` 从 Hub 获取 L0/L1 内容并只更新受 marker 管理的区域。
+CLI 负责配置、Hub 操作、规则渲染、MCP 注册、Sleep、场景与诊断。`echome sync` 从 Hub 获取 L0/L1 内容并只更新受 marker 管理的区域。
 
 文件式 local-vault `push/pull` 尚未实现。这两个命令会明确返回非零退出，不会再把空操作报告为成功。
 
@@ -89,7 +94,7 @@ CLI 负责配置、Hub 操作、规则渲染、MCP 注册、Sleep 和诊断。`e
 
 Vue 3 Web Console 通过 Nginx 访问 Hub REST API，提供：
 
-- Memory 与 Project 工作台；
+- Memory、Project 与高频场景工作台；
 - Memory Graph、Quality Eval 和 Retrieval Logs 组成的 Diagnostics 工作区；
 - Sleep proposal、review、设置和管理功能。
 
@@ -146,6 +151,24 @@ workspace context  = global memory + workspace memory + changed_paths 命中的 
 父 workspace 可向 repository 提供共享规范，但 repository 之间不隐式继承。Context Compiler
 只扩展 Memory scope；Project Knowledge 的 constraint、artifact、chunk 和 view 继续使用当前
 canonical project，避免共享记忆机制扩大权威证据边界。
+
+### 4.5 高频场景与持续事项
+
+```text
+显式 ID/别名 -> 场景当前发布版本 -> 输入与环境检查 -> 人工适用性检查
+                                                    -> 固定版本事项
+独立持续事项 -> 当前工作计划/状态 -> 验证并发布场景 -> 显式绑定固定版本
+外部调度器 -> 到期列表 -> 租约领取 -> 固定流程执行 -> 结果/证据/下次时间
+                                                     -> 变化信号与通知建议
+```
+
+`scenarios` 保存身份与默认版本，`scenario_versions` 保存发布后不可变的流程，`scenario_items` 保存
+进行中状态、独立工作计划或固定版本，`scenario_runs` 保存每次执行尝试。Memory 和 Project Knowledge 可作为流程
+来源，但不会自动升级为可执行场景。Hub 只提供状态和并发控制，不运行用户脚本，也没有内置调度 worker。
+`scene_knowledge` 独立保存场景文档身份；`scene_knowledge_entries` 按事实、历史观测、正式 SOP、
+注意事项和进行中逐条保存文本；`scene_knowledge_changes` 记录每次校正快照。纯 Markdown 文档按需
+组合，未验证的操作只进入进行中，不自动成为正式 SOP 或可执行流程。
+详情见 [场景契约](scenarios.md)。
 
 ## 5. 数据安全边界
 

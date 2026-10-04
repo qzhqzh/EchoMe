@@ -27,6 +27,7 @@ export default {
   nav_memories: '记忆库',
   nav_review: '审核',
   nav_projects: '项目',
+  nav_scenarios: '高频场景',
   nav_market: '市场',
   nav_observability: '观测',
   nav_eval: '评估',

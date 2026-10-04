@@ -10,6 +10,137 @@ export type MemoryType =
   | 'template'
   | 'project'
 
+export type SceneCategory = 'fact' | 'observation' | 'sop' | 'caution' | 'work'
+
+export interface SceneKnowledge {
+  id: string
+  slug: string
+  title: string
+  summary: string
+  aliases: string[]
+  project_id: string | null
+  status: 'active' | 'archived'
+  created_at: string
+  updated_at: string
+}
+
+export interface SceneKnowledgeEntry {
+  id: string
+  key: string
+  category: SceneCategory
+  content: string
+  source_ref: string
+  origin_entry_id: string | null
+  evidence_at: string | null
+  status: 'active' | 'needs_review' | 'archived'
+  validations: SceneSopValidation[]
+  revision: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SceneSopValidation {
+  executed_at: string
+  session_id: string
+  conditions: string
+  observed_result: string
+  evidence_ref: string
+  result: 'effective'
+}
+
+export interface SceneKnowledgeDetail {
+  scene: SceneKnowledge
+  counts: Record<SceneCategory, number>
+  entries: SceneKnowledgeEntry[]
+  markdown: string
+}
+
+export interface ScenarioInputField {
+  name: string
+  description: string
+  required: boolean
+  secret: boolean
+  default: string | null
+}
+
+export interface ScenarioDefinition {
+  applicability: string
+  exclusions: string
+  input_fields: ScenarioInputField[]
+  required_environment: Record<string, string>
+  steps: string[]
+  verification: string[]
+  recovery: string[]
+  execution_ref: string | null
+  source_refs: string[]
+}
+
+export interface Scenario {
+  id: string
+  project_id: string | null
+  slug: string
+  title: string
+  summary: string
+  aliases: string[]
+  status: 'draft' | 'active' | 'disabled'
+  current_version: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScenarioVersion {
+  id: string
+  version: number
+  definition: ScenarioDefinition
+  validation_evidence: string | null
+  published_at: string | null
+  created_at: string
+}
+
+export interface ScenarioItem {
+  id: string
+  scenario_id: string | null
+  scenario_slug: string | null
+  version_id: string | null
+  title: string
+  goal: string
+  working_plan: string | null
+  mode: 'one_off' | 'continuous'
+  status: 'active' | 'paused' | 'completed'
+  phase: string
+  parameters: Record<string, string>
+  environment: Record<string, string>
+  state: Record<string, unknown>
+  version_history: Array<{ version: number; at: string; reason: string }>
+  revision: number
+  current_observation: 'unknown' | 'normal' | 'alert'
+  last_success_at: string | null
+  last_success_summary: string | null
+  last_run_at: string | null
+  next_check_at: string | null
+  lease_expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScenarioRun {
+  id: string
+  item_id: string
+  version_id: string | null
+  idempotency_key: string
+  status: 'running' | 'completed' | 'abandoned'
+  outcome: 'success' | 'failure' | 'skipped' | null
+  observation: 'unknown' | 'normal' | 'alert' | null
+  summary: string | null
+  evidence: string[]
+  event_key: string | null
+  signal: string | null
+  notification_recommended: boolean
+  started_at: string
+  finished_at: string | null
+  lease_expires_at: string
+}
+
 export type MemoryLayer = 'L0' | 'L1' | 'L2'
 
 export type MemoryStatus = 'active' | 'ai_review' | 'pending' | 'deprecated' | 'archived'

@@ -119,7 +119,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 # 后端健康检查
 curl https://echome.qzhqzh.com/health
-# 基础存活响应示例: {"status":"ok","version":"1.8.0","embedding_model":"BAAI/bge-m3"}
+# 基础存活响应示例: {"status":"ok","version":"1.9.0","embedding_model":"BAAI/bge-m3"}
 # 版本以实际部署为准；依赖和 schema 检查使用 /api/v1/context/runtime/health（需认证）
 
 # 前端
