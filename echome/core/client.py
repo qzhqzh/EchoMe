@@ -26,6 +26,24 @@ class HubClient:
             timeout=30.0,
         )
 
+    def scenario_request(
+        self,
+        method: str,
+        path: str,
+        data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call a scenario endpoint selected by a CLI command."""
+        with self._client() as client:
+            response = client.request(
+                method, f"/api/v1/scenarios{path}", json=data, params=params
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Scenario response must be an object")
+            return payload
+
     def health(self) -> dict[str, Any]:
         """Check hub health."""
         with self._client() as client:

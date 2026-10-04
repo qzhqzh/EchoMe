@@ -146,8 +146,11 @@ jobs:
               in Path("hub/app/core/config.py").read_text(encoding="utf-8"),
               "AGENTS.md": f"当前稳定版本为 **v{version}**"
               in Path("AGENTS.md").read_text(encoding="utf-8"),
-              "CLAUDE.md": f"当前稳定版本为 **v{version}**"
-              in Path("CLAUDE.md").read_text(encoding="utf-8"),
+              "CLAUDE.md": (
+                  f"当前稳定版本为 **v{version}**"
+                  in Path("CLAUDE.md").read_text(encoding="utf-8")
+                  or "@AGENTS.md" in Path("CLAUDE.md").read_text(encoding="utf-8")
+              ),
               "docs/mcp-spec.md": f'"version": "{version}"'
               in Path("docs/mcp-spec.md").read_text(encoding="utf-8"),
               "README.md": f"当前稳定版本为 **v{version}**"

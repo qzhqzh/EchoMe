@@ -17,6 +17,7 @@ from echome.commands.login import login, logout, whoami
 from echome.commands.market import market_app
 from echome.commands.memories import add_memory, list_memories, search_memories
 from echome.commands.review import review
+from echome.commands.scenario import scenario_app
 from echome.commands.seed import seed
 from echome.commands.sleep import sleep_app
 from echome.commands.sync import detect, eject, pull, push, sync
@@ -253,6 +254,9 @@ app.add_typer(sleep_app, name="sleep")
 
 # Shadow-only memory interaction decisions
 app.add_typer(gate_app, name="gate")
+
+# Explicitly selected, versioned repeatable work
+app.add_typer(scenario_app, name="scenario")
 
 
 # MCP subcommand group

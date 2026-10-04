@@ -14,6 +14,12 @@ CORE_TOOL_NAMES = frozenset(
         "echome_update_project_git_identity",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
+        "echome_scenario_resolve",
+        "echome_scenario_catalog",
+        "echome_scenario_item",
+        "echome_scenario_run",
+        "echome_scene_read",
+        "echome_scene_write",
     }
 )
 

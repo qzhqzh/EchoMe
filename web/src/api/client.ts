@@ -25,6 +25,16 @@ import type {
   ProjectQualitySnapshot,
   RetrievalReplayReport,
   ContextPolicyReadiness,
+  Scenario,
+  ScenarioDefinition,
+  ScenarioItem,
+  ScenarioRun,
+  ScenarioVersion,
+  SceneKnowledge,
+  SceneKnowledgeDetail,
+  SceneKnowledgeEntry,
+  SceneSopValidation,
+  SceneCategory,
 } from '@/types'
 
 class ApiClient {
@@ -157,6 +167,120 @@ class ApiClient {
   }
 
   // --- Memories ---
+
+  // --- Scenarios ---
+
+  async listSceneKnowledge(query?: string): Promise<{ total: number; items: SceneKnowledge[] }> {
+    return this.request('GET', '/scenarios/knowledge', undefined, query ? { query } : undefined)
+  }
+
+  async getSceneKnowledge(selector: string, includeArchived = false): Promise<SceneKnowledgeDetail> {
+    return this.request('GET', `/scenarios/knowledge/${encodeURIComponent(selector)}`,
+      undefined, { include_archived: includeArchived })
+  }
+
+  async createSceneKnowledge(data: {
+    slug: string; title: string; summary: string; aliases: string[]; project_id: string | null
+  }): Promise<{ scene: SceneKnowledge }> {
+    return this.request('POST', '/scenarios/knowledge', data)
+  }
+
+  async addSceneEntry(selector: string, data: {
+    category: Exclude<SceneCategory, 'sop'>; content: string; source_ref: string;
+    evidence_at: string | null; status: 'active' | 'needs_review'
+  }): Promise<{ entry: SceneKnowledgeEntry }> {
+    return this.request('POST', `/scenarios/knowledge/${encodeURIComponent(selector)}/entries`, data)
+  }
+
+  async correctSceneEntry(selector: string, entryId: string, data: {
+    expected_revision: number; reason: string; source_ref: string;
+    content?: string; evidence_at?: string | null;
+    status?: 'active' | 'needs_review' | 'archived'
+  }): Promise<{ entry: SceneKnowledgeEntry }> {
+    return this.request('PATCH',
+      `/scenarios/knowledge/${encodeURIComponent(selector)}/entries/${encodeURIComponent(entryId)}`, data)
+  }
+
+  async publishSceneSop(selector: string, data: {
+    content: string; source_ref: string; validations: SceneSopValidation[];
+    candidate_entry_id?: string | null
+  }): Promise<{ entry: SceneKnowledgeEntry }> {
+    return this.request('POST', `/scenarios/knowledge/${encodeURIComponent(selector)}/sops`, data)
+  }
+
+  async sceneEntryHistory(selector: string, entryId: string): Promise<{ items: Array<{
+    revision: number; action: string; reason: string; snapshot: SceneKnowledgeEntry; created_at: string
+  }> }> {
+    return this.request('GET',
+      `/scenarios/knowledge/${encodeURIComponent(selector)}/entries/${encodeURIComponent(entryId)}/history`)
+  }
+
+  async listScenarios(): Promise<{ total: number; items: Scenario[] }> {
+    return this.request('GET', '/scenarios')
+  }
+
+  async getScenario(slug: string): Promise<{ scenario: Scenario; versions: ScenarioVersion[] }> {
+    return this.request('GET', `/scenarios/catalog/${encodeURIComponent(slug)}`)
+  }
+
+  async createScenario(data: {
+    slug: string; title: string; summary: string; aliases: string[];
+    project_id: string | null; definition: ScenarioDefinition
+  }): Promise<{ scenario: Scenario; version: ScenarioVersion }> {
+    return this.request('POST', '/scenarios', data)
+  }
+
+  async createScenarioVersion(slug: string, definition: ScenarioDefinition): Promise<ScenarioVersion> {
+    return this.request('POST', `/scenarios/catalog/${encodeURIComponent(slug)}/versions`, { definition })
+  }
+
+  async publishScenarioVersion(slug: string, version: number, validationEvidence: string): Promise<unknown> {
+    return this.request('POST', `/scenarios/catalog/${encodeURIComponent(slug)}/versions/${version}/publish`,
+      { validation_evidence: validationEvidence })
+  }
+
+  async activateScenarioVersion(slug: string, version: number): Promise<unknown> {
+    return this.request('POST', `/scenarios/catalog/${encodeURIComponent(slug)}/versions/${version}/activate`)
+  }
+
+  async setScenarioEnabled(slug: string, enabled: boolean): Promise<Scenario> {
+    return this.request('PATCH', `/scenarios/catalog/${encodeURIComponent(slug)}`, { enabled })
+  }
+
+  async listScenarioItems(params?: { status?: string; mode?: string; query?: string; scenario_slug?: string }): Promise<{ total: number; items: ScenarioItem[] }> {
+    return this.request('GET', '/scenarios/items', undefined, params)
+  }
+
+  async getScenarioItem(id: string): Promise<{ item: ScenarioItem; version: ScenarioVersion | null }> {
+    return this.request('GET', `/scenarios/items/${encodeURIComponent(id)}`)
+  }
+
+  async createScenarioItem(data: {
+    scenario_slug: string | null; title: string; goal: string; working_plan: string | null;
+    mode: 'one_off' | 'continuous'; phase: string; state: Record<string, unknown>;
+    parameters: Record<string, string>; environment: Record<string, string>; next_check_at: string | null
+  }): Promise<{ item: ScenarioItem; version: ScenarioVersion | null }> {
+    return this.request('POST', '/scenarios/items', data)
+  }
+
+  async updateScenarioItem(id: string, data: Record<string, unknown>): Promise<ScenarioItem> {
+    return this.request('PATCH', `/scenarios/items/${encodeURIComponent(id)}`, data)
+  }
+
+  async upgradeScenarioItem(id: string, data: { expected_revision: number; version: number; reason: string }): Promise<unknown> {
+    return this.request('POST', `/scenarios/items/${encodeURIComponent(id)}/upgrade`, data)
+  }
+
+  async bindScenarioItem(id: string, data: {
+    expected_revision: number; scenario_slug: string; version?: number;
+    reason: string; parameters: Record<string, string>; environment: Record<string, string>
+  }): Promise<unknown> {
+    return this.request('POST', `/scenarios/items/${encodeURIComponent(id)}/bind`, data)
+  }
+
+  async listScenarioRuns(id: string): Promise<{ items: ScenarioRun[] }> {
+    return this.request('GET', `/scenarios/items/${encodeURIComponent(id)}/runs`)
+  }
 
   async listMemories(params?: {
     type?: string

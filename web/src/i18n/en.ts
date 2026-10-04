@@ -27,6 +27,7 @@ export default {
   nav_memories: 'Memories',
   nav_review: 'Review',
   nav_projects: 'Projects',
+  nav_scenarios: 'Scenarios',
   nav_market: 'Market',
   nav_observability: 'Observability',
   nav_eval: 'Eval',

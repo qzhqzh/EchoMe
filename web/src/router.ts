@@ -39,6 +39,11 @@ const routes = [
     component: () => import('@/views/Projects.vue'),
   },
   {
+    path: '/scenarios',
+    name: 'Scenarios',
+    component: () => import('@/views/Scenarios.vue'),
+  },
+  {
     path: '/project-workspace',
     name: 'ProjectWorkspace',
     component: () => import('@/views/ProjectWorkspace.vue'),

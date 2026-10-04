@@ -7,7 +7,7 @@
 - **内容格式**: JSON (`Content-Type: application/json`)
 - **版本**: v1 (URL path versioning)
 
-本文按 2026-09-12 当前源码校准，JSON 响应可省略部分可选字段。完整 schema 见 Hub 的 `/openapi.json` 和 [schemas](../hub/app/schemas/)；路由挂载以 [main.py](../hub/app/main.py) 为准。基础 `/health` 位于 API 前缀之外。
+本文按 2026-10-04 当前源码校准，JSON 响应可省略部分可选字段。完整 schema 见 Hub 的 `/openapi.json` 和 [schemas](../hub/app/schemas/)；路由挂载以 [main.py](../hub/app/main.py) 为准。基础 `/health` 位于 API 前缀之外。
 
 ## 2. 认证
 
@@ -627,3 +627,45 @@ helpful/harmful 与 coverage 只统计实际 intervention runs；截断证据窗
 `output_usage` 使用 `utf8_bytes_upper_bound`，覆盖整个紧凑 JSON，包括统计字段本身。必要规则或 completion 放不下时返回 `echome.error.v1` / `OUTPUT_BUDGET_TOO_SMALL`；该 run 记为 failed，不允许报告成功 outcome。保留字段、裁剪规则与 MCP 双表示口径详见 [MCP 规范](mcp-spec.md)。
 
 `GET /api/v1/context/runs/{run_id}` 返回同一用户的已记录 run、selected IDs 与完整检索 trace；不属于当前用户或不存在的 run 返回 404。未记录的请求没有诊断 URL，可重新请求 full 模式。
+
+## 15. 高频场景与持续事项
+
+场景 API 统一位于 `/api/v1/scenarios`，使用现有 Bearer 认证并按用户隔离。完整状态机和示例见 [高频场景与持续事项](scenarios.md)。
+
+### 逐条场景资料
+
+| 方法与路径 | 用途 |
+|---|---|
+| `POST/GET /scenarios/knowledge` | 创建资料、按名称/别名查询；创建不要求有 SOP |
+| `GET /scenarios/knowledge/{selector}` | 以 slug 或别名读取逐条资料、分类计数和组合 Markdown；`include_archived=true` 可追溯旧条目 |
+| `POST /scenarios/knowledge/{selector}/entries` | 补充单条 `fact/observation/caution/work`；事实与观测须提供 `evidence_at` |
+| `POST /scenarios/knowledge/{selector}/entries/batch` | 一次提交多条独立知识，整批在同一事务中完成；不接收 SOP |
+| `PATCH /scenarios/knowledge/{selector}/entries/{id}` | 按 `expected_revision`、原因和来源校正或标记待核实/归档；保留历史 |
+| `GET /scenarios/knowledge/{selector}/entries/{id}/history` | 查看各 revision 的正文、来源和原因 |
+| `POST /scenarios/knowledge/{selector}/sops` | 录入正式 SOP；正文分节，至少 3 次独立有效实测且跨 2 次会话 |
+
+`source_ref` 是来源引用；`evidence_at` 与 SOP 的 `executed_at` 必须带时区。
+`publish_sop` 的每次 `validation` 包含 `executed_at`、`session_id`、`conditions`、
+`observed_result`、`evidence_ref`、
+`result="effective"`。普通写入不能直接创建 SOP；修改 SOP 正文须重新提交完整证据。
+场景资料与下述流程版本并存，流程发布不会自动提升为正式 SOP。
+
+### 流程与事项
+
+| 方法与路径 | 用途 |
+|---|---|
+| `POST /scenarios`、`GET /scenarios` | 创建草稿及列出目录 |
+| `GET/PATCH /scenarios/catalog/{slug}` | 读取版本或修改目录元数据与启用状态 |
+| `POST /scenarios/catalog/{slug}/versions` | 增加不可变草稿版本 |
+| `POST /scenarios/catalog/{slug}/versions/{version}/publish` | 提交验证证据并设为默认版本 |
+| `POST /scenarios/catalog/{slug}/versions/{version}/activate` | 将已发布旧版本重新设为默认 |
+| `POST /scenarios/resolve` | 用显式 ID/别名解析；返回缺失参数、环境不符或待人工适用性检查 |
+| `POST/GET /scenarios/items`、`GET/PATCH /scenarios/items/{id}` | 建立、列出、读取、暂停、恢复、结束事项；独立事项需 `working_plan`，无需 `scenario_slug`；列表支持 `query`（事项名称或目标）和精确 `scenario_slug` 过滤 |
+| `POST /scenarios/items/{id}/bind` | 用 `expected_revision`、场景 ID 与原因把独立事项绑定到已发布版本；可覆盖参数与环境 |
+| `POST /scenarios/items/{id}/upgrade` | 带 `expected_revision` 和原因显式切换固定版本 |
+| `GET /scenarios/due` | 列出已到期、尚未被有效租约占用的持续事项 |
+| `POST /scenarios/items/{id}/claim` | 用 `idempotency_key` 获取执行租约；重复键返回 `claimed=false` |
+| `POST /scenarios/items/{id}/runs/{run_id}/finish` | 带 `lease_token` 上报结果、证据、状态和下次时间 |
+| `GET /scenarios/items/{id}/runs` | 查询运行记录 |
+
+Hub 不执行场景步骤，也不提供调度 worker。检查失败要用 `outcome=failure`、`observation=unknown`，不能继续显示旧正常状态为当前状态。

@@ -38,6 +38,24 @@ class MCPHubClient:
             "Content-Type": "application/json",
         }
 
+    async def scenario_request(
+        self,
+        method: str,
+        path: str,
+        data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call a scenario endpoint selected by the local MCP adapter."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            response = await client.request(
+                method, f"/api/v1/scenarios{path}", json=data, params=params
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Scenario response must be an object")
+            return payload
+
     async def search(
         self,
         query: str,

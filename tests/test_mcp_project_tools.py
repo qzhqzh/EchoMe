@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import subprocess
 
 import httpx
 
@@ -86,9 +87,9 @@ def test_core_profile_includes_project_git_identity_maintenance(monkeypatch) -> 
     monkeypatch.setenv("ECHOME_MCP_PROFILE", "core")
     tool_names = {tool.name for tool in asyncio.run(server_module.list_tools())}
 
-    assert len(tool_names) == 10
+    assert len(tool_names) == 16
     assert "echome_update_project_git_identity" in tool_names
-    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v9"
+    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v11"
 
 
 def test_create_project_silently_attaches_aliases_to_single_candidate(monkeypatch) -> None:
@@ -693,20 +694,12 @@ def test_unified_context_forwards_all_local_project_identity_signals(monkeypatch
 
 
 def test_local_project_hints_continue_to_repository_root_without_origin(monkeypatch) -> None:
-    class FakeProcess:
-        def __init__(self, stdout: bytes, returncode: int) -> None:
-            self._stdout = stdout
-            self.returncode = returncode
+    def run_process(arguments, **_kwargs):
+        if arguments[1] == "config":
+            return subprocess.CompletedProcess(arguments, 1, b"")
+        return subprocess.CompletedProcess(arguments, 0, b"/srv/repo\n")
 
-        async def communicate(self):
-            return self._stdout, b""
-
-    async def create_process(_git, *arguments, **_kwargs):
-        if arguments[0] == "config":
-            return FakeProcess(b"", 1)
-        return FakeProcess(b"/srv/repo\n", 0)
-
-    monkeypatch.setattr(runtime_module.asyncio, "create_subprocess_exec", create_process)
+    monkeypatch.setattr(runtime_module.subprocess, "run", run_process)
 
     hints = asyncio.run(runtime_module._local_project_hints())
 
@@ -889,6 +882,12 @@ def test_explicit_core_profile_keeps_graph_reliability(monkeypatch) -> None:
         "echome_update_project_git_identity",
         "echome_memory_feedback",
         "echome_memory_feedback_batch",
+        "echome_scene_read",
+        "echome_scene_write",
+        "echome_scenario_resolve",
+        "echome_scenario_catalog",
+        "echome_scenario_item",
+        "echome_scenario_run",
     }
 
 

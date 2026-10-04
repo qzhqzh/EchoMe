@@ -73,7 +73,7 @@ EchoMe/
 - 环境变量或 .env 文件管理敏感配置
 - .env 文件加入 .gitignore
 
-## 关键文档
+## 按任务查阅文档
 
 - `docs/architecture.md` — 系统架构
 - `docs/memory-model.md` — 记忆模型（三轴设计）
@@ -84,7 +84,7 @@ EchoMe/
 
 ## 当前阶段
 
-当前稳定版本为 **v1.9.0**，当前源码 Alembic head 为 `018`、MCP capabilities 为 `echome.capabilities.v9`，新安装使用 10 工具的 `core` profile。主线包含发布后的项目身份恢复改进，不能仅凭包版本判断某个部署已具备全部源码能力。
+当前稳定版本为 **v1.9.0**，当前源码 Alembic head 为 `020`、MCP capabilities 为 `echome.capabilities.v11`，新安装使用 16 工具的 `core` profile。本机生产实例于 2026-10-04 验证为 schema `020`，其他部署仍须核对 runtime health；不能仅凭包版本判断某个部署已具备全部源码能力。
 
 当前能力与边界见 `docs/roadmap.md`、`docs/architecture.md`；旧版 Phase 0-6 和版本计划属于历史记录。版本与契约以源码及 `scripts/check_project_truth.py` 为准，实际部署以 runtime health / capabilities 返回值为准。
 
@@ -121,3 +121,11 @@ cd hub
 uv run alembic upgrade head        # 应用迁移
 uv run alembic revision --autogenerate -m "description"  # 生成迁移
 ```
+
+## 执行与完成
+
+- 在当前请求范围内自主完成安全的本地编辑、运行、测试和修复，不逐步索取确认。
+- 先定位相关代码和验收条件；仅在需要历史决策、架构、数据库或部署上下文时读取对应文档。
+- 实现后运行与改动匹配的检查，检查实际结果，修复本次失败并重新验证。未运行或失败的检查如实说明；不将命令已启动视为完成。
+- 验证通过后，只有新增改动、失败或具体疑点才重复或扩大检查。普通改动不强制多轮评审、逐步汇报或生成进度文档。
+- 外部发布、生产变更、持久数据迁移或删除、凭据与权限变更遵循当前授权及项目安全边界；已有明确授权不重复询问。

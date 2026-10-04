@@ -19,6 +19,8 @@ from app.models.project_knowledge import (
     ProjectRelation,
     ReliabilityAssessment,
 )
+from app.models.scenario import Scenario, ScenarioItem, ScenarioRun, ScenarioVersion
+from app.models.scene_knowledge import SceneKnowledge, SceneKnowledgeChange, SceneKnowledgeEntry
 from app.models.user import User
 
 __all__ = [
@@ -41,6 +43,13 @@ __all__ = [
     "ProjectEvent",
     "ProjectRelation",
     "ReliabilityAssessment",
+    "Scenario",
+    "ScenarioItem",
+    "ScenarioRun",
+    "ScenarioVersion",
+    "SceneKnowledge",
+    "SceneKnowledgeChange",
+    "SceneKnowledgeEntry",
     "SyncLog",
     "User",
 ]

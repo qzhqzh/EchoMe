@@ -25,6 +25,8 @@ from app.api import (
     projects,
     retrieval_debug,
     review,
+    scenarios,
+    scene_knowledge,
     sync,
 )
 from app.core.config import settings, validate_settings
@@ -86,6 +88,8 @@ app.include_router(observability.router, prefix="/api/v1")
 app.include_router(retrieval_debug.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(project_knowledge.router, prefix="/api/v1")
+app.include_router(scene_knowledge.router, prefix="/api/v1")
+app.include_router(scenarios.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")

@@ -1,14 +1,15 @@
 # EchoMe Project Knowledge
 
-EchoMe keeps two separate but cooperating domains:
+EchoMe keeps three separate but cooperating knowledge domains:
 
 - **Memory** stores user behavior, working preferences, durable habits, and historical context for AI.
 - **Project Knowledge** stores versioned constraints, project artifacts, evidence, and impact relations.
+- **Scene Knowledge** stores atomic facts, observations, cautions, current work, and validated SOPs for recurring scenes.
 
 Project constraints do not alter the behavior of Memory retrieval or Memory Sleep. The task-aware
-project context endpoint combines both domains only when an AI explicitly asks for project context.
+project context endpoint combines Memory and Project Knowledge only when an AI explicitly asks for project context. Scene Knowledge has a separate named read/write MCP entry.
 
-The current released package version is `1.9.0`, and the current production Alembic revision is `018`.
+The current released package version is `1.9.0`, this host's verified production Alembic revision is `020` as of 2026-10-04, and the current source Alembic head is `020`.
 Verify actual Hub deployments using runtime health; a package release does not deploy the Hub.
 Repository metadata and authoritative documentation are checked together by
 `scripts/check_project_truth.py`; historical version plans are not current operational guidance.

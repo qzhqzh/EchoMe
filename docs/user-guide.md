@@ -185,8 +185,8 @@ CLI 按检测结果选择 Claude/Codex；也可用 `--target claude` 或 `--targ
 ### Technical Preferences
 - **Python 用 ruff 格式化**: 所有 Python 项目统一使用 ruff...
 
-### EchoMe Memory System (MANDATORY)
-首次使用先调用 `echome_capabilities`。首条任务消息后调用 `echome_context`，传入任务和已知项目线索；命中规范时简短复述。后续按需查询，无命中就停止；涉及过时信息时检查来源，任务完成后按 completion contract 提交 outcome。
+### EchoMe 按需上下文
+仅在历史偏好、项目决策或不确定约定影响当前任务时调用 `echome_context`；不强制每次会话查询或复述。首次使用或不确定工具时读 `echome_capabilities`。未知项目、无命中或工具不可用时按当前证据继续；有明确有效性证据和适用 completion contract 时提交一次 outcome。
 ...
 <!-- echome:end -->
 

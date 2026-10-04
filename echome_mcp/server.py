@@ -65,6 +65,14 @@ from echome_mcp.tools.project_knowledge import (
     echome_reflect_submit,
 )
 from echome_mcp.tools.remember import echome_remember
+from echome_mcp.tools.scenario import (
+    echome_scenario_catalog,
+    echome_scenario_item,
+    echome_scenario_resolve,
+    echome_scenario_run,
+    echome_scene_read,
+    echome_scene_write,
+)
 from echome_mcp.tools.search import echome_search
 from echome_mcp.tools.sleep import (
     echome_sleep_apply,
@@ -160,6 +168,132 @@ def _with_error_output(success_schema: dict[str, Any]) -> dict[str, Any]:
 async def list_tools() -> list[Tool]:
     """List all available EchoMe tools."""
     tools = [
+        Tool(
+            name="echome_scene_read",
+            description=(
+                "Read text-first recurring scene knowledge. Actions: list (optional query), "
+                "get (slug or alias; returns atomic entries and Markdown), history (entry_id). "
+                "Facts and observations are dated; only published SOP entries are validated. "
+                "Read the scene before adding or correcting an item."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "get", "history"]},
+                    "selector": {"type": "string"},
+                    "entry_id": {"type": "string"},
+                    "query": {"type": "string"},
+                    "include_archived": {"type": "boolean"},
+                },
+                "required": ["action"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False),
+        ),
+        Tool(
+            name="echome_scene_write",
+            description=(
+                "Maintain one scene knowledge document. Actions: create, add, add_batch, correct, publish_sop. "
+                "Add only atomic fact/observation/caution/work entries with source_ref; facts and "
+                "observations need evidence_at. Keep temporary methods in work. Corrections need "
+                "entry_id, expected_revision, reason, source_ref and new content/status; read first. "
+                "publish_sop needs detailed Markdown and at least three distinct effective runs "
+                "spanning two sessions. Do not claim an untested procedure is a formal SOP."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["create", "add", "add_batch", "correct", "publish_sop"]},
+                    "selector": {"type": "string"},
+                    "entry_id": {"type": "string"},
+                    "data": {"type": "object"},
+                },
+                "required": ["action", "data"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False),
+        ),
+        Tool(
+            name="echome_scenario_resolve",
+            description=(
+                "Resolve an explicitly named published executable scenario ID or alias. "
+                "Read scene knowledge with echome_scene_read first when available. Returns the pinned "
+                "definition, missing inputs, environment mismatches, and manual checks. "
+                "This never executes the procedure or grants permission."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string"},
+                    "parameters": {"type": "object", "additionalProperties": {"type": "string"}},
+                    "environment": {"type": "object", "additionalProperties": {"type": "string"}},
+                },
+                "required": ["selector"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False),
+        ),
+        Tool(
+            name="echome_scenario_catalog",
+            description=(
+                "List/read a scenario, save an immutable draft version, publish it with "
+                "validation evidence, activate a published version, or disable/enable it. "
+                "Actions: list, get, create, new_version, publish, activate, disable, enable. "
+                "Create data needs slug/title/summary/definition; publish data needs validation_evidence."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "get", "create", "new_version", "publish", "activate", "disable", "enable"]},
+                    "slug": {"type": "string"},
+                    "version": {"type": "integer"},
+                    "data": {"type": "object"},
+                },
+                "required": ["action"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False),
+        ),
+        Tool(
+            name="echome_scenario_item",
+            description=(
+                "Manage a standalone or scenario-bound one-off or continuous item. "
+                "Actions: list, due, get, create, update, upgrade, bind. Standalone items "
+                "need a working_plan; binding later requires a published version, revision, and reason. "
+                "List accepts data.query for title/goal search or data.scenario_slug for exact filtering."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "due", "get", "create", "update", "upgrade", "bind"]},
+                    "item_id": {"type": "string"},
+                    "data": {"type": "object"},
+                },
+                "required": ["action"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False),
+        ),
+        Tool(
+            name="echome_scenario_run",
+            description=(
+                "Claim an item before executing, then finish with the lease token and observed "
+                "result; or list run records. Actions: claim, finish, list. A claim is an "
+                "idempotent lease, not execution authorization."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["claim", "finish", "list"]},
+                    "item_id": {"type": "string"},
+                    "run_id": {"type": "string"},
+                    "data": {"type": "object"},
+                },
+                "required": ["action", "item_id"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False),
+        ),
         Tool(
             name="echome_capabilities",
             description=(
@@ -1394,6 +1528,47 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     try:
         if name == "echome_capabilities":
             result = await echome_capabilities(format=arguments.get("format", "json"))
+        elif name == "echome_scene_read":
+            result = await echome_scene_read(
+                action=arguments["action"],
+                selector=arguments.get("selector"),
+                entry_id=arguments.get("entry_id"),
+                query=arguments.get("query"),
+                include_archived=arguments.get("include_archived", False),
+            )
+        elif name == "echome_scene_write":
+            result = await echome_scene_write(
+                action=arguments["action"],
+                selector=arguments.get("selector"),
+                entry_id=arguments.get("entry_id"),
+                data=arguments.get("data"),
+            )
+        elif name == "echome_scenario_resolve":
+            result = await echome_scenario_resolve(
+                selector=arguments["selector"],
+                parameters=arguments.get("parameters"),
+                environment=arguments.get("environment"),
+            )
+        elif name == "echome_scenario_catalog":
+            result = await echome_scenario_catalog(
+                action=arguments["action"],
+                slug=arguments.get("slug"),
+                version=arguments.get("version"),
+                data=arguments.get("data"),
+            )
+        elif name == "echome_scenario_item":
+            result = await echome_scenario_item(
+                action=arguments["action"],
+                item_id=arguments.get("item_id"),
+                data=arguments.get("data"),
+            )
+        elif name == "echome_scenario_run":
+            result = await echome_scenario_run(
+                action=arguments["action"],
+                item_id=arguments["item_id"],
+                run_id=arguments.get("run_id"),
+                data=arguments.get("data"),
+            )
         elif name == "echome_context":
             result = await echome_context(
                 task=arguments["task"],
