@@ -10,7 +10,7 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v11",
+    "capabilities_version": "echome.capabilities.v12",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
@@ -29,6 +29,12 @@ CAPABILITIES: dict[str, Any] = {
          "when": "Before actual execution, claim a lease; then finish with evidence and the next check time."},
         {"step": "maintain", "tool": "echome_scenario_catalog",
          "when": "Save a draft, then publish only after validation evidence exists."},
+    ],
+    "card_workflow": [
+        {"step": "find", "tool": "echome_card_read",
+         "when": "When a reusable habit, procedure, or knowledge claim may help; list by kind or query, then get the relevant card."},
+        {"step": "maintain", "tool": "echome_card_write",
+         "when": "After a user instruction or concrete result supports a durable card; reuse an existing card, create in ai_review, or edit selected fields with its current updated_at."},
     ],
     "default_retrieval_workflow": [
         {
@@ -95,6 +101,10 @@ CAPABILITIES: dict[str, Any] = {
         },
     ],
     "tool_groups": {
+        "cards": [
+            {"tool": "echome_card_read", "when": "Browse the card library or read one card with its scope and revision.", "mutates_state": False},
+            {"tool": "echome_card_write", "when": "Create an AI-reviewed card or revise named fields of a card using its current revision and a concrete basis.", "mutates_state": True, "default_status": "ai_review_on_create"},
+        ],
         "scenarios": [
             {"tool": "echome_scene_read", "when": "Read a named scene document, atomic items, and correction history.", "mutates_state": False},
             {"tool": "echome_scene_write", "when": "Create a scene, add or correct sourced items, or publish a repeatedly validated SOP.", "mutates_state": True},
@@ -277,6 +287,7 @@ CAPABILITIES: dict[str, Any] = {
         "Ask for or record feedback only when a memory clearly influenced the task, the user corrected it, or the memory appears outdated/conflicting; do not interrupt every turn.",
         "Archived/deprecated memories should not be used as active facts, but may be useful as provenance through graph tools.",
         "Writing tools should be used only for durable, reusable memories; do not save secrets or one-off temporary facts.",
+        "Read related cards before creating one. Card creation uses ai_review (already retrievable); edits require the latest updated_at and preserve unrelated content.",
         "Use memory tools for user behavior and working preferences; use project-intelligence tools for requirements, implementation constraints, evidence, and impact analysis.",
         "For project work, call echome_project_preflight before material actions and echome_project_context for the evidence-first context pack; do not ask the user to choose between memory and graph search.",
         "Project events and inferred constraints remain proposals/evidence. They do not silently become active constraints or mutate memories.",
@@ -332,6 +343,7 @@ def capabilities_payload() -> dict[str, Any]:
         },
     ]
     payload["scenario_workflow"] = CAPABILITIES["scenario_workflow"]
+    payload["card_workflow"] = CAPABILITIES["card_workflow"]
     payload["tool_groups"] = {
         group: [entry for entry in entries if entry["tool"] in CORE_TOOL_NAMES]
         for group, entries in payload["tool_groups"].items()
@@ -348,6 +360,7 @@ def capabilities_payload() -> dict[str, Any]:
         "Use echome_memory_explain when a key memory may be stale, replaced, or conflicting.",
         "Archived/deprecated memories are provenance, not active facts.",
         "Use echome_remember only for durable context and never store secrets.",
+        "Read related cards before creating or editing one. Only record reusable, supported guidance; ai_review cards are already searchable, and edits require the latest revision.",
         "When echome_context returns a completion_contract, close that recorded run exactly once; use no_signal when usefulness is unknown.",
         "Record memory feedback only when usefulness or a correction is clear; missing feedback is unknown.",
         "Call echome_create_project without user confirmation after not_found or one reusable candidate. If several candidates conflict, retry echome_context with a returned canonical ID instead of guessing.",
@@ -378,6 +391,7 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
             "at task end and use no_signal when usefulness is unknown. Record memory feedback only when its "
             "signal is clear. "
             "Use echome_remember only for durable, reusable context and never store secrets. "
+            "Use echome_card_read when cards may help, and echome_card_write to create or revise a supported card after checking for duplicates. "
             "Do not ask the user to remember tool names; infer the needed EchoMe call from the task."
         )
     return (
@@ -397,7 +411,8 @@ def retrieval_workflow_prompt(project_id: str | None = None) -> str:
         "6. If individual memory usefulness is clear or the user corrected a memory, call echome_memory_feedback or echome_memory_feedback_batch.\n"
         "7. Treat archived/deprecated memories as non-active facts unless graph provenance explains why they matter.\n"
         "8. Use echome_remember only for durable preferences, decisions, conventions, or reusable project context.\n\n"
-        "9. When durable cross-source synthesis would help future project work, call echome_reflect_prepare, "
+        "9. Use echome_card_read for relevant habits, skills, or knowledge; after evidence, use echome_card_write to create or revise one without duplicating it.\n"
+        "10. When durable cross-source synthesis would help future project work, call echome_reflect_prepare, "
         "build claims only from its evidence IDs, then call echome_reflect_submit with the unchanged source watermark.\n\n"
         "Do not ask the user to remember tool names. Infer the needed EchoMe tools from the task."
     )

@@ -79,7 +79,7 @@ Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade h
 
 `echome_mcp` 是协议适配层，通过 Hub REST API 读写数据，不直接连接数据库。
 
-- 默认 `core` profile：当前源码 16 个工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目身份维护、2 个场景资料工具和 4 个流程/事项工具。
+- 默认 `core` profile：当前源码 18 个工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目身份维护、2 个卡片工具、2 个场景资料工具和 4 个流程/事项工具。
 - `ECHOME_MCP_PROFILE=full`：暴露 summary-first、Project Knowledge、Sleep 等专业工具。
 - `echome_capabilities` 会根据当前 profile 只推荐实际可调用的工具。
 - Hub 暂时不可达时，仅 `echome_context` 可读取本地 AES-256-GCM last-known-good 缓存；缓存不会回写 Hub。
@@ -94,7 +94,7 @@ CLI 负责配置、Hub 操作、规则渲染、MCP 注册、Sleep、场景与诊
 
 Vue 3 Web Console 通过 Nginx 访问 Hub REST API，提供：
 
-- Memory、Project 与高频场景工作台；
+- Memory、卡库、Project 与高频场景工作台；
 - Memory Graph、Quality Eval 和 Retrieval Logs 组成的 Diagnostics 工作区；
 - Sleep proposal、review、设置和管理功能。
 

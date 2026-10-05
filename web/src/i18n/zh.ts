@@ -25,6 +25,7 @@ export default {
   // Nav
   nav_dashboard: '仪表盘',
   nav_memories: '记忆库',
+  nav_cards: '卡库',
   nav_review: '审核',
   nav_projects: '项目',
   nav_scenarios: '高频场景',

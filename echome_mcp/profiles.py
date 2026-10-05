@@ -10,6 +10,8 @@ CORE_TOOL_NAMES = frozenset(
         "echome_context_outcome",
         "echome_memory_explain",
         "echome_remember",
+        "echome_card_read",
+        "echome_card_write",
         "echome_create_project",
         "echome_update_project_git_identity",
         "echome_memory_feedback",

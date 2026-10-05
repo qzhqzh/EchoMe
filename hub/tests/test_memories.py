@@ -442,6 +442,44 @@ class TestPatchMemory:
     """Tests for PATCH /api/v1/memories/{memory_id}."""
 
     @pytest.mark.asyncio
+    async def test_conditional_patch_rejects_stale_revision(self, test_user_id: str):
+        """A stale AI edit cannot replace a newer manual card edit."""
+        from app.api.memories import patch_memory, patch_memory_conditional
+        from app.schemas.memory import MemoryPatch
+
+        existing_mem = _make_memory(user_id=test_user_id, tags=["card:habit"])
+        original_content = existing_mem.content
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing_mem
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        background = MagicMock()
+
+        with pytest.raises(HTTPException) as missing:
+            await patch_memory_conditional(
+                existing_mem.id, MemoryPatch(content="New"), background, mock_session, test_user_id
+            )
+        assert missing.value.status_code == 400
+        mock_session.execute.assert_not_called()
+
+        stale = MemoryPatch(
+            content="Stale change", expected_updated_at=existing_mem.updated_at.replace(year=2025)
+        )
+        with pytest.raises(HTTPException) as conflict:
+            await patch_memory(existing_mem.id, stale, background, mock_session, test_user_id)
+        assert conflict.value.status_code == 409
+        assert existing_mem.content == original_content
+        mock_session.commit.assert_not_called()
+
+        fresh = MemoryPatch(content="Current change", expected_updated_at=existing_mem.updated_at)
+        await patch_memory_conditional(
+            existing_mem.id, fresh, background, mock_session, test_user_id
+        )
+        assert existing_mem.content == "Current change"
+        assert not hasattr(existing_mem, "expected_updated_at")
+        assert mock_session.commit.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_patch_memory_partial_update(self, test_user_id: str):
         """Partial update should only modify specified fields."""
         from app.api.memories import patch_memory

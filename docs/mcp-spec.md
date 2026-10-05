@@ -70,7 +70,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
   替换主 remote 时不会自动保留旧地址；仍需兼容时应在同一预览中显式提交旧地址 alias。
 - `echome_create_project`：项目发现为 `not_found` 时直接静默创建；只有一个可复用候选时不创建重复项目，
   而是原子补录 active aliases。`confirmed_new_project` 仅为旧客户端保留，不再作为创建门禁；多个冲突候选仍停止。
-- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护，以及 2 个场景资料入口和 4 个流程/事项入口，共 16 个工具。
+- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护、2 个卡片入口，以及 2 个场景资料入口和 4 个流程/事项入口，共 18 个工具。
 - `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
 - 为保持升级兼容，未配置 `ECHOME_MCP_PROFILE` 的历史客户端继续使用 `full`。
 
@@ -100,7 +100,7 @@ MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `messag
 - `off` 跳过策略计算。
 - `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
 
-`echome_capabilities` 当前契约版本为 `echome.capabilities.v11`。core profile 包含 16 个工具；AI 可通过
+`echome_capabilities` 当前契约版本为 `echome.capabilities.v12`。core profile 包含 18 个工具；AI 可通过
 `echome_runtime_health(include_policy_readiness=true)` 读取校准门禁。
 `echome_sleep_candidates` 默认返回
 `memory_sleep_plan.v2`，也可显式请求 v1；v2 proposal 由 Hub 生成 server-owned simulation，并在
@@ -116,7 +116,13 @@ full profile 还提供 evidence-backed Reflect：
 readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不得把它解释为已经开启 enforce，
 也不得自动修改 Hub feature flag。
 
-下列 4.1-4.5、4.7 是 `full` profile 的专业/兼容工具；4.6 的 `echome_remember` 同时在 `core` 中提供。默认任务查询使用 `echome_context`，不要在 core 客户端里要求调用未暴露的工具。
+下列 4.1-4.5、4.7 是 `full` profile 的专业/兼容工具；4.6 的 `echome_remember` 与卡片工具同时在 `core` 中提供。默认任务查询使用 `echome_context`，不要在 core 客户端里要求调用未暴露的工具。
+
+### 卡片工具（core 与 full）
+
+`echome_card_read` 支持 `list/get`：按习惯、技能、知识类别、关键词、项目和状态浏览，或读取一张卡的完整正文、作用范围及 `updated_at`。`available` 包含 `active + ai_review`；`archived` 仅作历史参考。先查相关卡片，再决定是否新增或修订。
+
+`echome_card_write` 支持 `create/edit`。创建时指定类别、简短标题、结构化 `fields` 和具体 `basis`；习惯卡需要 `when/do`，技能卡需要 `when/do/verify`，知识卡需要 `claim/applies_when/evidence`。`avoid` 仅在有具体坑或误用边界时填写，不为凑齐字段而编造；技能的 `do` 最多 6 步，按一行一步输入并自动编号。新卡沿用 Memory 模型，以 `source=ai_suggested/status=ai_review` 写入，立即可被 AI 检索，也可在 Web 卡库和 `echome review` 中整理。创建会检查同类同名卡；AI 仍需阅读相近卡片，避免语义重复。编辑需传 `memory_id` 和刚从 `get` 取得的 `expected_updated_at`，只改指定摘要行和可选标题，保留其余正文；MCP 使用 `PATCH /memories/{id}/conditional`，旧 Hub 会拒绝该路径，版本变化时新 Hub 返回 409，AI 应重新读取并判断。两种写入都必须有用户指示或可核对的经验依据，不写秘密、猜测或一次性事实。
 
 ### 场景工具（core 与 full）
 

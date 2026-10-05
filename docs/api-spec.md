@@ -181,6 +181,14 @@ callback / refresh 返回 `access_token`、`token_type`、`expires_in`（秒）�
 
 ---
 
+### PATCH /memories/{id}/conditional
+
+只在记忆版本仍与客户端读取时相同的情况下部分更新，用于 AI 修订卡片等可能与人工编辑并发的场景。
+
+**Request Body**: 除要修改的字段外，必须传 `expected_updated_at`，其值取自上次 GET 返回的 `updated_at`。服务端对该记忆加行锁后比较；版本不一致返回 `409`，缺少版本返回 `400`。认证、所属用户校验及正文安全检查与普通 PATCH 相同。
+
+---
+
 ### DELETE /memories/{id}
 
 删除记忆（软删除，status → archived）。

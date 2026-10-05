@@ -26,7 +26,7 @@ dsh --profile tui --patch /absolute/path/to/echome.patch.yml
 
 初次接入用 `failOnStartupError: true`，连接失败会明确中止插件激活。`toolCallTimeoutMs` 只控制工具调用；本版初始化/发现超时由 MCP SDK 控制，调高这个值不能修复 stdio 初始化挂起。显式环境变量请沿用 DSH 的 `!!js process.env.NAME` 写法，不把 token 写进 YAML。
 
-`core` 提供 10 个常用入口；要使用 summary、Project Knowledge、Sleep 等工具，可改为 `full`（当前 32 个）。工具在 DSH 中注册为 `mcp__echome__echome_context` 等名称，wire 上仍使用原始 EchoMe 工具名。无环境变量的历史配置继续使用 `full`。
+`core` 提供 18 个常用入口（包含卡片读写）；要使用 summary、Project Knowledge、Sleep 等工具，可改为 `full`（当前 40 个）。工具在 DSH 中注册为 `mcp__echome__echome_context` 等名称，wire 上仍使用原始 EchoMe 工具名。无环境变量的历史配置继续使用 `full`。
 
 ## 规则文件
 

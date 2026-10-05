@@ -29,6 +29,29 @@ const routes = [
     component: () => import('@/views/MemoryDetail.vue'),
   },
   {
+    path: '/cards',
+    name: 'CardLibrary',
+    component: () => import('@/views/CardLibrary.vue'),
+  },
+  {
+    path: '/cards/habits/:id?',
+    name: 'HabitCards',
+    component: () => import('@/views/CardCollection.vue'),
+    props: { kind: 'habits' },
+  },
+  {
+    path: '/cards/skills/:id?',
+    name: 'SkillCards',
+    component: () => import('@/views/CardCollection.vue'),
+    props: { kind: 'skills' },
+  },
+  {
+    path: '/cards/knowledge/:id?',
+    name: 'KnowledgeCards',
+    component: () => import('@/views/CardCollection.vue'),
+    props: { kind: 'knowledge' },
+  },
+  {
     path: '/review',
     name: 'Review',
     component: () => import('@/views/Review.vue'),

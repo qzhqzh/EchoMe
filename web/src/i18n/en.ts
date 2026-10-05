@@ -25,6 +25,7 @@ export default {
   // Nav
   nav_dashboard: 'Dashboard',
   nav_memories: 'Memories',
+  nav_cards: 'Card Library',
   nav_review: 'Review',
   nav_projects: 'Projects',
   nav_scenarios: 'Scenarios',

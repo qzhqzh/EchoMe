@@ -93,6 +93,7 @@ class MemoryUpdate(BaseModel):
 class MemoryPatch(BaseModel):
     """Request body for partial update."""
 
+    expected_updated_at: datetime | None = None
     title: str | None = Field(None, max_length=256)
     content: str | None = None
     type: MemoryType | None = None
