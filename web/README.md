@@ -2,6 +2,20 @@
 
 The Vue console for EchoMe's personal memories and project context: authoring, review, project knowledge, diagnostics, and quality evaluation.
 
+## Install the deployable npm package
+
+`echome-web` contains the prebuilt static console. It is a deployable site, not a JavaScript API. Use a matching EchoMe Hub version (1.10.0 or newer) for the card library and conditional card editing.
+
+```bash
+npm install echome-web@1.10.0
+mkdir -p /srv/echome-web
+cp -R node_modules/echome-web/dist/. /srv/echome-web/
+```
+
+Serve `/srv/echome-web` at the site root. Configure SPA fallback to `index.html` and proxy `/api/` to the Hub; the packaged `nginx.conf` is an example for a Docker network where the Hub is named `hub` and listens on port 20000. Change its upstream if your Hub has a different address. The site should use HTTPS outside a trusted local network.
+
+The npm package has no runtime npm dependencies. It includes only `dist/`, this README, the Nginx example, and the MIT license.
+
 ## Tech Stack
 
 - **Vue 3** + TypeScript
@@ -55,6 +69,7 @@ The browser stores the token, user metadata, and optional API base in `localStor
 - **Memories**: Full CRUD with filters (type, layer, status, tags), search, pagination
 - **Memory Detail**: View/edit/delete with full metadata display
 - **Review Queue**: Approve or reject AI-suggested memories
+- **Card Library**: Organize and edit habit, skill, and knowledge cards
 - **Projects**: Create/edit projects, configure Git remote and path patterns, and browse associated memories
 - **Project Workspace**: Inspect artifacts, constraints, context, and project quality evaluation
 - **Diagnostics**: Memory graph, retrieval debugging, Context Runs/Outcomes, and Memory Eval

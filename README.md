@@ -228,6 +228,8 @@ Sleep apply 需要先提交并确认合法 JSON 预案，不会直接批量重�
 
 `echome push` / `echome pull` 保留为未来的文件式 local-vault 接口，当前会明确返回“未实现”，不会执行空同步并伪报成功。
 
+Web Console 的预构建静态文件也以 [`echome-web`](https://www.npmjs.com/package/echome-web) 发布到 npm。安装后部署 `node_modules/echome-web/dist/`，并将 `/api/` 反向代理到同版本 Hub；具体方式见 [Web README](web/README.md)。
+
 ## 数据安全原则
 
 - PostgreSQL + pgvector 是唯一权威服务端数据层。
