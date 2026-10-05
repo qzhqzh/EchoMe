@@ -74,6 +74,12 @@ AI 默认调用 `echome_context`，由运行时自动完成：
 - 单次与持续事项都保存当前状态和每次执行证据；租约与幂等键避免并发重复领取。
 - 到期查询供外部常在线执行器使用；EchoMe 本身不自动执行流程或发送通知。
 
+### 卡库
+
+- Web 卡库按习惯卡、技能卡、知识卡整理现有 Memory；卡片可分别写“应该做”和“不要做”，底层记忆及作用范围保持可见。
+- 其他 AI 通过 `echome_card_read` 查找或读取卡片；有明确用户指示或可核对结果时，使用 `echome_card_write` 创建待审核卡，或带读取到的版本修订现有卡的指定字段。
+- 新卡进入 `ai_review`，已可被检索；旧卡修订遇到并发变化会被 Hub 拒绝，需重新读取。
+
 ### Memory Sleep
 
 Memory Sleep 用于整理不断增长的记忆，但不会静默覆盖历史：
@@ -108,12 +114,13 @@ Context Outcome 与 Memory Feedback 均为 append-only 信号，不会直接、�
 3. 若恢复出的候选确为同一仓库但缺少 Git identity，先用 `echome_update_project_git_identity`
    预览，得到用户确认后再应用；不要新建重复项目。
 4. 关键历史决策调用 `echome_memory_explain` 检查来源、替代关系和时效性。
+   需要复用习惯、操作或知识时，可先用 `echome_card_read` 查相关卡片，避免重复创建。
 5. 任务结束后，为已记录的 context run 追加一次 outcome；有明确证据时记录
    `success / partial / failed / corrected`，无法判断时记录 `no_signal`，不打断用户。
 6. 在 `full` profile 中，宽泛问题可使用 summary-first，项目修改可使用 preflight/impact 专业工具。
 7. 需要形成长期项目 mental model 时，先调用 `echome_reflect_prepare`，再以原始 watermark 和逐条证据调用 `echome_reflect_submit`。
 
-EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，当前源码暴露 16 个入口（包含 2 个场景资料工具和 4 个流程/事项工具）；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
+EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，当前源码暴露 18 个入口（包含 2 个卡片工具、2 个场景资料工具和 4 个流程/事项工具）；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
 
 ## 系统组件
 
@@ -124,7 +131,7 @@ EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `
 | Embedding | BAAI/bge-m3 | 语义向量生成与召回 |
 | Web Console | Vue 3 + Nginx | 管理、观测、图分析和质量评估 |
 | CLI | Typer + Rich + httpx | 初始化、同步、审核、Sleep 与环境诊断 |
-| MCP Server | 官方 Python MCP SDK | 默认 10 个核心工具，可切换完整专业工具集 |
+| MCP Server | 官方 Python MCP SDK | 默认 18 个核心工具，可切换完整专业工具集 |
 
 默认 Docker Compose 端口：
 

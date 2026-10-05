@@ -151,6 +151,44 @@ async def test_memory_context_feedback_archive_lifecycle(api, database):
 
 
 @pytest.mark.asyncio
+async def test_card_conditional_patch_rejects_stale_content(api):
+    created = await api.post(
+        "memories",
+        json={
+            "title": "preview habit",
+            "content": "适用时机：Web 修改后\n执行习惯：给出预览链接",
+            "type": "style",
+            "layer": "L1",
+            "tags": ["card:habit"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    memory_id = created.json()["id"]
+    initial = await api.get(f"memories/{memory_id}")
+    assert initial.status_code == 200, initial.text
+    revision = initial.json()["updated_at"]
+
+    missing = await api.patch(
+        f"memories/{memory_id}/conditional", json={"content": "without revision"}
+    )
+    assert missing.status_code == 400, missing.text
+    updated = await api.patch(
+        f"memories/{memory_id}/conditional",
+        json={"content": "执行习惯：优先给域名预览", "expected_updated_at": revision},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["updated_at"] != revision
+
+    stale = await api.patch(
+        f"memories/{memory_id}/conditional",
+        json={"content": "stale overwrite", "expected_updated_at": revision},
+    )
+    assert stale.status_code == 409, stale.text
+    current = await api.get(f"memories/{memory_id}")
+    assert current.json()["content"] == "执行习惯：优先给域名预览"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["personal", "project", "impact", "temporal"])
 @pytest.mark.parametrize("policy_mode", ["off", "shadow", "enforce"])
 async def test_complete_output_budget_and_diagnostics(

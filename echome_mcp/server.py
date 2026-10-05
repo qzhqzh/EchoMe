@@ -39,6 +39,7 @@ from echome_mcp.tools.capabilities import (
     echome_capabilities,
     retrieval_workflow_prompt,
 )
+from echome_mcp.tools.cards import echome_card_read, echome_card_write
 from echome_mcp.tools.feedback import echome_memory_feedback, echome_memory_feedback_batch
 from echome_mcp.tools.get import echome_get
 from echome_mcp.tools.get_many import echome_get_memories
@@ -752,6 +753,64 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["title", "content", "type", "tags"],
             },
+        ),
+        Tool(
+            name="echome_card_read",
+            description=(
+                "Browse habit, skill, and knowledge cards by category, query, status, or project, "
+                "or get one full card with its updated_at revision. Use this when cards or reusable "
+                "experience matter to the task, and before editing or creating a similar card. "
+                "Available includes active and ai_review; archived cards are historical."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "get"]},
+                    "kind": {"type": "string", "enum": ["habit", "skill", "knowledge"]},
+                    "memory_id": {"type": "string", "description": "Card UUID for get"},
+                    "query": {"type": "string", "description": "Optional title/content search for list"},
+                    "status": {"type": "string", "enum": ["available", "active", "ai_review", "archived"], "default": "available"},
+                    "project": {"type": "string", "description": "Optional existing project filter for list"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+                    "offset": {"type": "integer", "minimum": 0, "default": 0},
+                },
+                "required": ["action"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False),
+        ),
+        Tool(
+            name="echome_card_write",
+            description=(
+                "Create or edit a reusable card when a user instruction or concrete result supports it. "
+                "First use echome_card_read to reuse an existing card and avoid near duplicates. "
+                "Create records ai_review memory, immediately retrievable and visible in the card library. "
+                "Edit changes only named card fields and optional title, preserves other content, and requires "
+                "the updated_at revision from read(get). Never save secrets, guesses, or one-off facts. "
+                "Fields: habit/skill use when, do, avoid; skill also verify; knowledge uses claim, "
+                "applies_when, avoid, evidence. Knowledge evidence is required; avoid is optional. "
+                "Write skill steps on separate lines (up to 6); basis states the user instruction or source evidence."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["create", "edit"]},
+                    "kind": {"type": "string", "enum": ["habit", "skill", "knowledge"]},
+                    "basis": {"type": "string", "maxLength": 400, "description": "Concrete user instruction, tested result, or source supporting the change"},
+                    "title": {"type": "string", "maxLength": 100, "description": "Required for create; optional rename for edit"},
+                    "fields": {
+                        "type": "object",
+                        "properties": {key: {"type": "string"} for key in ("when", "do", "avoid", "verify", "claim", "applies_when", "evidence")},
+                        "additionalProperties": False,
+                    },
+                    "project": {"type": "string", "description": "Existing canonical project or alias for create"},
+                    "memory_id": {"type": "string", "description": "Existing card UUID for edit"},
+                    "expected_updated_at": {"type": "string", "description": "Exact updated_at value from card_read(get), required for edit"},
+                },
+                "required": ["action", "kind", "basis"],
+            },
+            outputSchema={"type": "object", "additionalProperties": True},
+            annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False),
         ),
         Tool(
             name="memory_remember",
@@ -1673,6 +1732,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 tags=arguments.get("tags", []),
                 suggested_layer=arguments.get("suggested_layer", "L2"),
                 project=arguments.get("project"),
+            )
+        elif name == "echome_card_read":
+            result = await echome_card_read(
+                action=arguments["action"],
+                kind=arguments.get("kind"),
+                memory_id=arguments.get("memory_id"),
+                query=arguments.get("query"),
+                status=arguments.get("status", "available"),
+                project=arguments.get("project"),
+                limit=arguments.get("limit", 20),
+                offset=arguments.get("offset", 0),
+            )
+        elif name == "echome_card_write":
+            result = await echome_card_write(
+                action=arguments["action"], kind=arguments["kind"], basis=arguments["basis"],
+                title=arguments.get("title"), fields=arguments.get("fields"),
+                project=arguments.get("project"), memory_id=arguments.get("memory_id"),
+                expected_updated_at=arguments.get("expected_updated_at"),
             )
         elif name == "echome_get_project_context":
             result = await echome_get_project_context(

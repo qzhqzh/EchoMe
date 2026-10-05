@@ -126,6 +126,35 @@ class MCPHubClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def list_cards(
+        self,
+        tag: str,
+        status: str | None = None,
+        query: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        project: str | None = None,
+    ) -> dict[str, Any]:
+        """List one card category; omitting status includes active and ai_review."""
+        params: dict[str, Any] = {"tags": tag, "limit": limit, "offset": offset}
+        if status is not None:
+            params["status"] = status
+        if query:
+            params["query"] = query
+        if project:
+            params["project_id"] = project
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.get("/api/v1/memories", params=params)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def patch_memory(self, memory_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        """Update only the supplied revision (requires a Hub with conditional PATCH)."""
+        async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:
+            resp = await client.patch(f"/api/v1/memories/{memory_id}/conditional", json=data)
+            resp.raise_for_status()
+            return resp.json()
+
     async def sleep_candidates(self, data: dict[str, Any]) -> dict[str, Any]:
         """Request memory sleep candidates."""
         async with httpx.AsyncClient(base_url=self.base_url, headers=self._headers) as client:

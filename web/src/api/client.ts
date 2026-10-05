@@ -307,7 +307,7 @@ class ApiClient {
     return this.request<Memory>('PUT', `/memories/${id}`, data)
   }
 
-  async patchMemory(id: string, data: Partial<MemoryCreateRequest>): Promise<Memory> {
+  async patchMemory(id: string, data: Partial<MemoryCreateRequest> & { expected_updated_at?: string }): Promise<Memory> {
     return this.request<Memory>('PATCH', `/memories/${id}`, data)
   }
 

@@ -319,14 +319,22 @@ async def patch_memory(
     user_id: str = Depends(verify_token),
 ) -> Memory:
     """Partial update of a memory."""
-    result = await session.execute(
-        select(Memory).where(Memory.id == memory_id, Memory.user_id == user_id)
-    )
+    query = select(Memory).where(Memory.id == memory_id, Memory.user_id == user_id)
+    if body.expected_updated_at is not None:
+        query = query.with_for_update()
+    result = await session.execute(query)
     memory = result.scalar_one_or_none()
     if not memory:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
 
+    if body.expected_updated_at is not None and memory.updated_at != body.expected_updated_at:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Memory changed since it was read; reload it before editing",
+        )
+
     update_data = body.model_dump(exclude_unset=True)
+    update_data.pop("expected_updated_at", None)
     require_safe_content(json.dumps(update_data, ensure_ascii=False, default=str))
     if "scope" in update_data and update_data["scope"] is not None:
         scope = update_data.pop("scope")
@@ -360,6 +368,23 @@ async def patch_memory(
         background_tasks.add_task(_compute_and_store_embedding, memory.id, embed_text)
 
     return memory
+
+
+@router.patch("/{memory_id}/conditional", response_model=MemoryResponse)
+async def patch_memory_conditional(
+    memory_id: uuid.UUID,
+    body: MemoryPatch,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> Memory:
+    """Patch only the revision the caller read; older Hubs cannot silently skip the check."""
+    if body.expected_updated_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expected_updated_at is required for conditional updates",
+        )
+    return await patch_memory(memory_id, body, background_tasks, session, user_id)
 
 
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
