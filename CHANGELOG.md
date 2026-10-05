@@ -1,3 +1,11 @@
+## v1.10.0
+
+- c508c0a feat: add AI-editable card library (#120)
+- 0a44461 feat: add scene knowledge and versioned scenarios (#119)
+- ad65e8a feat: add shadow memory gate and fix context budget delivery (#118)
+- d887dbb fix(docs): follow Typer types when checking CLI examples (#116)
+- c59e16d docs: publish v1.5.0 architecture diagram
+
 ## v1.9.0
 
 - 937e133 fix(docker): align Hub runtime dependencies with CI lockfile
