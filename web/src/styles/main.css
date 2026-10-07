@@ -81,3 +81,13 @@
     @apply card hover:border-slate-600 hover:shadow-xl transition-all duration-200 cursor-pointer;
   }
 }
+
+/* iOS zooms focused fields with small text and can keep that zoom after SPA
+   navigation. Cover touch inputs even when a view uses text-sm/text-xs. */
+@media (pointer: coarse) {
+  :root input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  :root textarea,
+  :root select {
+    font-size: max(16px, 1rem);
+  }
+}

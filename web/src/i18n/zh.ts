@@ -207,6 +207,7 @@ export default {
   admin_no_email: '无邮箱',
 
   // Login
+  nav_menu: '打开导航菜单',
   login_title: 'EchoMe 控制台',
   login_subtitle: '连接到你的记忆 Hub',
   login_github: '使用 GitHub 登录',

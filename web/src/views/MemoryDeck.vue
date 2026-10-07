@@ -224,7 +224,7 @@ function closeWrongDialog(): void {
       </article>
 
       <p class="text-center text-xs text-slate-500">{{ tr('右滑有用 · 左滑有误 · 上下滑动阅读', 'Swipe right for useful · left for incorrect · scroll to read') }}</p>
-      <div class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 gap-2 border-t border-slate-700 bg-slate-950/95 px-4 pb-4 pt-3 backdrop-blur sm:static sm:grid-cols-4 sm:border-0 sm:bg-transparent sm:p-0">
+      <div class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 gap-2 border-t border-slate-700 bg-slate-950/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:grid-cols-4 sm:border-0 sm:bg-transparent sm:p-0">
         <button class="min-h-12 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-50" :disabled="submitting" @click="submitRating('helpful')">{{ tr('有用 →', 'Useful →') }}</button>
         <button class="min-h-12 rounded-xl border border-slate-600 bg-slate-700/50 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-50" :disabled="submitting" @click="submitRating('irrelevant')">{{ tr('暂时无用', 'Not useful now') }}</button>
         <button class="min-h-12 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-200 hover:bg-rose-500/20 disabled:opacity-50" :disabled="submitting" @click="wrongDialogOpen = true">{{ tr('← 有误', '← Incorrect') }}</button>
