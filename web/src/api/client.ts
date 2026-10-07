@@ -1,6 +1,6 @@
-import { useAuth } from '@/stores/auth'
+import { useAuth, type UserInfo } from '@/stores/auth'
 import { useToast } from '@/stores/toast'
-import { router } from '@/router'
+import { redirectToLogin } from '@/router'
 import type {
   Memory,
   MemoryListResponse,
@@ -38,6 +38,12 @@ import type {
   SceneSopValidation,
   SceneCategory,
 } from '@/types'
+
+export class TokenLoginError extends Error {
+  constructor(public readonly status: number) {
+    super(`Token verification failed (${status})`)
+  }
+}
 
 class ApiClient {
   knowledge<T>(method: string, path: string, body?: unknown,
@@ -155,24 +161,14 @@ class ApiClient {
 
     const response = await fetch(url.toString(), options)
 
-    if (response.status === 401 && !_retried) {
-      // Skip refresh for auth endpoints themselves
-      const isAuthEndpoint = path.includes('/auth/')
-      if (isAuthEndpoint) {
-        const { clearToken } = useAuth()
-        clearToken()
-        router.push('/login')
-        throw new Error('Unauthorized')
-      }
-      // Try refresh token
-      const refreshed = await this.tryRefresh()
-      if (refreshed) {
+    if (response.status === 401) {
+      // Refresh at most once, and never recursively refresh auth endpoints.
+      if (!path.startsWith('/auth/') && !_retried && await this.tryRefresh()) {
         return this.request<T>(method, path, body, params, true, extraHeaders)
       }
-      // Refresh failed — clear and redirect
       const { clearToken } = useAuth()
       clearToken()
-      router.push('/login')
+      redirectToLogin()
       throw new Error('Unauthorized')
     }
 
@@ -492,6 +488,22 @@ class ApiClient {
   }
 
   // --- Auth ---
+
+  // Validate credentials before persisting them. Login failures must stay on
+  // the form, without the shared client's refresh/redirect side effects.
+  async verifyLoginToken(token: string, apiBase: string): Promise<UserInfo> {
+    const response = await fetch(`${apiBase}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
+    if (!response.ok) throw new TokenLoginError(response.status)
+    const user = await response.json()
+    if (!user || typeof user.id !== 'string' || typeof user.username !== 'string'
+      || typeof user.role !== 'string') {
+      throw new Error('Invalid user response')
+    }
+    return user
+  }
 
   async getGitHubAuthUrl(): Promise<{ url: string }> {
     return this.request<{ url: string }>('GET', '/auth/github')

@@ -63,6 +63,10 @@ On the login page, you can configure:
 
 The browser stores the token, user metadata, and optional API base in `localStorage`. See the [deployment guide](../docs/deployment.md) for Hub configuration.
 
+Token login verifies `/api/v1/auth/me` before saving the session. Paste only the token value for the selected Hub. An invalid token leaves the form open with an error; successful login returns to the requested page. Public health checks do not verify credentials.
+
+For login regression checks, with Python Playwright and Chromium available, run `python scripts/smoke_web_login.py --base-url http://127.0.0.1:3000` from the repository root against a running console. The check exercises the mobile form, rejected credentials, safe return paths, session expiry, and OAuth/CLI callbacks using synthetic API responses; it needs no real token and does not modify Hub data.
+
 ## Features
 
 - **Dashboard**: Overview with memory counts, type distribution, and quick search
