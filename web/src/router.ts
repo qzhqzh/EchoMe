@@ -140,10 +140,25 @@ export const router = createRouter({
   routes,
 })
 
+/** Only allow known, private application routes as a post-login destination. */
+export function getLoginRedirect(value: unknown): string {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')
+    || /[\\\u0000-\u0020]/.test(value)) return '/'
+  const target = router.resolve(value)
+  return target.matched.length && !target.meta.public ? target.fullPath : '/'
+}
+
+export function redirectToLogin(): void {
+  const current = router.currentRoute.value
+  if (current.name !== 'Login') {
+    void router.replace({ name: 'Login', query: { redirect: current.fullPath } })
+  }
+}
+
 router.beforeEach((to) => {
   const { isAuthenticated, getUser } = useAuth()
   if (!to.meta.public && !isAuthenticated()) {
-    return { name: 'Login' }
+    return { name: 'Login', query: { redirect: to.fullPath } }
   }
   if (to.meta.requiresAdmin) {
     const user = getUser()

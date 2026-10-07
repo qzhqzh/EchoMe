@@ -4,7 +4,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { useAuth } from '@/stores/auth'
 import { useToast } from '@/stores/toast'
-import { api } from '@/api/client'
+import { api, TokenLoginError } from '@/api/client'
+import { getLoginRedirect } from '@/router'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -18,6 +19,8 @@ const loading = ref(false)
 const githubLoading = ref(false)
 const showManual = ref(false)
 const showAdvanced = ref(false)
+const loginError = ref('')
+const redirectStorageKey = 'echome_login_redirect'
 
 // CLI mode: when ?source=cli, show token for copying instead of redirecting
 const cliMode = ref(false)
@@ -31,8 +34,10 @@ onMounted(async () => {
   const source = (route.query.source as string | undefined) || sessionStorage.getItem('echome_login_source') || undefined
 
   if (code) {
+    const destination = getLoginRedirect(route.query.redirect ?? sessionStorage.getItem(redirectStorageKey))
     // Clear stored source
     sessionStorage.removeItem('echome_login_source')
+    sessionStorage.removeItem(redirectStorageKey)
     githubLoading.value = true
     try {
       if (apiBase.value.trim()) {
@@ -52,7 +57,7 @@ onMounted(async () => {
         setToken(data.access_token)
         setUser(data.user)
         success(`Welcome, ${data.user.username}!`)
-        router.push('/')
+        await router.replace(destination)
       }
     } catch (e) {
       error('GitHub login failed. Please try again.')
@@ -91,7 +96,10 @@ async function handleGitHubLogin(): Promise<void> {
     const source = route.query.source as string | undefined
     if (source === 'cli') {
       sessionStorage.setItem('echome_login_source', 'cli')
+    } else {
+      sessionStorage.removeItem('echome_login_source')
     }
+    sessionStorage.setItem(redirectStorageKey, getLoginRedirect(route.query.redirect))
     const data = await api.getGitHubAuthUrl()
     window.location.href = data.url
   } catch (e) {
@@ -101,36 +109,29 @@ async function handleGitHubLogin(): Promise<void> {
 }
 
 async function handleTokenLogin(): Promise<void> {
+  if (loading.value || githubLoading.value) return
+  loginError.value = ''
   if (!token.value.trim()) {
-    error('Please enter a token')
+    loginError.value = t('login_token_required')
     return
   }
 
   loading.value = true
 
   try {
-    if (apiBase.value.trim()) {
-      setApiBase(apiBase.value.trim().replace(/\/$/, ''))
-    } else {
-      setApiBase('')
-    }
-    setToken(token.value.trim())
-
-    // Try to fetch user info
-    try {
-      const user = await api.getMe()
-      setUser(user)
-    } catch {
-      // Fallback: legacy token, just verify connectivity
-      await api.health()
-    }
-
-    success('Connected to EchoMe Hub')
-    router.push('/')
+    const nextApiBase = apiBase.value.trim().replace(/\/$/, '')
+    const nextToken = token.value.trim()
+    const user = await api.verifyLoginToken(nextToken, nextApiBase)
+    setApiBase(nextApiBase)
+    setToken(nextToken)
+    setUser(user)
+    token.value = ''
+    sessionStorage.removeItem(redirectStorageKey)
+    await router.replace(getLoginRedirect(route.query.redirect))
+    success(t('login_success'))
   } catch (e) {
-    error('Failed to connect. Check your token and API URL.')
-    const { clearToken } = useAuth()
-    clearToken()
+    loginError.value = e instanceof TokenLoginError && (e.status === 401 || e.status === 403)
+      ? t('login_token_invalid') : t('login_unavailable')
   } finally {
     loading.value = false
   }
@@ -202,7 +203,7 @@ async function handleTokenLogin(): Promise<void> {
         <!-- GitHub OAuth button -->
         <button
           class="btn-primary w-full gap-2"
-          :disabled="githubLoading"
+          :disabled="githubLoading || loading"
           @click="handleGitHubLogin"
         >
           <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
@@ -229,15 +230,22 @@ async function handleTokenLogin(): Promise<void> {
         <!-- Manual token login (collapsible) -->
         <form v-if="showManual" class="space-y-4" @submit.prevent="handleTokenLogin">
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('login_api_token') }}</label>
+            <label for="login-token" class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('login_api_token') }}</label>
             <input
+              id="login-token"
               v-model="token"
               type="password"
               class="input-field"
               :placeholder="t('login_token_placeholder')"
               autocomplete="off"
+              :disabled="loading"
+              :aria-invalid="!!loginError"
+              :aria-describedby="loginError ? 'login-token-hint login-token-error' : 'login-token-hint'"
             />
+            <p id="login-token-hint" class="mt-2 text-xs leading-relaxed text-slate-400">{{ t('login_token_hint') }}</p>
           </div>
+
+          <p v-if="loginError" id="login-token-error" role="alert" class="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm leading-relaxed text-red-200">{{ loginError }}</p>
 
           <button
             type="submit"
@@ -264,6 +272,7 @@ async function handleTokenLogin(): Promise<void> {
             <label class="mb-1.5 block text-xs font-medium text-slate-400">{{ t('login_hub_url') }}</label>
             <input
               v-model="apiBase"
+              :disabled="loading"
               type="url"
               class="input-field text-xs"
               :placeholder="t('login_hub_url_placeholder')"
