@@ -348,6 +348,7 @@ asyncio.run(main())"""
         "question",
         {
             "title": "新会话如何找回建模方法并继续打开模型？",
+            "project_id": project["id"],
             "status": "resolved",
             "resolution_note": "已在独立 Python 进程通过 MCP 找回知识与固定版本，并在另一个 Blender 进程重开实际 .blend，网格数量一致。",
         },
