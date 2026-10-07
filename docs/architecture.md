@@ -1,5 +1,7 @@
 # EchoMe 系统架构
 
+新增独立知识工作台的源码实现见 [首版实施契约](knowledge-workbench.md)：项目/问题引用独立知识，Page 提供共用正文，MCP 与审核保存版本和依据。目前完成隔离开发验收，生产状态未因此变化。
+
 ## 1. 系统定位
 
 EchoMe 是面向 AI Agent 的**个人记忆与项目上下文层**。它保存三类长期知识，并通过上下文和场景资料入口交付给 Codex、Claude Code、Cursor 等客户端：
@@ -79,7 +81,7 @@ Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade h
 
 `echome_mcp` 是协议适配层，通过 Hub REST API 读写数据，不直接连接数据库。
 
-- 默认 `core` profile：当前源码 18 个工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目身份维护、2 个卡片工具、2 个场景资料工具和 4 个流程/事项工具。
+- 默认 `core` profile：当前源码 20 个工具，包括 capability discovery、统一 context、health、graph explain、remember、feedback、安全项目身份维护、2 个卡片工具、2 个场景资料工具、4 个流程/事项工具和 2 个知识库工具。
 - `ECHOME_MCP_PROFILE=full`：暴露 summary-first、Project Knowledge、Sleep 等专业工具。
 - `echome_capabilities` 会根据当前 profile 只推荐实际可调用的工具。
 - Hub 暂时不可达时，仅 `echome_context` 可读取本地 AES-256-GCM last-known-good 缓存；缓存不会回写 Hub。

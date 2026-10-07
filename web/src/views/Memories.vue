@@ -8,7 +8,7 @@ import MemoryCard from '@/components/MemoryCard.vue'
 import { MEMORY_LAYERS, MEMORY_STATUSES } from '@/types'
 import type { MemoryListItem, MemoryType } from '@/types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
 
@@ -119,6 +119,7 @@ async function handleSearch(query: string): Promise<void> {
     memories.value = res.results.map(r => ({
       id: r.id,
       title: r.title,
+      content: r.content,
       type: r.type,
       layer: r.layer,
       priority: 5,
@@ -173,12 +174,15 @@ const activeProjectName = computed(() => {
           {{ total }} memories{{ activeType ? ` in ${activeType}` : '' }}{{ activeProjectName ? ` for ${activeProjectName}` : '' }}
         </p>
       </div>
-      <button class="btn-primary" @click="router.push({ path: '/memories/new', query: activeType ? { type: activeType } : {} })">
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-secondary" @click="router.push('/cards/memories')">{{ locale === 'zh' ? '刷记忆卡' : 'Review cards' }}</button>
+        <button class="btn-primary" @click="router.push({ path: '/memories/new', query: activeType ? { type: activeType } : {} })">
         <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
         {{ t('memories_new') }}
-      </button>
+        </button>
+      </div>
     </div>
 
     <div class="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">

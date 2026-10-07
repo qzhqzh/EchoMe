@@ -172,6 +172,7 @@ export interface Memory {
 export interface MemoryListItem {
   id: string
   title: string
+  content: string
   type: MemoryType
   layer: MemoryLayer
   priority: number
@@ -189,6 +190,19 @@ export interface MemoryListResponse {
   offset: number
   limit: number
   items: MemoryListItem[]
+}
+
+export type MemoryCardRating = 'helpful' | 'irrelevant' | 'wrong'
+
+export interface MemoryCardReviewResponse {
+  feedback: {
+    id: string
+    memory_id: string
+    rating: MemoryCardRating
+    note: string | null
+    created_at: string
+  }
+  memory_status: MemoryStatus
 }
 
 export interface MemoryCreateRequest {

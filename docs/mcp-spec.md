@@ -1,5 +1,7 @@
 # EchoMe MCP Server 规范
 
+源码新增 `echome_knowledge_read` / `echome_knowledge_write`，用于独立知识工作台的读取、版本化维护和审核提案。它们没有人工批准动作；完整说明见 [知识工作台契约](knowledge-workbench.md)。需要配套 schema `021` Hub，不能仅凭 MCP 包版本推断线上可用。
+
 ## 1. 概览
 
 EchoMe MCP Server 向 AI 客户端暴露个人记忆、项目上下文、证据查询和受控写入能力，通常作为本地 stdio 进程运行，也支持 Streamable HTTP。
@@ -70,7 +72,7 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
   替换主 remote 时不会自动保留旧地址；仍需兼容时应在同一预览中显式提交旧地址 alias。
 - `echome_create_project`：项目发现为 `not_found` 时直接静默创建；只有一个可复用候选时不创建重复项目，
   而是原子补录 active aliases。`confirmed_new_project` 仅为旧客户端保留，不再作为创建门禁；多个冲突候选仍停止。
-- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护、2 个卡片入口，以及 2 个场景资料入口和 4 个流程/事项入口，共 18 个工具。
+- 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护、2 个卡片入口，以及 2 个场景资料入口、4 个流程/事项入口和 2 个知识库入口，共 20 个工具。
 - `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
 - 为保持升级兼容，未配置 `ECHOME_MCP_PROFILE` 的历史客户端继续使用 `full`。
 
@@ -100,7 +102,7 @@ MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `messag
 - `off` 跳过策略计算。
 - `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
 
-`echome_capabilities` 当前契约版本为 `echome.capabilities.v12`。core profile 包含 18 个工具；AI 可通过
+`echome_capabilities` 当前契约版本为 `echome.capabilities.v13`。core profile 包含 20 个工具；AI 可通过
 `echome_runtime_health(include_policy_readiness=true)` 读取校准门禁。
 `echome_sleep_candidates` 默认返回
 `memory_sleep_plan.v2`，也可显式请求 v1；v2 proposal 由 Hub 生成 server-owned simulation，并在

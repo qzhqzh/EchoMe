@@ -2,6 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuth } from '@/stores/auth'
 
 const routes = [
+  { path: '/knowledge', name: 'KnowledgeLibrary', component: () => import('@/views/KnowledgeLibrary.vue') },
+  { path: '/knowledge/review', name: 'KnowledgeReview', component: () => import('@/views/KnowledgeReview.vue') },
+  { path: '/knowledge/:id', name: 'KnowledgeDetail', component: () => import('@/views/KnowledgeDetail.vue') },
   {
     path: '/login',
     name: 'Login',
@@ -32,6 +35,29 @@ const routes = [
     path: '/cards',
     name: 'CardLibrary',
     component: () => import('@/views/CardLibrary.vue'),
+  },
+  {
+    path: '/cards/memories',
+    name: 'MemoryCards',
+    component: () => import('@/views/MemoryDeck.vue'),
+  },
+  {
+    path: '/cards/habits/review',
+    name: 'HabitCardReview',
+    component: () => import('@/views/MemoryDeck.vue'),
+    props: { kind: 'habits' },
+  },
+  {
+    path: '/cards/skills/review',
+    name: 'SkillCardReview',
+    component: () => import('@/views/MemoryDeck.vue'),
+    props: { kind: 'skills' },
+  },
+  {
+    path: '/cards/knowledge/review',
+    name: 'KnowledgeCardReview',
+    component: () => import('@/views/MemoryDeck.vue'),
+    props: { kind: 'knowledge' },
   },
   {
     path: '/cards/habits/:id?',

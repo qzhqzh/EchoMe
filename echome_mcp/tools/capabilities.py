@@ -10,12 +10,16 @@ from echome_mcp.profiles import CORE_TOOL_NAMES, current_profile
 CAPABILITIES: dict[str, Any] = {
     "service": "EchoMe MCP",
     "mcp_version": __version__,
-    "capabilities_version": "echome.capabilities.v12",
+    "capabilities_version": "echome.capabilities.v13",
     "context_schema_version": "echome.context.v1",
     "error_schema_version": "echome.error.v1",
     "purpose": "Personal memory and project context layer for AI agents.",
     "recommended_start": "echome_capabilities",
     "default_context_tool": "echome_context",
+    "knowledge_workflow": [
+        {"step": "discover", "tool": "echome_knowledge_read", "when": "For knowledge projects/questions, read schema once, list by kind/search, then request context for the selected stable UUID. Follow omitted_fields and next_offset."},
+        {"step": "maintain", "tool": "echome_knowledge_write", "when": "Save coarse independent knowledge, exact source/usage versions and actual outputs. Propose risky semantic edits as review records; never self-approve."},
+    ],
     "scenario_workflow": [
         {"step": "read_knowledge", "tool": "echome_scene_read",
          "when": "A user names a recurring scene; read its dated facts, observations, active SOPs, cautions and current work before acting."},
@@ -101,6 +105,10 @@ CAPABILITIES: dict[str, Any] = {
         },
     ],
     "tool_groups": {
+        "knowledge": [
+            {"tool": "echome_knowledge_read", "when": "Read knowledge schema, project/question context, versioned Pages, evidence, exact queries or discovery results.", "mutates_state": False},
+            {"tool": "echome_knowledge_write", "when": "Save coarse reusable knowledge, Pages, sources, usages, real outputs or review proposals. Never self-approve a consequential change.", "mutates_state": True},
+        ],
         "cards": [
             {"tool": "echome_card_read", "when": "Browse the card library or read one card with its scope and revision.", "mutates_state": False},
             {"tool": "echome_card_write", "when": "Create an AI-reviewed card or revise named fields of a card using its current revision and a concrete basis.", "mutates_state": True, "default_status": "ai_review_on_create"},
@@ -344,6 +352,7 @@ def capabilities_payload() -> dict[str, Any]:
     ]
     payload["scenario_workflow"] = CAPABILITIES["scenario_workflow"]
     payload["card_workflow"] = CAPABILITIES["card_workflow"]
+    payload["knowledge_workflow"] = CAPABILITIES["knowledge_workflow"]
     payload["tool_groups"] = {
         group: [entry for entry in entries if entry["tool"] in CORE_TOOL_NAMES]
         for group, entries in payload["tool_groups"].items()

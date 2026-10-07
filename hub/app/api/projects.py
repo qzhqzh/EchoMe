@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
 from app.core.database import get_session
+from app.models.knowledge import KnowledgeRecord
 from app.models.memory import Project
 from app.models.project_knowledge import (
     ArtifactChunk,
@@ -24,7 +25,9 @@ from app.models.project_knowledge import (
     ProjectEvent,
     ProjectRelation,
 )
+from app.schemas.knowledge import RecordUpdate
 from app.services.content_safety import require_safe_content
+from app.services.knowledge import Principal, lock_writes, update_record
 from app.services.project_identity import (
     discover_projects,
     ensure_project_aliases,
@@ -457,6 +460,7 @@ async def update_project(
 ) -> Project:
     """Update a canonical project addressed by ID or active alias."""
     require_safe_content(body.id, body.name, body.description, body.git_remote)
+    await lock_writes(session, user_id)
     project = (await resolve_project(session, user_id, project_id)).project
 
     project.name = body.name
@@ -480,6 +484,22 @@ async def update_project(
     project.description = body.description
     project.git_remote = body.git_remote
     project.path_patterns = body.path_patterns
+    workspace = await session.scalar(
+        select(KnowledgeRecord).where(
+            KnowledgeRecord.user_id == user_id, KnowledgeRecord.project_id == project.id
+        )
+    )
+    if workspace:
+        await update_record(
+            session,
+            Principal(user_id, "owner-credential:" + user_id),
+            workspace.id,
+            RecordUpdate(
+                expected_revision=workspace.revision,
+                data={**workspace.payload, "name": body.name, "summary": body.description or ""},
+                reason="Project metadata updated through existing Projects API",
+            ),
+        )
     return project
 
 
@@ -490,6 +510,7 @@ async def delete_project(
     user_id: str = Depends(verify_token),
 ) -> None:
     """Delete an empty canonical project addressed by ID or active alias."""
+    await lock_writes(session, user_id)
     project = (await resolve_project(session, user_id, project_id)).project
     project_id = project.id
     relation_exists = await session.scalar(
@@ -507,6 +528,7 @@ async def delete_project(
             detail="Project has composition history and cannot be deleted",
         )
     knowledge_models = (
+        KnowledgeRecord,
         ProjectArtifact,
         ProjectConstraint,
         ArtifactChunk,

@@ -1,5 +1,14 @@
 """SQLAlchemy models."""
 
+from app.models.knowledge import (  # noqa: F401 -- register knowledge tables in metadata
+    KnowledgeAgentToken,
+    KnowledgeAsset,
+    KnowledgeDecision,
+    KnowledgeOverview,
+    KnowledgeRecord,
+    KnowledgeReference,
+    KnowledgeVersion,
+)
 from app.models.memory import Base, Memory, Project, SyncLog
 from app.models.project_knowledge import (
     ArtifactChunk,

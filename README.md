@@ -13,7 +13,7 @@ EchoMe 是一个面向 AI Agent 的**个人记忆与项目上下文层**。它�
 
 当前稳定版本为 **v1.10.0**，包含 Trusted Context Policy、Sleep v2 和策略校准门禁；
 生产策略默认仍保持 shadow，不会由 readiness 自动开启 enforce。
-当前源码 Alembic head 为 `020`；本机生产实例已在 2026-10-04 验证为 `020`，其他部署仍需通过 runtime health 核对迁移状态。
+当前源码 Alembic head 为 `021`；本机生产实例已在 2026-10-04 验证为 `020`，其他部署仍需通过 runtime health 核对迁移状态。
 
 ## 核心架构
 
@@ -120,7 +120,7 @@ Context Outcome 与 Memory Feedback 均为 append-only 信号，不会直接、�
 6. 在 `full` profile 中，宽泛问题可使用 summary-first，项目修改可使用 preflight/impact 专业工具。
 7. 需要形成长期项目 mental model 时，先调用 `echome_reflect_prepare`，再以原始 watermark 和逐条证据调用 `echome_reflect_submit`。
 
-EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，当前源码暴露 18 个入口（包含 2 个卡片工具、2 个场景资料工具和 4 个流程/事项工具）；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
+EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `echome mcp install` 的配置会显式使用 `core`，当前源码暴露 20 个入口（包含 2 个卡片工具、2 个场景资料工具、4 个流程/事项工具和 2 个知识库工具）；设置 `ECHOME_MCP_PROFILE=full` 并重启客户端后，可启用 summary-first、Project Knowledge 和 Sleep 等专业工具。为避免升级破坏，历史配置若没有 profile 字段会继续使用 `full`。
 
 ## 系统组件
 
@@ -131,7 +131,7 @@ EchoMe MCP 提供 `core` 和 `full` 两种 profile。新执行 `echome init` / `
 | Embedding | BAAI/bge-m3 | 语义向量生成与召回 |
 | Web Console | Vue 3 + Nginx | 管理、观测、图分析和质量评估 |
 | CLI | Typer + Rich + httpx | 初始化、同步、审核、Sleep 与环境诊断 |
-| MCP Server | 官方 Python MCP SDK | 默认 18 个核心工具，可切换完整专业工具集 |
+| MCP Server | 官方 Python MCP SDK | 默认 20 个核心工具，可切换完整专业工具集 |
 
 默认 Docker Compose 端口：
 
@@ -233,7 +233,7 @@ Web Console 的预构建静态文件也以 [`echome-web`](https://www.npmjs.com/
 ## 数据安全原则
 
 - PostgreSQL + pgvector 是唯一权威服务端数据层。
-- 数据库迁移采用 Alembic；本机已验证生产 schema revision 为 `020`，当前源码 Alembic head 为 `020`，后续迁移继续保持 additive-only。
+- 数据库迁移采用 Alembic；本机已验证生产 schema revision 为 `020`，当前源码 Alembic head 为 `021`，后续迁移继续保持 additive-only。
 - archived 和 deprecated 记忆不会作为当前有效事实参与默认检索。
 - Sleep、项目重关联和约束复核采用 `proposal → validate → apply`。
 - 原始记忆、制品版本、约束版本、事件和关系证据不被静默删除。

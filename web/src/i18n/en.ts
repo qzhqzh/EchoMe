@@ -1,4 +1,5 @@
 export default {
+  nav_knowledge: 'Knowledge',
   // Common
   cancel: 'Cancel',
   save: 'Save',

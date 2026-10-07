@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import String, case, func, or_, select
@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import verify_token
 from app.core.database import get_session
 from app.core.ratelimit import RATE_SEARCH, RATE_WRITE, limiter
-from app.models.memory import Memory
+from app.models.memory import Memory, MemoryFeedback
+from app.schemas.feedback import CARD_REVIEW_CONTEXT
 from app.schemas.memory import (
     MemoryCreate,
     MemoryCreateResponse,
@@ -111,6 +112,7 @@ async def list_memories(
     tags: str | None = None,
     project_id: str | None = None,
     search_query: str | None = Query(None, alias="query"),
+    card_review: Literal["unreviewed", "reviewed"] | None = None,
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
@@ -137,6 +139,19 @@ async def list_memories(
             or_(*(Memory.scope_projects.contains([scope_id]) for scope_id in scope_ids)),
             exclude_projects(scope_ids),
         )
+    if card_review:
+        has_card_review = (
+            select(MemoryFeedback.id)
+            .where(
+                MemoryFeedback.user_id == user_id,
+                MemoryFeedback.memory_id == Memory.id,
+                MemoryFeedback.task_context == CARD_REVIEW_CONTEXT,
+                MemoryFeedback.used_by == "user",
+                MemoryFeedback.source == "web",
+            )
+            .exists()
+        )
+        query = query.where(has_card_review if card_review == "reviewed" else ~has_card_review)
     relevance: Any = None
     if isinstance(search_query, str) and search_query:
         title_field = func.lower(Memory.title)
@@ -146,13 +161,7 @@ async def list_memories(
         patterns = [f"%{search_query.lower()}%"]
         patterns.extend(f"%{token}%" for token in _query_tokens(search_query))
         query = query.where(
-            or_(
-                *[
-                    field.like(pattern)
-                    for pattern in patterns
-                    for field in search_fields
-                ]
-            )
+            or_(*[field.like(pattern) for pattern in patterns for field in search_fields])
         )
         relevance = sum(
             case((title_field.like(pattern), 5), else_=0)
@@ -168,6 +177,8 @@ async def list_memories(
     # Fetch page
     if relevance is not None:
         query = query.order_by(relevance.desc(), Memory.priority.desc(), Memory.updated_at.desc())
+    elif card_review:
+        query = query.order_by(Memory.priority.desc(), Memory.updated_at.desc(), Memory.id.desc())
     else:
         query = query.order_by(Memory.updated_at.desc())
     query = query.offset(offset).limit(limit)
@@ -218,12 +229,8 @@ async def create_memory(
         )
 
     token_count = count_tokens(body.content)
-    scope_projects = await canonicalize_project_scopes(
-        session, user_id, body.scope.projects
-    )
-    scope_exclude = await canonicalize_project_scopes(
-        session, user_id, body.scope.exclude_projects
-    )
+    scope_projects = await canonicalize_project_scopes(session, user_id, body.scope.projects)
+    scope_exclude = await canonicalize_project_scopes(session, user_id, body.scope.exclude_projects)
 
     memory = Memory(
         user_id=user_id,
@@ -277,12 +284,8 @@ async def update_memory(
             detail="project type memory must be associated with a project",
         )
 
-    scope_projects = await canonicalize_project_scopes(
-        session, user_id, body.scope.projects
-    )
-    scope_exclude = await canonicalize_project_scopes(
-        session, user_id, body.scope.exclude_projects
-    )
+    scope_projects = await canonicalize_project_scopes(session, user_id, body.scope.projects)
+    scope_exclude = await canonicalize_project_scopes(session, user_id, body.scope.exclude_projects)
 
     memory.title = body.title
     memory.content = body.content

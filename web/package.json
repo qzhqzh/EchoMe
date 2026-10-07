@@ -9,8 +9,17 @@
     "directory": "web"
   },
   "homepage": "https://github.com/qzhqzh/EchoMe/tree/main/web",
-  "keywords": ["echome", "web-console", "ai-memory"],
-  "files": ["dist", "nginx.conf", "README.md", "LICENSE"],
+  "keywords": [
+    "echome",
+    "web-console",
+    "ai-memory"
+  ],
+  "files": [
+    "dist",
+    "nginx.conf",
+    "README.md",
+    "LICENSE"
+  ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
@@ -23,15 +32,18 @@
     "prepack": "npm run build"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@vitejs/plugin-vue": "^5.0.4",
     "autoprefixer": "^10.4.19",
     "cytoscape": "^3.34.0",
+    "dompurify": "^3.4.16",
+    "markdown-it": "^14.3.2",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
     "vite": "^5.2.8",
-    "vue-tsc": "^2.0.11",
     "vue": "^3.4.21",
-    "vue-router": "^4.3.0"
+    "vue-router": "^4.3.0",
+    "vue-tsc": "^2.0.11"
   }
 }
