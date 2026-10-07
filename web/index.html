@@ -5,6 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EchoMe Console</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      (() => {
+        let recovering = false;
+        function recoverAssets() {
+          if (recovering) return;
+          recovering = true;
+          const script = document.createElement('script');
+          script.src = '/asset-recovery.js';
+          document.head.appendChild(script);
+        }
+        window.addEventListener('vite:preloadError', (event) => {
+          event.preventDefault();
+          recoverAssets();
+        });
+        window.addEventListener('error', (event) => {
+          if (event.target instanceof HTMLScriptElement && event.target.type === 'module') {
+            recoverAssets();
+          }
+        }, true);
+      })();
+    </script>
   </head>
   <body class="bg-slate-900 text-slate-100 antialiased">
     <div id="app"></div>
