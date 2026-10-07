@@ -1,5 +1,7 @@
 # EchoMe Hub REST API 规范
 
+新增 `/api/v1/knowledge` 接口，字段、路径、版本保护和审核凭据见 [知识工作台契约](knowledge-workbench.md)。完整字段由认证后的 `GET /api/v1/knowledge/schema` 提供，此模块需要 Hub schema `021`。
+
 ## 1. 概览
 
 - **Base URL**: `https://<your-domain>/api/v1`
@@ -54,6 +56,7 @@ callback / refresh 返回 `access_token`、`token_type`、`expires_in`（秒）�
 | tags | string | 否 | 逗号分隔，AND 匹配 |
 | project_id | string | 否 | 过滤 scope 包含该项目的记忆 |
 | query | string | 否 | 对标题、正文和标签做轻量词法过滤 |
+| card_review | string | 否 | `unreviewed` 或 `reviewed`，按当前用户在记忆卡中是否已判断过滤；省略时保持原列表行为 |
 | offset | int | 否 | 分页偏移，默认 0 |
 | limit | int | 否 | 每页数量，默认 50，最大 200 |
 
@@ -86,6 +89,8 @@ callback / refresh 返回 `access_token`、`token_type`、`expires_in`（秒）�
   ]
 }
 ```
+
+记忆卡使用 `card_review=unreviewed` 分批读取原记忆；仅 `source=web`、`used_by=user` 且 `task_context=memory_card_review` 的反馈计入已判断，普通任务反馈不影响刷卡队列。此过滤可与 `tags`、`type`、`status`、`offset`、`limit` 组合，习惯、技能和知识卡册用各自的 `card:*` 标签刷同一条判断队列。记忆卡队列按 priority、更新时间和 ID 降序排列。
 
 ---
 
@@ -199,6 +204,16 @@ callback / refresh 返回 `access_token`、`token_type`、`expires_in`（秒）�
 | 参数 | 类型 | 说明 |
 |---|---|---|
 | hard | bool | 如果 true，物理删除 |
+
+---
+
+### POST /memory-feedback/card-review
+
+记录当前用户对一张原记忆卡的判断。请求体为 `memory_id`、`rating`（`helpful`、`irrelevant` 或 `wrong`），以及可选的 `note`（最多 4000 字符）。响应包含写入的 feedback 和 `memory_status`。
+
+- `helpful` 与 `irrelevant` 只追加反馈，不自动确认或停用记忆。
+- `wrong` 在同一事务中追加反馈并将记忆置为 `pending`；默认记忆列表与 AI 检索不再使用它，用户可在记忆详情修正后恢复。
+- 同一记忆的记忆卡判断仅写入一次；重复判断或记忆已不在 active/ai_review 队列时返回 `409`，非本人记忆返回 `404`。普通 `/memory-feedback` 仍可独立记录任务反馈。
 
 ---
 

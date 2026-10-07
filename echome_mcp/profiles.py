@@ -22,6 +22,8 @@ CORE_TOOL_NAMES = frozenset(
         "echome_scenario_run",
         "echome_scene_read",
         "echome_scene_write",
+        "echome_knowledge_read",
+        "echome_knowledge_write",
     }
 )
 

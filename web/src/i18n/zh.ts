@@ -1,4 +1,5 @@
 export default {
+  nav_knowledge: '知识库',
   // Common
   cancel: '取消',
   save: '保存',

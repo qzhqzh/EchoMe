@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # Proposal-only automation remains opt-in even after quality gates pass.
     project_automation_enabled: bool = False
 
+    # Separate reviewer capability; never share this secret with an AI client.
+    knowledge_review_key: str = ""
+    knowledge_storage_path: str = "./data/knowledge-assets"
+
     # Limits
     l0_max_tokens: int = 1500
     l0_max_count: int = 20

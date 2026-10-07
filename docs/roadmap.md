@@ -1,5 +1,7 @@
 # EchoMe 开发路线图
 
+**本地新增，待发布**：知识工作台首版实现项目/问题、独立知识与关系、Page、证据、审核刷卡、实际成果与跨会话 MCP 复用。验收与已知边界见 [实施契约](knowledge-workbench.md)。
+
 > v1.4、v1.7 和 v1.8 的历史记录分别见
 > [v1.4 实施计划](next-update-plan-2026-08.md)、
 > [v1.7 发布与安全验收](next-version-plan-v1.7.md)和
@@ -11,8 +13,8 @@
 EchoMe 已进入 v1.9 发布后的维护与能力完善阶段。以下区分稳定发布、当前源码和运行中的部署：
 
 - **当前稳定版本**：`echome v1.10.0`；版本记录见 [GitHub Releases](https://github.com/qzhqzh/EchoMe/releases)
-- **已验证本机生产 schema**：revision `020`（2026-10-04）；当前源码 Alembic head 为 `020`，其他部署须通过 runtime health 核实
-- **源码能力契约**：`echome.capabilities.v12`；新安装显式使用 `core` profile，共 18 个工具；未设置 profile 的历史客户端保留 `full`
+- **已验证本机生产 schema**：revision `020`（2026-10-04）；当前源码 Alembic head 为 `021`，其他部署须通过 runtime health 核实
+- **源码能力契约**：`echome.capabilities.v13`；新安装显式使用 `core` profile，共 20 个工具；未设置 profile 的历史客户端保留 `full`
 - **当前策略状态**：Context Policy 默认 shadow；readiness 只判断 canary 资格，不能自动开启 enforce
 - **Hub**：认证与多用户隔离、Memory CRUD/混合检索、项目身份与 workspace 组合、sync/render、review、market、admin、embedding 和 rate limit
 - **CLI**：记忆管理、`scenario`、`init/login/sync/review/market/doctor/seed/update/status/version` 及 `mcp install/serve`；配置文件注入支持 Claude Code 和 Codex

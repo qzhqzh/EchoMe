@@ -69,7 +69,7 @@ The browser stores the token, user metadata, and optional API base in `localStor
 - **Memories**: Full CRUD with filters (type, layer, status, tags), search, pagination
 - **Memory Detail**: View/edit/delete with full metadata display
 - **Review Queue**: Approve or reject AI-suggested memories
-- **Card Library**: Organize and edit habit, skill, and knowledge cards
+- **Card Library**: Organize habit, skill, and knowledge cards; review existing memories at `/cards/memories` or swipe each category at `/cards/{habits,skills,knowledge}/review`. All decks use the same underlying-memory judgment, so a memory shown in multiple decks is reviewed once. The deck records helpful/not-useful judgments and sends incorrect memories to `pending` for correction. It supports touch swipes and explicit buttons.
 - **Projects**: Create/edit projects, configure Git remote and path patterns, and browse associated memories
 - **Project Workspace**: Inspect artifacts, constraints, context, and project quality evaluation
 - **Diagnostics**: Memory graph, retrieval debugging, Context Runs/Outcomes, and Memory Eval

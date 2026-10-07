@@ -17,6 +17,7 @@ from app.api import (
     context_runtime,
     feedback,
     health,
+    knowledge,
     market,
     memories,
     memory_sleep,
@@ -89,6 +90,7 @@ app.include_router(retrieval_debug.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(project_knowledge.router, prefix="/api/v1")
 app.include_router(scene_knowledge.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(scenarios.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")

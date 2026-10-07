@@ -9,7 +9,7 @@ EchoMe keeps three separate but cooperating knowledge domains:
 Project constraints do not alter the behavior of Memory retrieval or Memory Sleep. The task-aware
 project context endpoint combines Memory and Project Knowledge only when an AI explicitly asks for project context. Scene Knowledge has a separate named read/write MCP entry.
 
-The current released package version is `1.10.0`, this host's verified production Alembic revision is `020` as of 2026-10-04, and the current source Alembic head is `020`.
+The current released package version is `1.10.0`, this host's verified production Alembic revision is `020` as of 2026-10-04, and the current source Alembic head is `021`.
 Verify actual Hub deployments using runtime health; a package release does not deploy the Hub.
 Repository metadata and authoritative documentation are checked together by
 `scripts/check_project_truth.py`; historical version plans are not current operational guidance.

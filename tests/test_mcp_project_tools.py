@@ -87,9 +87,9 @@ def test_core_profile_includes_project_git_identity_maintenance(monkeypatch) -> 
     monkeypatch.setenv("ECHOME_MCP_PROFILE", "core")
     tool_names = {tool.name for tool in asyncio.run(server_module.list_tools())}
 
-    assert len(tool_names) == 18
+    assert len(tool_names) == 20
     assert "echome_update_project_git_identity" in tool_names
-    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v12"
+    assert capabilities_payload()["capabilities_version"] == "echome.capabilities.v13"
 
 
 def test_create_project_silently_attaches_aliases_to_single_candidate(monkeypatch) -> None:
@@ -886,6 +886,8 @@ def test_explicit_core_profile_keeps_graph_reliability(monkeypatch) -> None:
         "echome_memory_feedback_batch",
         "echome_scene_read",
         "echome_scene_write",
+        "echome_knowledge_read",
+        "echome_knowledge_write",
         "echome_scenario_resolve",
         "echome_scenario_catalog",
         "echome_scenario_item",

@@ -1,6 +1,7 @@
 """HTTP client for MCP Server to communicate with EchoMe Hub."""
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,23 @@ class MCPHubClient:
             "Authorization": f"Bearer {config['token']}",
             "Content-Type": "application/json",
         }
+
+    async def knowledge_request(
+        self, method: str, path: str, data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Knowledge-only adapter; never forwards a reviewer credential or caches facts."""
+        headers = dict(self._headers)
+        if token := os.getenv("ECHOME_KNOWLEDGE_TOKEN"):
+            headers["Authorization"] = f"Bearer {token}"
+        base_url = os.getenv("ECHOME_KNOWLEDGE_HUB_URL", self.base_url)
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30) as client:
+            response = await client.request(method, f"/api/v1/knowledge{path}", json=data, params=params)
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Knowledge response must be an object")
+            return payload
 
     async def scenario_request(
         self,

@@ -4,6 +4,8 @@ import { router } from '@/router'
 import type {
   Memory,
   MemoryListResponse,
+  MemoryCardRating,
+  MemoryCardReviewResponse,
   MemoryCreateRequest,
   MemoryCreateResponse,
   SearchRequest,
@@ -38,6 +40,28 @@ import type {
 } from '@/types'
 
 class ApiClient {
+  knowledge<T>(method: string, path: string, body?: unknown,
+    params?: Record<string, string | number | boolean | undefined | null>, reviewKey?: string): Promise<T> {
+    return this.request<T>(method, `/knowledge${path}`, body, params, false,
+      reviewKey ? { 'X-EchoMe-Review-Key': reviewKey } : undefined)
+  }
+
+  async knowledgeAsset(file: File): Promise<{ resource_ref: string; filename: string }> {
+    const headers = this.getHeaders()
+    headers['Content-Type'] = file.type || 'application/octet-stream'
+    const response = await fetch(`${this.getBaseUrl()}/knowledge/assets?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST', headers, body: file,
+    })
+    if (!response.ok) throw new Error(`上传失败 (${response.status})`)
+    return response.json()
+  }
+
+  async knowledgeBlob(id: string): Promise<Blob> {
+    const response = await fetch(`${this.getBaseUrl()}/knowledge/assets/${encodeURIComponent(id)}`, { headers: this.getHeaders() })
+    if (!response.ok) throw new Error(`文件不可用 (${response.status})`)
+    return response.blob()
+  }
+
   private refreshing = false
   private refreshPromise: Promise<boolean> | null = null
 
@@ -108,6 +132,7 @@ class ApiClient {
     body?: unknown,
     params?: Record<string, string | number | boolean | undefined | null>,
     _retried = false,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const url = new URL(`${this.getBaseUrl()}${path}`, window.location.origin)
 
@@ -121,7 +146,7 @@ class ApiClient {
 
     const options: RequestInit = {
       method,
-      headers: this.getHeaders(),
+      headers: { ...this.getHeaders(), ...extraHeaders },
     }
 
     if (body && method !== 'GET') {
@@ -142,7 +167,7 @@ class ApiClient {
       // Try refresh token
       const refreshed = await this.tryRefresh()
       if (refreshed) {
-        return this.request<T>(method, path, body, params, true)
+        return this.request<T>(method, path, body, params, true, extraHeaders)
       }
       // Refresh failed — clear and redirect
       const { clearToken } = useAuth()
@@ -157,7 +182,8 @@ class ApiClient {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
-      const message = errorData?.error?.message || errorData?.detail || `Request failed: ${response.status}`
+      const detail = errorData?.error?.message || errorData?.detail || `Request failed: ${response.status}`
+      const message = typeof detail === 'string' ? detail : detail.message || JSON.stringify(detail)
       const { error } = useToast()
       error(message)
       throw new Error(message)
@@ -291,12 +317,21 @@ class ApiClient {
     query?: string
     offset?: number
     limit?: number
+    card_review?: 'unreviewed' | 'reviewed'
   }): Promise<MemoryListResponse> {
     return this.request<MemoryListResponse>('GET', '/memories', undefined, params)
   }
 
   async getMemory(id: string): Promise<Memory> {
     return this.request<Memory>('GET', `/memories/${id}`)
+  }
+
+  async reviewMemoryCard(body: {
+    memory_id: string
+    rating: MemoryCardRating
+    note?: string | null
+  }): Promise<MemoryCardReviewResponse> {
+    return this.request('POST', '/memory-feedback/card-review', body)
   }
 
   async createMemory(data: MemoryCreateRequest): Promise<MemoryCreateResponse> {

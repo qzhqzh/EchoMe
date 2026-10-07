@@ -3,8 +3,11 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+CARD_REVIEW_CONTEXT = "memory_card_review"
 
 
 class MemoryFeedbackRating(str, Enum):
@@ -76,3 +79,14 @@ class MemoryFeedbackCreateResponse(BaseModel):
 
 class MemoryFeedbackBatchResponse(BaseModel):
     items: list[MemoryFeedbackCreateResponse]
+
+
+class MemoryCardReviewCreate(BaseModel):
+    memory_id: uuid.UUID
+    rating: Literal["helpful", "irrelevant", "wrong"]
+    note: str | None = Field(None, max_length=4000)
+
+
+class MemoryCardReviewResponse(BaseModel):
+    feedback: MemoryFeedbackResponse
+    memory_status: Literal["active", "ai_review", "pending"]

@@ -319,6 +319,7 @@ async function copyLink(): Promise<void> {
           <div class="mt-6 flex flex-wrap gap-3">
             <button class="btn-primary" @click="showCreate = true">+ {{ tr('新增', 'New ') }}{{ label(category.cardLabel) }}</button>
             <button class="btn-secondary" @click="showImport = !showImport">{{ tr('从已有记忆收录', 'Add existing memory') }}</button>
+            <button class="btn-secondary" @click="router.push(`/cards/${kind}/review`)">{{ tr('逐张刷卡', 'Review cards') }} →</button>
           </div>
         </div>
       </section>

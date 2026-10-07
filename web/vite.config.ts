@@ -13,7 +13,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:20000',
+        target: process.env.ECHOME_DEV_API_TARGET || 'http://localhost:20000',
         changeOrigin: true,
       },
     },

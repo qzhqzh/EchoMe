@@ -30,6 +30,7 @@ const navItems = computed<NavItem[]>(() => {
     { name: t('nav_dashboard'), path: '/', icon: 'dashboard' },
     { name: t('nav_memories'), path: '/memories', icon: 'memories' },
     { name: t('nav_cards'), path: '/cards', icon: 'cards' },
+    { name: t('nav_knowledge'), path: '/knowledge', icon: 'projects' },
     { name: t('nav_review'), path: '/review', icon: 'review' },
     { name: t('nav_projects'), path: '/projects', icon: 'projects' },
     { name: t('nav_scenarios'), path: '/scenarios', icon: 'scenarios' },
