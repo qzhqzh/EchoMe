@@ -80,14 +80,15 @@ function toggleLocale(): void {
 
 <template>
   <aside
+    id="app-sidebar"
     :class="[
-      'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-700 bg-slate-800',
+      'fixed inset-y-0 left-0 z-40 flex h-screen w-64 shrink-0 flex-col border-r border-slate-700 bg-slate-800 supports-[height:100dvh]:h-dvh',
       'transition-transform duration-200 lg:static lg:translate-x-0',
       open ? 'translate-x-0' : '-translate-x-full'
     ]"
   >
     <!-- Logo -->
-    <div class="flex h-16 items-center gap-3 border-b border-slate-700 px-5">
+    <div class="flex h-16 shrink-0 items-center gap-3 border-b border-slate-700 px-5">
       <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
         <span class="text-sm font-bold text-white">E</span>
       </div>
@@ -98,7 +99,7 @@ function toggleLocale(): void {
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 space-y-1 px-3 py-4">
+    <nav class="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain px-3 py-4">
       <button
         v-for="item in visibleNavItems"
         :key="item.path"
@@ -157,7 +158,7 @@ function toggleLocale(): void {
     </nav>
 
     <!-- Add Memory button -->
-    <div class="border-t border-slate-700 px-3 py-3">
+    <div class="shrink-0 border-t border-slate-700 px-3 py-3">
       <button
         class="btn-primary w-full gap-2"
         @click="navigate('/memories/new')"
@@ -170,7 +171,7 @@ function toggleLocale(): void {
     </div>
 
     <!-- User/Logout -->
-    <div class="border-t border-slate-700 px-3 py-3">
+    <div class="shrink-0 border-t border-slate-700 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div v-if="user" class="flex items-center gap-3 px-3 py-2 mb-2">
         <img
           v-if="user.avatar_url"

@@ -139,7 +139,7 @@ async function handleTokenLogin(): Promise<void> {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-slate-900 p-4">
+  <div class="flex min-h-screen items-center justify-center bg-slate-900 p-4 supports-[height:100dvh]:min-h-dvh">
     <div class="w-full max-w-md">
       <!-- Logo -->
       <div class="mb-8 text-center">

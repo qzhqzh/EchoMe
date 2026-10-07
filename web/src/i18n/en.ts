@@ -207,6 +207,7 @@ export default {
   admin_no_email: 'No email',
 
   // Login
+  nav_menu: 'Open navigation menu',
   login_title: 'EchoMe Console',
   login_subtitle: 'Connect to your memory hub',
   login_github: 'Login with GitHub',
