@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from echome.commands import gate
 from echome.commands.gate import append_audit
+from echome.core.memory_gate import GateDecision, GateRequest, GateSettings
 from echome.main import app
 
 runner = CliRunner()
@@ -74,6 +76,39 @@ def test_sensitive_input_never_calls_model() -> None:
     assert decision["reason_code"] == "sensitive_input"
     assert decision["provider"] == "rules"
     assert "DEMO_ONLY" not in result.stdout
+
+
+@pytest.mark.parametrize("override", [None, "CUSTOM_DECISION_KEY"])
+def test_jev_uses_separate_key_environment(
+    monkeypatch: pytest.MonkeyPatch, override: str | None
+) -> None:
+    captured: list[GateSettings] = []
+
+    async def inspect(request: GateRequest, settings: GateSettings) -> GateDecision:
+        captured.append(settings)
+        return GateDecision(
+            phase=request.phase,
+            action="retrieve",
+            provider="jev",
+            reason_code="test",
+            latency_ms=0,
+        )
+
+    monkeypatch.setattr(gate, "decide", inspect)
+    monkeypatch.setenv("ECHOME_AUTH_TOKEN", "hub-credential-must-not-be-used")
+    monkeypatch.setenv("ECHOME_GATE_API_KEY", "old-provider-key-must-not-be-used")
+    monkeypatch.setenv("ECHOME_GATE_JEV_API_KEY", "synthetic-jev-key")
+    monkeypatch.setenv("CUSTOM_DECISION_KEY", "synthetic-custom-key")
+    args = ["gate", "decide", "--provider", "jev", "--base-url", "https://api.typesafe.ai"]
+    if override:
+        args.extend(["--api-key-env", override])
+    result = runner.invoke(app, args, input='{"phase":"read","text":"分析这段实现"}')
+    assert result.exit_code == 0, result.output
+    assert len(captured) == 1
+    assert captured[0].api_key == ("synthetic-custom-key" if override else "synthetic-jev-key")
+    assert captured[0].timeout_seconds == 2.0
+    assert "key" not in result.stdout
+    assert "credential" not in result.stdout
 
 
 def test_audit_refuses_public_file_and_symlink(tmp_path: Path) -> None:

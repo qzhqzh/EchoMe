@@ -72,12 +72,16 @@ def decide_command(
     input_path: Annotated[
         Path | None, typer.Option("--input", help="JSON request file; omit to read standard input.")
     ] = None,
-    provider: Annotated[str, typer.Option(help="rules, kev, or laya")] = "rules",
+    provider: Annotated[str, typer.Option(help="rules, kev, laya, or jev")] = "rules",
     base_url: Annotated[str | None, typer.Option(help="Explicit decision service URL")] = None,
     model: Annotated[str | None, typer.Option(help="Decision model identifier")] = None,
     api_key_env: Annotated[
-        str, typer.Option(help="Environment variable containing the decision service key")
-    ] = "ECHOME_GATE_API_KEY",
+        str | None,
+        typer.Option(
+            help="Key environment variable; Jev defaults to ECHOME_GATE_JEV_API_KEY, "
+            "others to ECHOME_GATE_API_KEY"
+        ),
+    ] = None,
     timeout: Annotated[float, typer.Option(min=0.1, max=30.0)] = 2.0,
     threshold: Annotated[float, typer.Option(min=0.0, max=1.0)] = 0.8,
     audit: Annotated[
@@ -103,7 +107,11 @@ def decide_command(
                 "provider": provider,
                 "base_url": base_url,
                 "model": model,
-                "api_key": os.environ.get(api_key_env, ""),
+                "api_key": os.environ.get(
+                    api_key_env
+                    or ("ECHOME_GATE_JEV_API_KEY" if provider == "jev" else "ECHOME_GATE_API_KEY"),
+                    "",
+                ),
                 "timeout_seconds": timeout,
                 "threshold": threshold,
             }

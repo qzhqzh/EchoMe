@@ -889,9 +889,10 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="echome_context",
             description=(
-                "Default EchoMe entry for any task. Automatically routes to personal memory or canonical "
-                "project context, combines project preflight when applicable, and returns evidence, conflicts, "
-                "unknowns, answerability, runtime metadata, and an explicit read-only cache fallback."
+                "Retrieve historical preferences, decisions or project context when the task needs them. "
+                "Reuse context already available; skip self-contained tasks. Prefer compact output. "
+                "Auto mode falls back to personal context when a project is unknown; registration and "
+                "task-end reporting are optional. Related knowledge references can be expanded on demand."
             ),
             inputSchema={
                 "type": "object",
@@ -938,6 +939,10 @@ async def list_tools() -> list[Tool]:
                     },
                     "client": {"type": "string"},
                     "client_version": {"type": "string"},
+                    "record_run": {
+                        "type": "boolean", "default": True,
+                        "description": "Record retrieval diagnostics. Set false for read-only probes; no task-end outcome is required.",
+                    },
                 },
                 "required": ["task"],
             },
@@ -1027,9 +1032,9 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="echome_project_context",
             description=(
-                "Default entry point for project implementation work. Returns a task-aware context pack "
+                "Retrieve a known project's history when it would affect the task. Returns a context pack "
                 "combining confirmed/proposed constraints, artifact evidence, and existing scoped memories. "
-                "Use this instead of guessing whether memory search or graph search is needed."
+                "Reuse sufficient existing context; this is optional for self-contained changes."
             ),
             inputSchema={
                 "type": "object",
@@ -1233,8 +1238,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="echome_project_preflight",
             description=(
-                "Run a read-only check before editing, testing, committing, or deploying. Returns only "
-                "evidence-backed historical warnings, relevant constraints, and explicit unknowns."
+                "Inspect historical failure evidence and constraints when a planned action needs them. "
+                "Optional; reuse an existing preflight from echome_context when sufficient."
             ),
             inputSchema={
                 "type": "object",
@@ -1583,7 +1588,7 @@ async def get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptRe
         raise ValueError(f"Unknown prompt: {name}")
     project_id = (arguments or {}).get("project_id")
     return GetPromptResult(
-        description="EchoMe summary-first retrieval workflow with graph reliability checks.",
+        description="EchoMe on-demand retrieval, context reuse, and optional reliability checks.",
         messages=[
             PromptMessage(
                 role="user",
@@ -1684,6 +1689,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                 client_version=arguments.get("client_version"),
                 output_mode=arguments.get("output_mode", "full"),
                 max_output_tokens=arguments.get("max_output_tokens"),
+                record_run=arguments.get("record_run", True),
             )
         elif name == "echome_runtime_health":
             result = await echome_runtime_health(

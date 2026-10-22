@@ -88,7 +88,9 @@ async def test_personal_context_records_actual_selected_memories() -> None:
     assert context["retrieval_trace"]["selected_count"] == 1
     assert context["token_used"] <= context["token_budget"]
     assert context["context_policy"]["diagnostic_token_overhead"] > 0
-    assert context["completion_contract"]["report_outcome"] is True
+    assert context["completion_contract"]["report_outcome"] is False
+    assert context["completion_contract"]["required_at_task_end"] is False
+    assert context["completion_contract"]["outcome_available"] is True
     assert context["completion_contract"]["context_run_id"] == context["context_run_id"]
     assert context["completion_contract"]["idempotency_key"].endswith(":completion")
     run = session.add.call_args.args[0]
@@ -285,6 +287,99 @@ async def test_unresolved_project_returns_non_terminal_recovery_envelope(monkeyp
     run = session.add.call_args.args[0]
     assert run.status == "failed"
     assert run.error_code == "PROJECT_RESOLUTION_REQUIRED"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["not_found", "ambiguous", "needs_confirmation"])
+@pytest.mark.parametrize("changed_paths", [[], ["app.py"]])
+async def test_auto_unresolved_project_uses_only_global_memory_without_confirmation(
+    monkeypatch, status, changed_paths,
+) -> None:
+    body = UnifiedContextRequest(
+        task="implement the requested change",
+        project_hint="git@example.com:owner/new-repo.git",
+        changed_paths=changed_paths,
+        record_run=False,
+    )
+    discovery = ProjectDiscovery(status=status, hints=(body.project_hint,), candidates=())
+    memory = Memory(
+        id=uuid.uuid4(), user_id="user", title="Reply preference", content="Keep replies concise.",
+        type="style", layer="L1", scope_global=True, priority=5, tags=[], status="active",
+        updated_at=datetime.now(timezone.utc),
+    )
+    retrieval = AsyncMock(return_value=SimpleNamespace(
+        items=[SimpleNamespace(memory=memory)], trace={"strategy": "hybrid_memory"},
+        total_candidates=1,
+    ))
+    compiler = AsyncMock()
+    preflight = AsyncMock()
+    monkeypatch.setattr("app.api.context_runtime.discover_projects", AsyncMock(return_value=discovery))
+    monkeypatch.setattr("app.api.context_runtime.retrieve_memories", retrieval)
+    monkeypatch.setattr("app.api.context_runtime.apply_context_policy", AsyncMock())
+    monkeypatch.setattr("app.api.context_runtime.compile_project_context", compiler)
+    monkeypatch.setattr("app.api.context_runtime.project_preflight", preflight)
+    session = AsyncMock()
+    session.add = MagicMock()
+
+    context = await _build_unified_context(body, session, "user", {"project_id": None})
+    compact = context_output(context, mode="compact", limit=3000)
+
+    assert retrieval.await_args.kwargs["global_only"] is True
+    assert context["scope"] == "personal"
+    assert context["project"] is None
+    assert context["answerability"] == "partial"
+    assert [item["id"] for item in context["memories"]] == [str(memory.id)]
+    assert compact["project_resolution"]["status"] == status
+    assert compact["project_resolution"]["requires_confirmation"] is False
+    assert compact["project_resolution"]["project_context_available"] is False
+    assert compact["runtime"]["fallback"] == "personal_unresolved_project"
+    assert compact["runtime"]["resolution_required"] is False
+    assert compact["recommended_actions"] == []
+    assert "create_proposal" not in json.dumps(context)
+    assert "next_actions" not in json.dumps(context)
+    assert context["retrieval_trace"]["project_resolution"]["status"] == status
+    compiler.assert_not_awaited()
+    preflight.assert_not_awaited()
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_fallback_records_personal_delivery_instead_of_project_failure(monkeypatch) -> None:
+    body = UnifiedContextRequest(
+        task="inspect new repository", project_hint="owner/unregistered", output_mode="compact",
+    )
+    discovery = ProjectDiscovery(status="not_found", hints=(body.project_hint,), candidates=())
+    monkeypatch.setattr("app.api.context_runtime.discover_projects", AsyncMock(return_value=discovery))
+    monkeypatch.setattr("app.api.context_runtime.retrieve_memories", AsyncMock(return_value=SimpleNamespace(
+        items=[], trace={"strategy": "hybrid_memory"}, total_candidates=0,
+    )))
+    monkeypatch.setattr("app.api.context_runtime.apply_context_policy", AsyncMock())
+    recorded = []
+
+    async def flush():
+        for run in recorded:
+            run.id = run.id or uuid.uuid4()
+            run.status = run.status or "completed"
+
+    session = AsyncMock()
+    session.add = MagicMock(side_effect=recorded.append)
+    session.flush = AsyncMock(side_effect=flush)
+    session.get = AsyncMock(side_effect=lambda *_args: recorded[0])
+    session.begin_nested = MagicMock(return_value=AsyncMock())
+    monkeypatch.setattr("app.api.context_runtime.discover_knowledge_refs", AsyncMock(return_value=[]))
+
+    output = await get_unified_context(body, session, "user")
+
+    assert output["scope"] == "personal"
+    assert len(recorded) == 1
+    assert recorded[0].status == "completed"
+    assert recorded[0].error_code is None
+    assert recorded[0].project_id is None
+    assert recorded[0].route == "personal"
+    assert recorded[0].trace["runtime"]["fallback"] == "personal_unresolved_project"
+    assert recorded[0].trace["runtime"]["latency_ms"] >= 0
+    assert recorded[0].trace["project_resolution"]["status"] == "not_found"
+    assert recorded[0].trace["requested_route"] == "project"
 
 
 @pytest.mark.asyncio

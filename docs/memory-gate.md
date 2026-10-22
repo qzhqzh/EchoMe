@@ -2,7 +2,7 @@
 
 ## 当前实现
 
-`echome gate decide` 是独立的 shadow 判断入口，支持本地规则、Kev、Laya。
+`echome gate decide` 是独立的 shadow 判断入口，支持本地规则、Kev、Laya、Jev。
 它只返回建议，不检索 Hub、不创建记忆、不执行建议，也没有安装任何客户端自动 Hook。
 因此，仅部署判断服务或运行此命令，并不会提高客户端的 EchoMe 调用覆盖率。
 
@@ -45,15 +45,33 @@ echome gate decide --input request.json \
 
 echome gate decide --input request.json \
   --provider laya --base-url http://127.0.0.1:18642
+
+# Jev 需单独配置 ECHOME_GATE_JEV_API_KEY，再显式指定服务地址
+echome gate decide --input request.json \
+  --provider jev --base-url https://api.typesafe.ai
 ```
 
-服务使用 `POST /v1/systemone`，也支持以 `/v1` 结尾的 base URL。`--model` 可覆盖默认模型 ID；这不是聊天补全接口。没有读取 Hub token 或自动发现其他服务凭据的逻辑，`--api-key-env` 可指定独立环境变量名。
+服务使用 `POST /v1/systemone`，也支持以 `/v1` 结尾的 base URL。`--model` 可覆盖默认模型 ID；这不是聊天补全接口。没有读取 Hub token 或自动发现其他服务凭据的逻辑，`--api-key-env` 可指定独立环境变量名。Jev 默认只读 `ECHOME_GATE_JEV_API_KEY`，其他模型仍用 `ECHOME_GATE_API_KEY`；Jev 缺少地址或密钥时直接本地回退。
 
 默认阈值 0.8、总超时 2 秒；概率低、429/503、超时、非法标签或分布等均回退为读取 `retrieve` / 写入 `review`。不重试，不跟随重定向，不使用 HTTP 代理环境变量。HTTP 仅接受 localhost、loopback 或私网 IP，其他显式配置的服务需 HTTPS。
 
 正文与项目提示中常见密钥、密码赋值、私钥、Bearer、`sshpass -p` 等会在模型请求前被拦截；这是常见凭据检测，并非完整数据脱敏。调用方仍应限制输入为必要的任务摘要。
 
 可选审计只记录决策元数据，不记录任务正文、项目提示、访问密钥或服务错误正文。文件必须属于当前用户、权限 600 且为普通文件，拒绝符号链接。`event-id` 用于关联调用方任务，不提供去重保证；不要用正文或凭据充当 ID。
+
+## Jev 接入边界（2026-10-22）
+
+Jev 是 TypeSafe 的判断模型；当前官方接口接受 `state`、`model` 和命名的 `questions`，Choice 返回选项及其概率分布。EchoMe 直接复用现有 HTTP 协议，无需新增 SDK。[官方 API](https://docs.typesafe.ai/api/system-one)
+
+新增 provider 名为 `jev`，与既有 `kev` 分开。默认固定为 `jev-1.13.0`，避免稳定别名升级后无声改变判断；需要其他版本时通过 `--model` 显式指定。2026-10-22 核对时，官方 `jev-latest` 指向 1.13.0、`jev-preview` 指向 1.14.0。[官方模型列表](https://docs.typesafe.ai/models)
+
+- 默认仍是 `rules`，不联网、不下载模型、不增加每轮 MCP 调用。
+- 显式配置 Jev 后，仅在规则无法判断时发送短任务摘要；沿用敏感信息拦截、2 秒总超时、零重试。
+- Jev 读取建议为 `skip` 时，仅记录 `model_action: skip` 和概率，`action` 保持 `retrieve`，理由为 `model_skip_shadow_only`。未验证的判断不能阻止需要的记忆读取；用户显式跳过与明确独立任务仍按本地规则处理。
+- 写入仍只是 `propose/review/skip` 建议，不调用 Hub，不自动写入，不向用户发起确认。任务是否调用 Gate 由客户端选择，已有可用上下文可以直接复用。
+- 阈值仍针对所选选项的概率；不把 API 的派生 `confidence` 当作另一次质量验证。[官方说明](https://docs.typesafe.ai/confidence)
+
+此接入仅通过模拟 API 的协议和失败边界测试，尚无 Jev 的真实任务准确率或延迟实测。现有 Kev/Laya 报告不代表 Jev；其历史评测脚本仍只比较原有三个 provider。正式决定是否用 Jev 减少检索前，须单独评估中文任务的漏读率与额外延迟。
 
 ## 评测与选型
 
