@@ -5,10 +5,11 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import literal, select
 
 from app.models.knowledge import KnowledgeRecord
 from app.models.scene_knowledge import SceneKnowledge, SceneKnowledgeEntry
-from app.services.knowledge_context import discover_knowledge_refs
+from app.services.knowledge_context import _match, _tokens, discover_knowledge_refs
 
 pytestmark = pytest.mark.asyncio
 
@@ -177,6 +178,7 @@ async def test_current_disputed_reviews_are_visible_without_graph_expansion(
     api, database, test_user_id, monkeypatch
 ):
     monkeypatch.setattr("app.core.config.settings.knowledge_review_key", "test-discovery-review")
+
     async def create(kind: str, **data: Any) -> dict[str, Any]:
         response = await api.post("knowledge/records", json={"kind": kind, "data": data})
         assert response.status_code == 201, response.text
@@ -202,3 +204,88 @@ async def test_current_disputed_reviews_are_visible_without_graph_expansion(
     async with database() as session:
         refs = await discover_knowledge_refs(session, user_id=test_user_id, query="Blender")
     assert refs[0]["review_state"] == "unchecked"
+
+
+async def test_model_storage_query_rejects_incidental_ai_mentions(database, test_user_id):
+    # These long documents mention common words, but do not describe local model storage.
+    incidental = [
+        ("科研图矢量化工作台产品方案", "AI 模型辅助生成。" + "图形编辑方案。" * 40 + "存储图表。"),
+        ("Figure 交付记录", "AI 在本机输出图表，记录模型的处理过程。"),
+        ("图表工作台指南", "AI 模型可选择。" * 10 + "矢量图编辑。" * 100 + "存储最终图像。"),
+        ("矢量图需求", "AI 模型处理图片，并存储处理结果。"),
+    ]
+    storage = record(
+        test_user_id,
+        kind="page",
+        title="运行约定",
+        body_md="本机模型文件应统一存储在配置的模型目录中，并复用已有下载缓存。",
+    )
+    async with database() as session:
+        session.add_all(
+            record(test_user_id, kind="page", title=title, body_md=body)
+            for title, body in incidental
+        )
+        session.add(storage)
+        await session.commit()
+        refs = await discover_knowledge_refs(
+            session,
+            user_id=test_user_id,
+            query="本机 AI 模型统一存储",
+        )
+        assert [item["id"] for item in refs] == [str(storage.id)]
+        await session.delete(storage)
+        await session.commit()
+        assert (
+            await discover_knowledge_refs(
+                session,
+                user_id=test_user_id,
+                query="本机 AI 模型统一存储",
+            )
+            == []
+        )
+
+
+async def test_body_short_terms_require_independent_nearby_matches(database, test_user_id):
+    nearby = record(
+        test_user_id, kind="page", title="运行指南", body_md="备份完成后，\n可恢复文件。"
+    )
+    distant = record(
+        test_user_id,
+        kind="page",
+        title="产品文档",
+        body_md="备份。" + "无关叙述。" * 100 + "恢复。",
+    )
+    single = record(test_user_id, kind="page", title="交付说明", body_md="备份。")
+    async with database() as session:
+        session.add_all([nearby, distant, single])
+        await session.commit()
+        refs = await discover_knowledge_refs(session, user_id=test_user_id, query="备份 恢复")
+    assert [item["id"] for item in refs] == [str(nearby.id)]
+
+
+async def test_specific_tool_and_alias_remain_discoverable(database, test_user_id):
+    tool = record(test_user_id, kind="page", title="操作步骤", body_md="使用 Blender 构建网格。")
+    alias = record(test_user_id, name="程序化造型", aliases=["Blender 建模"])
+    incidental = record(test_user_id, kind="page", title="图表指南", body_md="AI 可以处理图像。")
+    substring = record(
+        test_user_id, kind="page", title="部署说明", body_md="blenderized is a label"
+    )
+    async with database() as session:
+        session.add_all([tool, alias, incidental, substring])
+        await session.commit()
+        refs = await discover_knowledge_refs(session, user_id=test_user_id, query="AI Blender 建模")
+    assert {item["id"] for item in refs} == {str(tool.id), str(alias.id)}
+
+
+async def test_overlapping_chinese_ngrams_contribute_one_score_tier(database):
+    tokens = _tokens("规则分流 路由")
+    title_phrase, phrase_rank = _match(literal("规则分流"), literal(""), literal(""), tokens)
+    title_short, short_rank = _match(literal("路由"), literal(""), literal(""), tokens)
+    body_phrase, body_rank = _match(literal(""), literal(""), literal("规则分流"), tokens)
+    async with database() as session:
+        row = (
+            await session.execute(
+                select(title_phrase, phrase_rank, title_short, short_rank, body_phrase, body_rank)
+            )
+        ).one()
+    assert tuple(row) == (True, 5, True, 5, True, 2)

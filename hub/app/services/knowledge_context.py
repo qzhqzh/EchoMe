@@ -1,9 +1,10 @@
 """Small discovery references; snippets never become verified facts or constraints."""
 
 import re
+from itertools import combinations
 from typing import Any
 
-from sqlalchemy import Text, and_, case, func, or_, select
+from sqlalchemy import Text, and_, case, false, func, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -41,27 +42,93 @@ _GENERIC = {
     "memory",
     "knowledge",
 }
+_BROAD = {
+    "ai",
+    "llm",
+    "model",
+    "models",
+    "system",
+    "project",
+    "data",
+    "feature",
+    "workflow",
+    "模型",
+    "系统",
+    "项目",
+    "数据",
+    "功能",
+    "工作",
+    "流程",
+}
+BODY_PROXIMITY_CHARS = 80
+MAX_SHORT_BODY_TERMS = 8
 
 
 def _tokens(query: str) -> list[str]:
-    return [
+    tokens = [
         token
         for token in memory_query_tokens(query)
         if token not in _GENERIC and re.search(r"[a-z\u4e00-\u9fff]", token)
-    ][:MAX_TOKENS]
+    ]
+    # Broad terms can describe a title when asked alone, but must not drown out
+    # the more specific subject of a multi-term task.
+    if len(tokens) > 1:
+        tokens = [token for token in tokens if token not in _BROAD]
+    return tokens[:MAX_TOKENS]
+
+
+def _term_pattern(token: str) -> str:
+    pattern = re.escape(token)
+    if token.isascii():
+        # PostgreSQL word boundaries avoid e.g. "train" matching "constraint".
+        return r"\m" + pattern + r"\M"
+    return pattern
+
+
+def _term_match(field: Any, token: str) -> Any:
+    if token.isascii():
+        return field.op("~*")(_term_pattern(token))
+    escaped = token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return func.lower(field).like("%" + escaped + "%", escape="\\")
 
 
 def _match(title: Any, aliases: Any, body: Any, tokens: list[str]) -> tuple[Any, Any]:
-    """Bounded, literal LIKE terms with the same weights for both registries."""
-    conditions: list[Any] = []
-    scores: list[Any] = []
-    for token in tokens:
-        escaped = token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        for field, weight in ((title, 5), (aliases, 4), (body, 1)):
-            condition = func.lower(field).like("%" + escaped + "%", escape="\\")
-            conditions.append(condition)
-            scores.append(case((condition, weight), else_=0))
-    return or_(*conditions), sum(scores)
+    """Require a useful index match or concentrated body evidence, never word count.
+
+    One four-character Chinese phrase or non-broad Latin term can match the body.
+    Short terms need two independent matches no more than 80 characters apart.
+    A field contributes one score tier: overlapping n-grams never add votes.
+    """
+    title_match = or_(*(_term_match(title, token) for token in tokens))
+    alias_match = or_(*(_term_match(aliases, token) for token in tokens))
+    strong = [token for token in tokens if len(token) >= 4 and token not in _BROAD]
+    body_strong = or_(False, *(_term_match(body, token) for token in strong))
+    short: list[str] = []
+    for token in sorted(tokens, key=lambda value: (-len(value), value)):
+        if len(token) >= 4 or token in _BROAD:
+            continue
+        if any(token in chosen or chosen in token for chosen in short):
+            continue
+        short.append(token)
+        if len(short) >= MAX_SHORT_BODY_TERMS:
+            break
+    adjacent = []
+    for first, second in combinations(short, 2):
+        if first in second or second in first:
+            continue
+        for left, right in ((first, second), (second, first)):
+            adjacent.append(
+                _term_pattern(left)
+                + ".{0,"
+                + str(BODY_PROXIMITY_CHARS)
+                + "}"
+                + _term_pattern(right)
+            )
+    body_near = body.op("~*")("(?s)(?:" + "|".join(adjacent) + ")") if adjacent else false()
+    return (
+        or_(title_match, alias_match, body_strong, body_near),
+        case((title_match, 5), (alias_match, 4), (body_strong, 2), (body_near, 1), else_=0),
+    )
 
 
 def _reference(row: RowMapping, source: str) -> dict[str, Any]:
