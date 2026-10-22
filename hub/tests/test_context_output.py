@@ -5,7 +5,7 @@ import json
 import pytest
 
 from app.services.context_completion import completion_contract
-from app.services.context_output import context_output, measure_output
+from app.services.context_output import OUTPUT_BUDGET_NOTICE, context_output, measure_output
 
 
 @pytest.mark.parametrize("content", ["abc " * 4000, "中文记忆。" * 4000])
@@ -49,3 +49,26 @@ def test_low_budget_is_explicit_and_bounded():
     assert output["error"]["code"] == "OUTPUT_BUDGET_TOO_SMALL"
     assert output["output_usage"]["tokens_upper_bound"] == measure_output(output) <= 256
     assert "Rule" not in json.dumps(output)
+
+
+def test_oversized_optional_reference_does_not_fail_complete_mandatory_envelope():
+    rule = {"id": "rule", "type": "guardrail", "content": "Preserve existing data."}
+    output = context_output(
+        {
+            "memories": [
+                rule,
+                {"id": "optional", "title": "Large title " * 500, "content": "Detail " * 1000},
+            ],
+            "answerability": "supported",
+        },
+        mode="compact",
+        limit=1000,
+    )
+
+    assert "error" not in output
+    assert output["memories"] == [rule]
+    assert "memory_index" not in output
+    assert output["omitted_counts"] == {"memories": 1}
+    assert output["answerability"] == "partial"
+    assert OUTPUT_BUDGET_NOTICE in output["unknowns"]
+    assert measure_output(output) <= 1000

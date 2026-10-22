@@ -14,9 +14,14 @@ from echome.core.gate_safety import contains_sensitive_input, validate_provider_
 
 GatePhase = Literal["read", "write"]
 GateAction = Literal["retrieve", "reuse", "skip", "propose", "review"]
-GateProvider = Literal["rules", "kev", "laya"]
+GateProvider = Literal["rules", "kev", "laya", "jev"]
 SCHEMA_VERSION = "echome.memory-gate.v1"
-_DEFAULT_MODELS = {"kev": "kev-4b", "laya": "convaiinnovations/laya-multilingual"}
+_DEFAULT_MODELS = {
+    "kev": "kev-4b",
+    "laya": "convaiinnovations/laya-multilingual",
+    # Pin the documented stable version instead of silently following a moving alias.
+    "jev": "jev-1.13.0",
+}
 _CRITERIA = {
     "read": {
         "retrieve": "个性化回答、项目变更或恢复任务，需要已有偏好、约定或项目事实",
@@ -266,7 +271,7 @@ async def decide(request: GateRequest, settings: GateSettings) -> GateDecision:
         return receipt(
             fallback, "conservative_read" if request.phase == "read" else "uncertain_write"
         )
-    if not settings.base_url:
+    if not settings.base_url or (settings.provider == "jev" and not settings.api_key.strip()):
         return receipt(
             fallback, "provider_not_configured", provider=settings.provider, degraded=True
         )
@@ -306,6 +311,16 @@ async def decide(request: GateRequest, settings: GateSettings) -> GateDecision:
             probability=probability,
             model_action=action,
             degraded=True,
+        )
+    if settings.provider == "jev" and request.phase == "read" and action == "skip":
+        # Jev has not been evaluated on this user's tasks. Observe its recommendation
+        # without letting an unvalidated model suppress a potentially useful retrieval.
+        return receipt(
+            "retrieve",
+            "model_skip_shadow_only",
+            provider=settings.provider,
+            probability=probability,
+            model_action=action,
         )
     return receipt(
         action,

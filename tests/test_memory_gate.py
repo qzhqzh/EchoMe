@@ -171,7 +171,7 @@ async def test_sensitive_input_never_transmitted_or_returned(
     assert capsys.readouterr() == ("", "")
 
 
-@pytest.mark.parametrize("kind", ["kev", "laya"])
+@pytest.mark.parametrize("kind", ["kev", "laya", "jev"])
 async def test_choice_probability_and_payload(
     provider: Callable[..., list[httpx.Request]], kind: str
 ) -> None:
@@ -181,7 +181,8 @@ async def test_choice_probability_and_payload(
         provider=kind, base_url="http://192.168.1.20:8009/v1", api_key="synthetic-invalid-key"
     )
     result = await decide(request, settings)
-    assert result.action == "skip"
+    assert result.action == ("retrieve" if kind == "jev" else "skip")
+    assert result.reason_code == ("model_skip_shadow_only" if kind == "jev" else "model_choice")
     assert result.model_probability == 0.9
     assert result.model_action == "skip"
     assert result.degraded is False
@@ -192,6 +193,14 @@ async def test_choice_probability_and_payload(
     assert calls[0].headers["authorization"] == "Bearer synthetic-invalid-key"
     assert json.loads(calls[0].content) == build_systemone_payload(request, settings)
     payload = json.loads(calls[0].content)
+    assert (
+        payload["model"]
+        == {
+            "kev": "kev-4b",
+            "laya": "convaiinnovations/laya-multilingual",
+            "jev": "jev-1.13.0",
+        }[kind]
+    )
     assert payload["state"] == {"text": "分析这段实现", "project_hint": "EchoMe"}
     assert payload["questions"]["action"]["type"] == "choice"
     assert set(payload["questions"]["action"]["criteria"]) == {"retrieve", "skip"}
@@ -199,6 +208,7 @@ async def test_choice_probability_and_payload(
 
 
 @pytest.mark.parametrize(("phase", "action"), [("read", "retrieve"), ("write", "review")])
+@pytest.mark.parametrize("kind", ["kev", "jev"])
 @pytest.mark.parametrize(
     "failure",
     [
@@ -222,6 +232,7 @@ async def test_provider_failure_is_phase_safe(
     phase: str,
     action: str,
     failure: str,
+    kind: str,
 ) -> None:
     valid = (
         {"retrieve": 0.9, "skip": 0.1}
@@ -258,7 +269,9 @@ async def test_provider_failure_is_phase_safe(
     calls = provider(answer(choice, valid), **kwargs)
     result = await decide(
         GateRequest(phase=phase, text="检查这段内容是否有帮助"),
-        GateSettings(provider="kev", base_url="http://localhost:8009"),
+        GateSettings(
+            provider=kind, base_url="http://localhost:8009", api_key="synthetic-invalid-key"
+        ),
     )
     assert len(calls) == 1
     assert result.action == action
@@ -266,6 +279,68 @@ async def test_provider_failure_is_phase_safe(
     assert result.model_probability is None
     assert "synthetic-private-error" not in result.model_dump_json()
     assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("phase", ["read", "write"])
+@pytest.mark.parametrize("configured", ["neither", "url_only", "key_only"])
+async def test_jev_requires_explicit_url_and_separate_key(
+    provider: Callable[..., list[httpx.Request]], phase: str, configured: str
+) -> None:
+    calls = provider(error=AssertionError("Unconfigured Jev must not make a network request"))
+    settings = GateSettings(
+        provider="jev",
+        base_url="https://api.typesafe.ai" if configured == "url_only" else None,
+        api_key="synthetic-invalid-key" if configured == "key_only" else "",
+    )
+    result = await decide(GateRequest(phase=phase, text="分析这段实现"), settings)
+    assert result.action == ("retrieve" if phase == "read" else "review")
+    assert result.reason_code == "provider_not_configured"
+    assert result.shadow is True
+    assert result.degraded is True
+    assert calls == []
+
+
+async def test_jev_explicit_read_overrides_model_and_reuse_needs_no_network(
+    provider: Callable[..., list[httpx.Request]],
+) -> None:
+    calls = provider(error=AssertionError("Explicit intent and reusable context are local"))
+    settings = GateSettings(
+        provider="jev", base_url="https://api.typesafe.ai", api_key="synthetic-invalid-key"
+    )
+    explicit = await decide(
+        GateRequest(phase="read", text="分析这段实现", explicit_action="read"), settings
+    )
+    reuse = await decide(
+        GateRequest(phase="read", text="继续修改按钮", context_available=True), settings
+    )
+    assert (explicit.action, reuse.action) == ("retrieve", "reuse")
+    assert explicit.provider == reuse.provider == "rules"
+    assert calls == []
+
+
+async def test_jev_write_stays_shadow_and_supports_explicit_model(
+    provider: Callable[..., list[httpx.Request]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Jev must not instantiate HubClient")
+
+    monkeypatch.setattr(HubClient, "__init__", forbidden)
+    calls = provider(answer("propose", {"propose": 0.9, "skip": 0.05, "review": 0.05}))
+    result = await decide(
+        GateRequest(phase="write", text="分析这段实现"),
+        GateSettings(
+            provider="jev",
+            base_url="https://api.typesafe.ai",
+            model="jev-1.14.0",
+            api_key="synthetic-invalid-key",
+        ),
+    )
+    assert len(calls) == 1
+    assert str(calls[0].url) == "https://api.typesafe.ai/v1/systemone"
+    assert json.loads(calls[0].content)["model"] == "jev-1.14.0"
+    assert result.model == "jev-1.14.0"
+    assert result.action == "propose"
+    assert result.shadow is True
 
 
 async def test_redirect_is_not_followed(provider: Callable[..., list[httpx.Request]]) -> None:

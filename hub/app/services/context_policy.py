@@ -30,6 +30,7 @@ INACTIVE_CONSTRAINT_STATUSES = {"superseded", "deprecated"}
 VOLATILE_TAGS = {"volatile", "temporary", "current-state", "short-lived", "time-sensitive"}
 STABLE_TAGS = {"stable", "core", "identity", "guardrail", "invariant", "red-line"}
 EPISODIC_TAGS = {"event", "incident", "failure", "deploy", "release", "test-result"}
+CONCERN_RATINGS = {"outdated", "wrong", "conflicting"}
 TEMPORAL_TERMS = {
     "current version",
     "latest version",
@@ -81,6 +82,48 @@ def _fingerprint(payload: dict[str, Any]) -> str:
         default=str,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _current_memory_feedback(
+    memory: Memory, feedback: list[MemoryFeedback]
+) -> list[MemoryFeedback]:
+    """Feedback before the latest revision cannot invalidate corrected content."""
+    revised_at = _as_utc(memory.updated_at)
+    if revised_at is None:
+        return []
+    return [
+        item
+        for item in feedback
+        if (reported_at := _as_utc(item.created_at)) is not None and reported_at >= revised_at
+    ]
+
+
+def _feedback_warning(feedback: list[MemoryFeedback]) -> dict[str, Any] | None:
+    concerns = [item for item in feedback if item.rating in CONCERN_RATINGS]
+    if not concerns:
+        return None
+    # Keep the warning bounded. A later helpful rating does not resolve a concern.
+    latest = sorted(
+        concerns,
+        key=lambda item: (
+            _as_utc(item.created_at) or datetime.min.replace(tzinfo=timezone.utc),
+            str(item.id),
+        ),
+        reverse=True,
+    )
+    return {
+        "code": "reported_memory_concern",
+        "ratings": sorted({item.rating for item in concerns}),
+        "message": "Unverified feedback; prefer verified current evidence over this memory.",
+        "feedback": [
+            {
+                "id": str(item.id),
+                "used_by": item.used_by,
+                "source": item.source,
+            }
+            for item in latest[:2]
+        ],
+    }
 
 
 def _memory_class(memory: Memory) -> tuple[str, list[str]]:
@@ -151,6 +194,7 @@ def record_policy_diagnostic_overhead(context: dict[str, Any]) -> None:
                 if isinstance(item, dict):
                     item.pop("reliability", None)
                     item.pop("intervention", None)
+                    item.pop("warning", None)
         overhead = max(0, count_tokens(str(context)) - count_tokens(str(neutral)))
         if policy["diagnostic_token_overhead"] == overhead:
             break
@@ -269,6 +313,7 @@ def _assess_memory(
                 "other_memory_id": str(other_id),
             }
         )
+    feedback = _current_memory_feedback(memory, feedback)
     feedback_counts = Counter(item.rating for item in feedback)
     feedback_latest = _latest(*(item.created_at for item in feedback))
     project_activity = _latest(*(activity.get(item) for item in memory.scope_projects or []))
@@ -571,6 +616,11 @@ async def apply_context_policy(
         )
         payload["reliability"] = reliability
         payload["intervention"] = intervention
+        warning = _feedback_warning(_current_memory_feedback(selected_memory, feedback[memory_id]))
+        if warning is not None:
+            # Visible even in shadow/compact output; does not validate the report
+            # or mutate, suppress, or change the authority of the source memory.
+            payload["warning"] = warning
         decision_counts[intervention["action"]] += 1
         persistence_rows.append(
             {

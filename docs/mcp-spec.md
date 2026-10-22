@@ -62,15 +62,16 @@ EchoMe 仍会兼容写入 `~/.codex/mcp.json`，但 Codex 是否读取它取决�
 
 ### 4.0 当前源码的默认入口与运行契约
 
-- `echome_context`：任务默认入口；可同时推断当前 Git remote 与 repository root，解析 canonical project，并返回统一 context envelope。
+- `echome_context`：需要历史上下文时的查询入口；可同时推断当前 Git remote 与 repository root，解析 canonical project，并返回统一 context envelope。当前信息足够时无需调用。
+  推荐 `output_mode=compact`；兼容保留默认 full。`record_run=false` 可用于不写入 ContextRun 的诊断查询。
 - `echome_runtime_health`：检查 MCP/Hub/schema 版本、profile、数据库、embedding、feature flags 和缓存边界；传
   `include_policy_readiness=true` 时返回只读策略门禁。
-- `echome_context_outcome`：对 completed、non-shadow Context Run 追加幂等结果信号；可附带显式
-  `policy_effect`，缺失信号不等于失败。
+- `echome_context_outcome`：有明确帮助或纠正证据时，可选对 completed、non-shadow Context Run 追加幂等结果信号；可附带显式
+  `policy_effect`，缺失信号不等于失败。不要求任务结束时例行报 `no_signal`。
 - `echome_update_project_git_identity`：为已确认的既有项目生成服务端变更预览；用户确认后必须把预览返回的
   `confirmation_token` 原样回传，才能补录主 Git remote 或 active Git remote aliases。状态变化会使旧 token 失效。
   替换主 remote 时不会自动保留旧地址；仍需兼容时应在同一预览中显式提交旧地址 alias。
-- `echome_create_project`：项目发现为 `not_found` 时直接静默创建；只有一个可复用候选时不创建重复项目，
+- `echome_create_project`：仅在用户要求项目登记或身份维护时调用，查询未命中不触发自动创建。工具被显式调用后，项目发现为 `not_found` 时直接创建；只有一个可复用候选时不创建重复项目，
   而是原子补录 active aliases。`confirmed_new_project` 仅为旧客户端保留，不再作为创建门禁；多个冲突候选仍停止。
 - 新安装配置默认显式使用 `core`：暴露 capability、context、health、graph explain、remember、outcome、memory feedback、安全项目创建与 Git identity 维护、2 个卡片入口，以及 2 个场景资料入口、4 个流程/事项入口和 2 个知识库入口，共 20 个工具。
 - `ECHOME_MCP_PROFILE=full`：显式启用 summary-first、Project Knowledge、Sleep 等完整专业工具集。
@@ -87,20 +88,29 @@ MCP-facing 错误使用 `echome.error.v1`，至少包含 `code`、非空 `messag
 项目身份恢复使用 `echome.project-resolution.v1`：
 
 - `resolved`：精确匹配，或唯一且高置信的确定性候选；候选可用于本次 context。
-- 单一 `needs_confirmation`：优先返回 `create_or_attach_project`，Agent 可直接调用 `echome_create_project`
-  静默补 active aliases，无须询问用户；多个候选的 `ambiguous` 仍必须继续选择或询问。
-- `not_found`：返回 `echome_create_project` 参数预案，Agent 直接静默创建，无须用户显式确认。
+- `needs_confirmation` / `ambiguous` / `not_found`：项目归属未确定；普通任务按当前证据继续，
+  不因查询失败自动登记项目或要求用户确认。返回的身份恢复建议仅在确实需要项目专属上下文或用户要求身份维护时使用。
 - 已 `resolved` 的单一候选由 Git remote 线索恢复、但项目尚未登记主 identity 时，会返回
-  `confirm_then_update_project_git_identity`；Agent 必须先以 `confirmed=false` 展示服务端预览。
-- `scope=project_resolution` 是正常 MCP 结果，不设置 protocol error，也不进入 last-known-good 缓存。
+  `confirm_then_update_project_git_identity`；仅在用户要求维护身份时执行，并先以 `confirmed=false` 展示服务端预览。
+- `mode=auto` 未解析项目时降级为只检索全局个人记忆，保留 `project_resolution` 未解析标记；不猜测项目、不要求登记。记录的 run 为 completed personal，trace 保留原始发现结果和耗时。
+- 显式 `project/impact/temporal` 未解析时的 `scope=project_resolution` 是正常 MCP 结果，不设置 protocol error，也不进入 last-known-good 缓存。
 - 因为尚未生成可使用的 context，该结果不返回 completion contract；Hub 可将诊断 run 记为
   `failed/PROJECT_RESOLUTION_REQUIRED`，与传输或编译错误分开统计。
+
+当前时点的 personal/project context 还附带最多 4 条 `knowledge_refs`，从同一用户的知识实体、关系、Page 与可见场景条目发现。它们是候选摘要，带 `source/id/revision`、`needs_expansion` 和读取参数；必须展开核对来源、审核与适用条件，不能作为已确认事实或强约束。场景仅限全局或已解析项目，历史查询不混入当前知识。候选检索限定两条有界 SQL，每条最多 500 毫秒且不放宽已有更短限时；查询失败或超时通过保存点回滚跳过，成功时恢复原限时，避免影响外层记忆检索和运行记录。compact 只用剩余预算保留引用，独立计量并记录实际交付引用。普通搜索不承诺无漏，完整枚举仍使用结构化 Query。
+
+completion contract 保留原有字段及 outcome 枚举，`report_outcome=false`、`required_at_task_end=false`；`outcome_available` 表示是否接受显式反馈，缓存与 shadow 结果为 false。
 
 当前 `echome_context` 与 `echome_project_context` 支持 `policy_mode`：
 
 - 默认 `shadow`，返回 reliability、intervention 和 policy trace，但不改变选入结果。
 - `off` 跳过策略计算。
 - `enforce` 还需要 Hub 的 `ECHOME_CONTEXT_POLICY_ENFORCE_ENABLED` 显式开启，否则回退 shadow。
+
+在 shadow 下，当前修订收到 `outdated / wrong / conflicting` 反馈时，记忆正文仍保留，并附上
+`warning`（包含反馈者类型和最多两个反馈 ID），compact 输出也保留。它表示待核对的反馈，
+不将 AI 反馈当成人工确认，也不改变记忆状态或 authority。早于 `memory.updated_at` 的反馈
+不再用于判断已修订正文；后来的 helpful 反馈本身不会消除尚未修订内容的冲突。
 
 `echome_capabilities` 当前契约版本为 `echome.capabilities.v13`。core profile 包含 20 个工具；AI 可通过
 `echome_runtime_health(include_policy_readiness=true)` 读取校准门禁。
@@ -419,11 +429,11 @@ compact 省略重复诊断，必要时整条移除可选内容，并通过 `omit
 ```markdown
 ### 如何获取更多上下文
 1. 首次使用或不确定工具时，先调用 echome_capabilities。
-2. 首条任务消息后调用 echome_context，传入任务、已知 project hint 和 changed paths。
-3. 命中规范时只复述与任务有关的关键点；后续按需查询，无命中就停止扩展。
+2. 仅当缺少的历史信息会影响当前任务，或用户明确要求回忆时，调用 echome_context；传入已知 project hint 和 changed paths。
+3. 当前对话信息足够时直接复用，无需例行复述或确认。无命中、未知项目或工具不可用时按当前证据继续，不自动建项目。
 4. 使用可能过时的项目决策、版本或环境信息前，调用 echome_memory_explain 检查来源。
 5. 用户要求记住，或发现稳定且可复用的信息时，调用 echome_remember 写入 ai_review。
-6. 明确有用、过时或冲突的记忆可提交 memory feedback；任务结束按 completion contract 提交 context outcome。
+6. 明确有用、过时或冲突时可提交 memory feedback/context outcome；使用返回的 run id 和幂等键，不为未知效果例行报 no_signal，不要求用户评分。
 ```
 
 这是简化示例；实际同步引导由 [renderer.py](../hub/app/services/renderer.py) 生成。
@@ -433,12 +443,12 @@ compact 省略重复诊断，必要时整条移除可选内容，并通过 `omit
 | 场景 | 触发的 Tool |
 |---|---|
 | 首次能力发现 | `echome_capabilities` |
-| 开始任务、PR 规范、历史决策或不确定项目约定 | `echome_context` |
+| 缺少的历史决策、用户偏好或项目约定会改变当前判断 | `echome_context` |
 | 关键记忆可能过时或存在替代关系 | `echome_memory_explain` |
 | 用户说“记住/以后”或观察到稳定约定 | `echome_remember` |
 | 需要额外浏览候选/精读，且已启用 full | `echome_search_summary` → `echome_get_memories` |
 | 记忆有效性已有明确结果 | `echome_memory_feedback` |
-| 已记录的 Context Run 完成 | `echome_context_outcome` |
+| 已记录的 Context Run 有明确有效性或纠正证据（可选） | `echome_context_outcome` |
 
 ### 7.3 不应调用的场景
 

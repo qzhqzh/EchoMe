@@ -8,6 +8,7 @@ import pytest
 
 from app.models.memory import Memory, MemoryEdge, MemoryFeedback
 from app.models.project_knowledge import ProjectConstraint
+from app.services.context_output import context_output
 from app.services.context_policy import (
     _assess_constraint,
     _assess_memory,
@@ -279,3 +280,91 @@ async def test_enabled_enforce_withholds_historical_memory(monkeypatch) -> None:
     assert result["memories"] == []
     assert result["context_policy"]["excluded"]["memories"] == [str(memory.id)]
     assert result["context_policy"]["source_mutation"] == "none"
+
+
+@pytest.mark.parametrize("rating", ["wrong", "outdated", "conflicting"])
+@pytest.mark.parametrize("revised_after_report", [False, True])
+def test_feedback_applies_only_to_the_reported_memory_revision(
+    rating: str, revised_after_report: bool
+) -> None:
+    now = datetime.now(timezone.utc)
+    memory = _memory(
+        updated_at=now - timedelta(days=1) if revised_after_report else now - timedelta(days=3)
+    )
+    feedback = MemoryFeedback(
+        id=uuid.uuid4(),
+        user_id="user",
+        memory_id=memory.id,
+        rating=rating,
+        created_at=now - timedelta(days=2),
+    )
+    result = _assess_memory(memory, edges=[], feedback=[feedback], activity={}, now=now)
+
+    expected = "conflicting" if rating == "conflicting" else "needs_verification"
+    assert result["support_state"] == ("current_supported" if revised_after_report else expected)
+    assert result["source_watermark"]["feedback_counts"] == (
+        {} if revised_after_report else {rating: 1}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revised_after_report", [False, True])
+async def test_shadow_concern_survives_compact_output_without_changing_memory_authority(
+    monkeypatch, revised_after_report: bool
+) -> None:
+    now = datetime.now(timezone.utc)
+    memory = _memory(
+        status="ai_review",
+        updated_at=now if revised_after_report else now - timedelta(days=3),
+    )
+    feedback = [
+        MemoryFeedback(
+            id=uuid.uuid4(),
+            user_id="user",
+            memory_id=memory.id,
+            rating=rating,
+            used_by="ai",
+            source="mcp",
+            created_at=now - timedelta(hours=5 - index),
+        )
+        for index, rating in enumerate(["outdated", "wrong", "conflicting", "helpful"])
+    ]
+    result_set = MagicMock()
+    result_set.scalars.return_value.all.return_value = [memory]
+    session = AsyncMock()
+    session.execute.return_value = result_set
+    monkeypatch.setattr(
+        "app.services.context_policy._load_memory_signals",
+        AsyncMock(return_value=({memory.id: []}, {memory.id: feedback})),
+    )
+    monkeypatch.setattr(
+        "app.services.context_policy._project_activity", AsyncMock(return_value={})
+    )
+    original = (memory.status, memory.content, memory.updated_at)
+
+    result = await apply_context_policy(
+        session,
+        user_id="user",
+        context={"memories": [{"id": str(memory.id), "content": memory.content}]},
+        requested_mode="shadow",
+        enforce_enabled=False,
+        persist_assessments=False,
+    )
+    compact = context_output(result, mode="compact", limit=3000)
+    delivered = compact["memories"][0]
+
+    assert delivered["content"] == memory.content
+    assert (memory.status, memory.content, memory.updated_at) == original
+    assert result["memories"][0]["reliability"]["authority"] == "provisional"
+    assert result["context_policy"]["enforced"] is False
+    assert result["context_policy"]["source_mutation"] == "none"
+    if revised_after_report:
+        assert "warning" not in delivered
+        assert result["memories"][0]["reliability"]["support_state"] == "current_supported"
+    else:
+        assert delivered["warning"]["ratings"] == ["conflicting", "outdated", "wrong"]
+        assert len(delivered["warning"]["feedback"]) == 2
+        assert {item["used_by"] for item in delivered["warning"]["feedback"]} == {"ai"}
+        assert {item["source"] for item in delivered["warning"]["feedback"]} == {"mcp"}
+        assert delivered["warning"]["message"].startswith("Unverified feedback")
+        assert result["memories"][0]["reliability"]["support_state"] == "conflicting"

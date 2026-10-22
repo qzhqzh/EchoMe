@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
@@ -255,6 +255,8 @@ async def test_runtime_diagnostics_distinguish_compilation_delivery_and_referenc
     )
     session = AsyncMock()
     session.get.return_value = run
+    session.begin_nested = MagicMock(return_value=AsyncMock())
+    monkeypatch.setattr("app.api.context_runtime.discover_knowledge_refs", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         "app.api.context_runtime._build_unified_context",
         AsyncMock(return_value=source),
@@ -273,6 +275,7 @@ async def test_runtime_diagnostics_distinguish_compilation_delivery_and_referenc
     assert run.trace["compiled_content_tokens"] == content_tokens(source) > 0
     assert run.trace["delivered_content_tokens"] == output.get("delivered_content_tokens", 0)
     assert run.trace["memory_index_tokens"] == output.get("memory_index_tokens", 0)
+    assert run.trace["runtime"]["latency_ms"] == source["runtime"]["latency_ms"]
     assert run.token_used == 2200
     assert run.status == ("failed" if delivery == "error" else "completed")
     assert measure_output(output) <= 2200

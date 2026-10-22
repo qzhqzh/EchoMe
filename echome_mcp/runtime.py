@@ -271,6 +271,7 @@ async def echome_context(
     client_version: str | None = None,
     output_mode: str = "full",
     max_output_tokens: int | None = None,
+    record_run: bool = True,
 ) -> str:
     """Call the unified Hub route and degrade only to an exact last-known-good read."""
     request_id = str(uuid.uuid4())
@@ -307,7 +308,7 @@ async def echome_context(
         "as_of": as_of,
         "valid_at": valid_at,
         "policy_mode": policy_mode,
-        "record_run": True,
+        "record_run": record_run,
         "request_id": request_id,
         "client": client or "mcp",
         "client_version": client_version or __version__,
@@ -346,6 +347,7 @@ async def echome_context(
                 "schema_version": "echome.context-completion.v1",
                 "report_outcome": False,
                 "required_at_task_end": False,
+                "outcome_available": False,
                 "reason": "Cached context is read-only and does not represent a new context run.",
             }
             return serialize(cached)

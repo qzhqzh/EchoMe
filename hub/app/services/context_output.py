@@ -45,6 +45,10 @@ def _account_delivery(payload: dict[str, Any], limit: int | None) -> dict[str, A
         if references
         else 0
     )
+    if "knowledge_refs" in payload:
+        payload["knowledge_refs_tokens"] = count_tokens(
+            json.dumps(payload["knowledge_refs"], ensure_ascii=False, separators=(",", ":"))
+        ) if payload["knowledge_refs"] else 0
     return account_output(payload, limit)
 
 
@@ -109,7 +113,10 @@ def context_output(
         output["project"].pop("description", None)
     if isinstance(output.get("runtime"), dict):
         output["runtime"].pop("latency_ms", None)
-    if not output.get("runtime", {}).get("resolution_required"):
+    if (
+        not output.get("runtime", {}).get("resolution_required")
+        and output.get("runtime", {}).get("fallback") != "personal_unresolved_project"
+    ):
         output.pop("project_resolution", None)
     for kind in ("memories", "constraints"):
         for item in output.get(kind, []):
@@ -153,14 +160,18 @@ def context_output(
 
     protected_ids = {str(item.get("id")) for item in output.get("must_include", [])}
     originals = {key: output.get(key, []) for key in ("memories", "artifacts", "evidence")}
+    if "knowledge_refs" in output:
+        originals["knowledge_refs"] = output["knowledge_refs"]
     retained: dict[str, set[int]] = {}
     for kind, items in originals.items():
         retained[kind] = {
             index
             for index, item in enumerate(items)
-            if str(item.get("id")) in protected_ids
-            or item.get("type") == "guardrail"
-            or item.get("layer") == "L0"
+            if kind != "knowledge_refs" and (
+                str(item.get("id")) in protected_ids
+                or item.get("type") == "guardrail"
+                or item.get("layer") == "L0"
+            )
         }
         output[kind] = [item for index, item in enumerate(items) if index in retained[kind]]
         omitted = len(items) - len(output[kind])
@@ -172,6 +183,9 @@ def context_output(
     original_answerability = output.get("answerability")
 
     def fits() -> bool:
+        if output.get("knowledge_refs") == []:
+            output.pop("knowledge_refs")
+            output.pop("knowledge_refs_tokens", None)
         if original_answerability not in {"conflicted", "insufficient_evidence"}:
             output["answerability"] = (
                 "partial"
@@ -216,10 +230,12 @@ def context_output(
                     if not fits():
                         output["memory_index"].pop()
                 if not output["memory_index"]:
-                    # Even a reference cannot fit alongside the safety envelope.
-                    output["memory_index"] = references[:1]
-                    fits()
-                    return _budget_error(output, limit)
+                    # References are optional, too. A large title must not turn
+                    # an otherwise complete safety envelope into an error.
+                    output.pop("memory_index")
+                    output["unknowns"].remove(MEMORY_INDEX_NOTICE)
+                    if OUTPUT_BUDGET_NOTICE not in output["unknowns"]:
+                        output["unknowns"].append(OUTPUT_BUDGET_NOTICE)
     output["omitted_counts"] = {
         key: count for key, count in output["omitted_counts"].items() if count
     }

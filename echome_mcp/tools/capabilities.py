@@ -16,6 +16,15 @@ CAPABILITIES: dict[str, Any] = {
     "purpose": "Personal memory and project context layer for AI agents.",
     "recommended_start": "echome_capabilities",
     "default_context_tool": "echome_context",
+    "usage_policy": {
+        "retrieval": "on_demand",
+        "trigger": "Missing historical context would materially change the answer or action, or the user explicitly requests recall.",
+        "reuse": "Reuse relevant context already available in the conversation; retrieve again only for a new gap, conflict, or freshness concern.",
+        "unmatched_project": "continue_without_project",
+        "project_creation": "explicit_request_only",
+        "outcome": "optional_when_evidence_is_clear",
+        "precedence": "Current user instructions and verified current evidence take precedence over historical memory.",
+    },
     "knowledge_workflow": [
         {"step": "discover", "tool": "echome_knowledge_read", "when": "For knowledge projects/questions, read schema once, list by kind/search, then request context for the selected stable UUID. Follow omitted_fields and next_offset."},
         {"step": "maintain", "tool": "echome_knowledge_write", "when": "Save coarse independent knowledge, exact source/usage versions and actual outputs. Propose risky semantic edits as review records; never self-approve."},
@@ -44,7 +53,7 @@ CAPABILITIES: dict[str, Any] = {
         {
             "step": "discover",
             "tool": "echome_search_summary",
-            "when": "Broad tasks, project work, user preferences, historical decisions, or many possible memories.",
+            "when": "Historical context is needed and a broad set of candidate memories needs browsing; skip when current context is sufficient.",
         },
         {
             "step": "read",
@@ -66,22 +75,22 @@ CAPABILITIES: dict[str, Any] = {
         {
             "step": "resolve",
             "tool": "echome_context",
-            "when": "Send all known project identity signals. Follow project_resolution retry actions instead of stopping after an unmatched hint.",
+            "when": "When missing project history matters, send known identity signals. If unresolved, continue from current evidence without creating a project or requiring user confirmation.",
         },
         {
             "step": "maintain_identity",
             "tool": "echome_update_project_git_identity",
-            "when": "Explicit primary Git remote mutations remain preview-confirmed; safe missing aliases are attached by echome_create_project.",
+            "when": "Only when project registration or identity maintenance is requested. Explicit primary Git remote mutations remain preview-confirmed.",
         },
         {
             "step": "preflight",
             "tool": "echome_project_preflight",
-            "when": "Before a material edit, test, commit, migration, or deploy; returns evidence-backed warnings only.",
+            "when": "When a relevant past failure or validation requirement is missing from current context; returns evidence-backed warnings without blocking work.",
         },
         {
             "step": "context",
             "tool": "echome_project_context",
-            "when": "Default project task entry; choose local, overview, or impact mode and pass changed paths.",
+            "when": "When project constraints or historical evidence are missing; choose local, overview, or impact mode and pass changed paths. Reuse an existing context pack when sufficient.",
         },
         {
             "step": "impact",
@@ -139,14 +148,14 @@ CAPABILITIES: dict[str, Any] = {
             },
             {
                 "tool": "echome_context_outcome",
-                "when": "At the end of every recorded non-shadow context run. Use no_signal when usefulness cannot be judged.",
+                "when": "Optional: append an evidenced usefulness or correction result for a recorded non-shadow run. Skip when usefulness is unknown; no routine no_signal report or user rating request is needed.",
                 "mutates_state": True,
             },
         ],
         "retrieval": [
             {
                 "tool": "echome_search_summary",
-                "when": "Default first retrieval tool for broad or uncertain questions.",
+                "when": "Browse candidate memories when missing historical context matters and the query is broad or uncertain.",
                 "mutates_state": False,
             },
             {
@@ -185,7 +194,7 @@ CAPABILITIES: dict[str, Any] = {
         "project_intelligence": [
             {
                 "tool": "echome_project_context",
-                "when": "Default entry for project implementation tasks; combines project constraints, artifact evidence, and scoped memories.",
+                "when": "Retrieve missing project constraints, artifact evidence, or scoped memories when they would change the task.",
                 "mutates_state": False,
             },
             {
@@ -195,7 +204,7 @@ CAPABILITIES: dict[str, Any] = {
             },
             {
                 "tool": "echome_project_preflight",
-                "when": "Before project actions; recalls evidence-backed failures and validation requirements without blocking the action.",
+                "when": "Recall relevant past failures or validation requirements that are not already known; warnings do not block the action.",
                 "mutates_state": False,
             },
             {
@@ -231,7 +240,7 @@ CAPABILITIES: dict[str, Any] = {
         "project_identity": [
             {
                 "tool": "echome_create_project",
-                "when": "After project discovery: silently create on not_found, or reuse one candidate and attach active aliases. Multiple candidates still stop.",
+                "when": "Only when the user requests project registration or identity maintenance. Retrieval misses do not authorize creation; resolve ambiguity before any write.",
                 "mutates_state": True,
                 "requires_confirmation": False,
                 "idempotent": True,
@@ -290,20 +299,21 @@ CAPABILITIES: dict[str, Any] = {
         "EchoMe stores scenario state and due times but does not execute tasks or schedule a worker; a connected executor must claim, run, and finish each check.",
         "Use echome_context when historical preferences or project conventions materially affect the task; do not query it mechanically for every request.",
         "When historical workflow or project conventions matter, retrieve relevant context before assuming them.",
-        "Use summary-first for broad questions; avoid relying on top_k=5 semantic search for complete project context.",
+        "When historical retrieval is needed, use summary-first for broad questions; top_k semantic search does not guarantee complete project context.",
         "Use graph explanation after reading a key memory if the task depends on its correctness or freshness.",
         "Ask for or record feedback only when a memory clearly influenced the task, the user corrected it, or the memory appears outdated/conflicting; do not interrupt every turn.",
         "Archived/deprecated memories should not be used as active facts, but may be useful as provenance through graph tools.",
         "Writing tools should be used only for durable, reusable memories; do not save secrets or one-off temporary facts.",
         "Read related cards before creating one. Card creation uses ai_review (already retrievable); edits require the latest updated_at and preserve unrelated content.",
         "Use memory tools for user behavior and working preferences; use project-intelligence tools for requirements, implementation constraints, evidence, and impact analysis.",
-        "For project work, call echome_project_preflight before material actions and echome_project_context for the evidence-first context pack; do not ask the user to choose between memory and graph search.",
+        "Use project context and preflight only to fill a relevant gap in historical constraints or failure evidence. Reuse sufficient context; do not turn retrieval into a prerequisite for each edit or test.",
         "Project events and inferred constraints remain proposals/evidence. They do not silently become active constraints or mutate memories.",
         "Use echome_reflect_prepare before echome_reflect_submit. Every derived claim must cite a prepared source, and a changed source fingerprint requires preparing again.",
-        "Follow the completion_contract returned by a recorded non-shadow context run. Outcomes are append-only; use no_signal instead of inventing success or failure, and set policy_effect only when explicit.",
+        "Outcome reporting is optional when usefulness or a correction is supported by evidence. Use the returned run ID and idempotency key; skip unknown outcomes rather than routinely sending no_signal. Never infer usefulness from task completion alone.",
         "Context reliability defaults to shadow mode: decisions are observable but source memories and constraints are never rewritten. Enforce mode also requires an explicit Hub feature flag.",
         "Before any enforce canary, call echome_runtime_health with include_policy_readiness=true. eligible_for_canary never enables enforce automatically.",
-        "When project_resolution has one reusable candidate, call echome_create_project to attach active aliases without asking the user; on not_found it creates silently. Multiple candidates remain an ambiguity stop, and explicit primary Git remote changes still require preview and confirmation.",
+        "Unknown or ambiguous projects must not block ordinary work or trigger automatic project creation. Continue from current evidence; ask about identity only when a requested project-specific write or decision depends on it.",
+        "Current user instructions and verified current evidence override historical memory. Treat conflicts as information to check, never as permission to constrain the current task.",
     ],
 }
 
@@ -325,12 +335,12 @@ def capabilities_payload() -> dict[str, Any]:
         {
             "step": "context",
             "tool": "echome_context",
-            "when": "Default entry for personal or project work; returns relevant full context.",
+            "when": "When missing historical preferences or project context would change the task; reuse sufficient context already in the conversation.",
         },
         {
             "step": "explain",
             "tool": "echome_memory_explain",
-            "when": "Inspect provenance and temporal reliability before relying on a key memory.",
+            "when": "Inspect provenance or freshness when a key memory has conflicting or uncertain evidence.",
         },
         {
             "step": "feedback",
@@ -342,12 +352,12 @@ def capabilities_payload() -> dict[str, Any]:
         {
             "step": "context",
             "tool": "echome_context",
-            "when": "Pass project hints and changed paths when project impact matters; follow structured retry actions when identity is unresolved.",
+            "when": "Pass project hints and changed paths when missing project history matters; continue from current evidence if identity is unresolved.",
         },
         {
             "step": "create",
             "tool": "echome_create_project",
-            "when": "Create silently after not_found, or attach aliases to one reusable candidate; do not ask for user confirmation unless candidates are genuinely ambiguous.",
+            "when": "Only when project registration or identity maintenance is requested; never create solely because retrieval found no project.",
         },
     ]
     payload["scenario_workflow"] = CAPABILITIES["scenario_workflow"]
@@ -370,9 +380,10 @@ def capabilities_payload() -> dict[str, Any]:
         "Archived/deprecated memories are provenance, not active facts.",
         "Use echome_remember only for durable context and never store secrets.",
         "Read related cards before creating or editing one. Only record reusable, supported guidance; ai_review cards are already searchable, and edits require the latest revision.",
-        "When echome_context returns a completion_contract, close that recorded run exactly once; use no_signal when usefulness is unknown.",
+        "Outcome reporting is optional. Submit only a clear usefulness or correction signal with the returned run ID and idempotency key; skip unknown outcomes without a no_signal ritual or user rating request.",
         "Record memory feedback only when usefulness or a correction is clear; missing feedback is unknown.",
-        "Call echome_create_project without user confirmation after not_found or one reusable candidate. If several candidates conflict, retry echome_context with a returned canonical ID instead of guessing.",
+        "Continue ordinary work when a project is unknown or ambiguous. Register projects only when requested; ask about identity only if a project-specific write or decision depends on it.",
+        "Reuse sufficient context already available in the conversation. Current user instructions and verified current evidence override historical memory.",
     ]
     return payload
 
@@ -383,48 +394,38 @@ def capabilities_json() -> str:
 
 
 def retrieval_workflow_prompt(project_id: str | None = None) -> str:
-    """Return a reusable prompt for EchoMe retrieval."""
+    """Return an on-demand guide without a mandatory per-task lifecycle."""
     project_hint = f" Project filter: {project_id}." if project_id else ""
-    if current_profile() == "core":
-        return (
-            "Use EchoMe MCP as the memory and project-context layer."
-            f"{project_hint}\n\n"
-            "Call echome_context first with the current task, project hint, and changed paths when known. "
-            "If project_resolution returns not_found or one reusable candidate, call echome_create_project "
-            "without asking the user; it creates or attaches active aliases idempotently. For several "
-            "candidates, retry with a canonical ID instead of guessing. Preview "
-            "echome_update_project_git_identity and require explicit confirmation for primary Git remote "
-            "mutations. "
-            "Use echome_memory_explain before relying on a key memory whose provenance or freshness matters. "
-            "When echome_context returns a completion_contract, call echome_context_outcome exactly once "
-            "at task end and use no_signal when usefulness is unknown. Record memory feedback only when its "
-            "signal is clear. "
-            "Use echome_remember only for durable, reusable context and never store secrets. "
-            "Use echome_card_read when cards may help, and echome_card_write to create or revise a supported card after checking for duplicates. "
-            "Do not ask the user to remember tool names; infer the needed EchoMe call from the task."
-        )
-    return (
-        "Use EchoMe MCP as the memory and project-context layer."
+    guide = (
+        "Use EchoMe only when missing history would materially change the task or the user requests recall."
         f"{project_hint}\n\n"
-        "Start with echome_context for personal or project work. It infers the current Git remote when possible, "
-        "resolves canonical project aliases, and combines project preflight with context compilation. Use the "
-        "specialized project or graph tools only when the returned conflicts, unknowns, or recommended actions "
-        "require focused follow-up.\n\n"
-        "Default workflow:\n"
-        "1. For broad tasks, call echome_search_summary with a concise query and optional project_id.\n"
-        "2. Select only relevant UUIDs and call echome_get_memories.\n"
-        "3. If a selected memory is important for a project decision, deployment, version, historical assumption, "
-        "or could be stale, call echome_memory_explain on that memory.\n"
-        "4. If neighboring context matters, call echome_memory_neighbors with include_inactive=true for provenance.\n"
-        "5. At task end, follow completion_contract and call echome_context_outcome once. Use its idempotency key; report no_signal when usefulness is unknown and set policy_effect only with explicit evidence.\n"
-        "6. If individual memory usefulness is clear or the user corrected a memory, call echome_memory_feedback or echome_memory_feedback_batch.\n"
-        "7. Treat archived/deprecated memories as non-active facts unless graph provenance explains why they matter.\n"
-        "8. Use echome_remember only for durable preferences, decisions, conventions, or reusable project context.\n\n"
-        "9. Use echome_card_read for relevant habits, skills, or knowledge; after evidence, use echome_card_write to create or revise one without duplicating it.\n"
-        "10. When durable cross-source synthesis would help future project work, call echome_reflect_prepare, "
-        "build claims only from its evidence IDs, then call echome_reflect_submit with the unchanged source watermark.\n\n"
-        "Do not ask the user to remember tool names. Infer the needed EchoMe tools from the task."
+        "Reuse relevant context already available in the conversation. General questions, self-contained edits, "
+        "and continued work with sufficient context do not need another memory check.\n"
+        "When retrieval is needed, call echome_context with the task and known project hints/changed paths. "
+        "For a named scene, use echome_scene_read; for structured knowledge, use echome_knowledge_read. "
+        "Read only relevant results and follow up only for a concrete gap, conflict, or freshness concern.\n"
+        "No matches, unavailable tools, or unresolved project identity are reasons to continue from current "
+        "evidence, not to ask the user to confirm memory or automatically register a project. "
+        "Use echome_create_project only when registration or identity maintenance is requested. "
+        "Primary Git remote mutations still require preview and explicit confirmation.\n"
+        "Use echome_memory_explain when provenance or freshness of a key memory is uncertain. "
+        "Current user instructions and verified current evidence override historical memory; "
+        "archived/deprecated memories are provenance only.\n"
+        "Outcome reporting is optional: use echome_context_outcome with the returned run ID and idempotency key "
+        "only for an evidenced usefulness or correction signal. Skip unknown outcomes; no routine no_signal "
+        "report or user rating request is needed. Record individual memory feedback only when its signal is clear.\n"
+        "Save only durable reusable context with echome_remember. Read related cards before creating or "
+        "editing supported guidance with echome_card_write; never store secrets. "
+        "Infer needed tools without requiring the user to manage memory calls."
     )
+    if current_profile() == "full":
+        guide += (
+            "\n\nFor broader historical discovery, use echome_search_summary and read selected UUIDs with "
+            "echome_get_memories instead of loading everything. Use project preflight, impact, and graph tools "
+            "only when an unresolved task-specific issue needs them. For durable cross-source synthesis, "
+            "prepare evidence with echome_reflect_prepare before echome_reflect_submit."
+        )
+    return guide
 
 
 async def echome_capabilities(format: str = "json") -> str:

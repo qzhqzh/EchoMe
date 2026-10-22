@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -34,11 +35,13 @@ from app.services.context_output import (
     memory_reference,
 )
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
+from app.services.knowledge_context import discover_knowledge_refs
 from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import ProjectDiscovery, discover_projects
 from app.services.token_counter import count_tokens
 
 logger = logging.getLogger(__name__)
+KNOWLEDGE_STATEMENT_TIMEOUT_MS = 500
 
 
 class RuntimeContractRoute(APIRoute):
@@ -420,6 +423,42 @@ async def _build_unified_context(
         )
         discovery = await discover_projects(session, user_id, project_hints)
         if discovery.resolution is None:
+            if body.mode == "auto":
+                # An inferred repository hint is not a prerequisite for using
+                # personal memory. Never select a plausible project implicitly
+                # or turn this read into project creation/confirmation work.
+                context = await _personal_context(session, body, user_id, request_id)
+                context["retrieval_trace"]["project_resolution"] = {
+                    key: value
+                    for key, value in discovery.payload().items()
+                    if key not in {"next_actions", "create_proposal", "requires_confirmation"}
+                }
+                context["retrieval_trace"]["requested_route"] = route
+                context["unknowns"].append(
+                    "Project scope is unresolved; only globally scoped memory was retrieved. "
+                    "Continue the task using current evidence."
+                )
+                return {
+                    **context,
+                    "preflight": None,
+                    "answerability": _answerability(context),
+                    "recommended_actions": [],
+                    "resolution": None,
+                    "project_resolution": {
+                        "status": discovery.status,
+                        "auto_resolved": False,
+                        "project_context_available": False,
+                        "requires_confirmation": False,
+                    },
+                    "runtime": {
+                        "request_id": request_id,
+                        "route": "personal",
+                        "degraded": True,
+                        "fallback": "personal_unresolved_project",
+                        "resolution_required": False,
+                        "latency_ms": round((perf_counter() - started) * 1000, 2),
+                    },
+                }
             unresolved = await _project_resolution_context(
                 session,
                 body,
@@ -496,6 +535,81 @@ async def _build_unified_context(
     }
 
 
+async def _append_knowledge_refs(
+    context: dict[str, Any],
+    body: UnifiedContextRequest,
+    session: AsyncSession,
+    user_id: str,
+) -> None:
+    """Add bounded discovery references without changing the authoritative pack."""
+    if context.get("scope") not in {"personal", "project"}:
+        return
+    if body.mode == "temporal" or body.as_of is not None or body.valid_at is not None:
+        # The discovery index currently exposes latest revisions only.
+        context.setdefault("retrieval_trace", {})["knowledge_lookup"] = {
+            "status": "skipped",
+            "reason": "historical_request",
+        }
+        return
+    started = perf_counter()
+    trace: dict[str, Any]
+    try:
+        async with session.begin_nested():
+            # Let PostgreSQL cancel a slow statement. Cancelling asyncpg with
+            # asyncio.timeout invalidates the connection and loses the outer
+            # transaction even if AsyncSession.is_active still reports True.
+            previous_timeout = int(await session.scalar(text(
+                "SELECT setting FROM pg_settings WHERE name = 'statement_timeout'"
+            )))
+            timeout_ms = min(
+                previous_timeout or KNOWLEDGE_STATEMENT_TIMEOUT_MS,
+                KNOWLEDGE_STATEMENT_TIMEOUT_MS,
+            )
+            changed_timeout = timeout_ms != previous_timeout
+            if changed_timeout:
+                await session.execute(
+                    text("SELECT set_config('statement_timeout', :value, true)"),
+                    {"value": str(timeout_ms)},
+                )
+            refs = await discover_knowledge_refs(
+                session,
+                user_id=user_id,
+                query=body.task,
+                project_id=(context.get("project") or {}).get("id"),
+                limit=4,
+            )
+            if changed_timeout:
+                # ROLLBACK TO SAVEPOINT restores SET LOCAL on failure. On the
+                # success path restore explicitly before releasing the savepoint.
+                await session.execute(
+                    text("SELECT set_config('statement_timeout', :value, true)"),
+                    {"value": str(previous_timeout)},
+                )
+        if refs:
+            context["knowledge_refs"] = refs
+        trace = {"status": "completed", "candidate_count": len(refs)}
+    except (SQLAlchemyError, TimeoutError) as exc:
+        # A failed savepoint can be isolated; a failed outer transaction cannot.
+        # Programming errors deliberately propagate to normal runtime diagnostics.
+        if not session.is_active or getattr(exc, "connection_invalidated", False):
+            raise
+        trace = {
+            "status": "unavailable",
+            "reason": (
+                "timeout"
+                if isinstance(exc, TimeoutError)
+                or getattr(getattr(exc, "orig", None), "sqlstate", None) == "57014"
+                else "database_error"
+            ),
+        }
+        context.setdefault("unknowns", []).append(
+            "Knowledge references are unavailable; continue with current evidence."
+        )
+        context["answerability"] = _answerability(context)
+    trace["latency_ms"] = round((perf_counter() - started) * 1000, 2)
+    context.setdefault("retrieval_trace", {})["knowledge_lookup"] = trace
+
+
 @router.post("", response_model=None)
 async def get_unified_context(
     body: UnifiedContextRequest,
@@ -509,8 +623,13 @@ async def get_unified_context(
         body.record_run = False
     route = _runtime_route(body)
     audit: dict[str, str | None] = {"project_id": None}
+    started = perf_counter()
     try:
         context = await _build_unified_context(body, session, user_id, audit)
+        await _append_knowledge_refs(context, body, session, user_id)
+        context.setdefault("runtime", {})["latency_ms"] = round(
+            (perf_counter() - started) * 1000, 2,
+        )
         output = context_output(
             context,
             mode=body.output_mode,
@@ -521,6 +640,12 @@ async def get_unified_context(
             if run is not None:
                 run.trace = {
                     **run.trace,
+                    "runtime": context.get("runtime", {}),
+                    **{
+                        key: context["retrieval_trace"][key]
+                        for key in ("project_resolution", "requested_route", "knowledge_lookup")
+                        if key in context.get("retrieval_trace", {})
+                    },
                     "output_usage": output["output_usage"],
                     "omitted_counts": output.get("omitted_counts", {}),
                     "compiled_content_tokens": content_tokens(context),
@@ -529,6 +654,15 @@ async def get_unified_context(
                     "referenced_memory_ids": [
                         item["id"] for item in output.get("memory_index", [])
                     ],
+                    "compiled_knowledge_refs": [
+                        {key: item[key] for key in ("source", "id", "revision") if key in item}
+                        for item in context.get("knowledge_refs", [])
+                    ],
+                    "delivered_knowledge_refs": [
+                        {key: item[key] for key in ("source", "id", "revision") if key in item}
+                        for item in output.get("knowledge_refs", [])
+                    ],
+                    "knowledge_refs_tokens": output.get("knowledge_refs_tokens", 0),
                 }
                 if body.output_mode == "compact":
                     run.trace = {**run.trace, "compiled_selected": run.selected}

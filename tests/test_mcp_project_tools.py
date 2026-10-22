@@ -515,6 +515,7 @@ def test_mcp_context_policy_and_sleep_schema_are_forwarded(monkeypatch) -> None:
                 "task": "check reliability",
                 "project_hints": ["repo", "/srv/repo"],
                 "policy_mode": "enforce",
+                "record_run": False,
             },
         )
     )
@@ -527,6 +528,7 @@ def test_mcp_context_policy_and_sleep_schema_are_forwarded(monkeypatch) -> None:
     asyncio.run(server_module.call_tool("echome_sleep_candidates", {}))
 
     assert captured["context"]["policy_mode"] == "enforce"
+    assert captured["context"]["record_run"] is False
     assert captured["context"]["project_hints"] == ["repo", "/srv/repo"]
     assert captured["project_context"]["policy_mode"] == "shadow"
     assert captured["sleep_candidates"]["plan_schema_version"] == "memory_sleep_plan.v2"
@@ -691,6 +693,10 @@ def test_unified_context_forwards_all_local_project_identity_signals(monkeypatch
 
     assert captured["project_hint"] == "git@example.com:owner/repo.git"
     assert captured["project_hints"] == ["/srv/repo"]
+    assert captured["record_run"] is True
+
+    asyncio.run(runtime_module.echome_context("read-only diagnostic", record_run=False))
+    assert captured["record_run"] is False
 
 
 def test_local_project_hints_continue_to_repository_root_without_origin(monkeypatch) -> None:
@@ -777,6 +783,7 @@ def test_unified_context_returns_cached_read_only_result_on_hub_failure(
     assert second["degradation_error"]["code"] == "HUB_UNAVAILABLE"
     assert second["completion_contract"]["report_outcome"] is False
     assert second["completion_contract"]["required_at_task_end"] is False
+    assert second["completion_contract"]["outcome_available"] is False
 
 
 def test_unified_context_does_not_use_cache_for_auth_failure(monkeypatch, tmp_path) -> None:
