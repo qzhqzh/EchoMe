@@ -50,7 +50,7 @@ async def test_discovery_uses_two_owner_scoped_bounded_projections(project_id: s
         patterns = {
             value
             for value in statement.compile().params.values()
-            if isinstance(value, str) and value.startswith("%")
+            if isinstance(value, str) and (value.startswith("%") or value.startswith(r"\m"))
         }
         assert 0 < len(patterns) <= 24
 
@@ -60,3 +60,24 @@ async def test_disabled_discovery_never_queries_database() -> None:
     session = AsyncMock()
     assert await discover_knowledge_refs(session, user_id="owner", query="Blender", limit=0) == []
     session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_broad_multiword_tokens_are_removed_and_short_term_regex_is_bounded() -> None:
+    result = MagicMock()
+    result.mappings.return_value.all.return_value = []
+    session = AsyncMock()
+    session.execute.return_value = result
+    await discover_knowledge_refs(
+        session,
+        user_id="owner",
+        query="AI 模型 甲乙 丙丁 戊己 庚辛 壬癸 子丑 寅卯 辰巳 午未 申酉 戌亥",
+    )
+    for call in session.execute.await_args_list:
+        params = call.args[0].compile().params.values()
+        strings = [value for value in params if isinstance(value, str)]
+        assert r"\mai\M" not in strings
+        assert "%模型%" not in strings
+        proximity = [value for value in strings if value.startswith("(?s)")]
+        assert len(proximity) == 1
+        assert proximity[0].count("|") <= 55  # Eight terms, at most 28 bidirectional pairs.
