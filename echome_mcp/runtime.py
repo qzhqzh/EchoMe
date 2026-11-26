@@ -10,6 +10,7 @@ import stat
 import subprocess
 import uuid
 from contextlib import suppress
+from copy import deepcopy
 from pathlib import Path
 from time import time
 from typing import Any
@@ -256,6 +257,30 @@ async def _local_project_hint() -> str | None:
     return hints[0] if hints else None
 
 
+def _precise_knowledge_reads(context: dict[str, Any]) -> None:
+    """Adapt old Hub discovery hints to exact, complete MCP expansions."""
+    refs = context.get("knowledge_refs")
+    if not isinstance(refs, list):
+        return
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        read = ref.get("read")
+        if not isinstance(read, dict) or not isinstance(read.get("arguments"), dict):
+            continue
+        arguments = read["arguments"]
+        if arguments.get("action") != "get":
+            continue
+        if read.get("tool") == "echome_knowledge_read":
+            arguments["view"] = "full"
+        elif (
+            read.get("tool") == "echome_scene_read"
+            and ref.get("kind") == "scene_entry"
+            and ref.get("id")
+        ):
+            arguments["entry_id"] = ref["id"]
+
+
 async def echome_context(
     task: str,
     project_hint: str | None = None,
@@ -318,9 +343,18 @@ async def echome_context(
     from echome_mcp.context_output import serialize_context
 
     def serialize(value: dict[str, Any]) -> str:
-        return serialize_context(
-            value, compact=output_mode == "compact", limit=max_output_tokens or token_budget,
+        enriched = deepcopy(value) if output_mode == "compact" else value
+        _precise_knowledge_reads(enriched)
+        compact = output_mode == "compact"
+        output = serialize_context(
+            enriched, compact=compact, limit=max_output_tokens or token_budget
         )
+        if compact and json.loads(output).get("error", {}).get("code") == "OUTPUT_BUDGET_TOO_SMALL":
+            # Exact read hints are optional navigation metadata. Never displace
+            # useful Hub content or exceed the caller's cap merely to add them.
+            return serialize_context(value, compact=True, limit=max_output_tokens or token_budget)
+        return output
+
     client_instance = MCPHubClient()
     cache_namespace = client_instance.cache_namespace
     cache_encryption_key = _cache_encryption_key() if client_instance.cache_enabled else None

@@ -7,6 +7,13 @@ from urllib.parse import quote
 import httpx
 
 from echome_mcp.hub_client import MCPHubClient
+from echome_mcp.tools.read_views import (
+    check_view,
+    page_options,
+    pagination,
+    scene_safety_refs,
+    scene_view,
+)
 
 
 def _segment(value: str) -> str:
@@ -137,22 +144,84 @@ async def echome_scene_read(
     entry_id: str | None = None,
     query: str | None = None,
     include_archived: bool = False,
+    view: str = "compact",
+    offset: int = 0,
+    limit: int = 10,
 ) -> str:
-    """Read a named scene document, its atomic entries, or correction history."""
+    """Read a paged scene index, one complete entry, or an explicit full document."""
+    check_view(view)
+    page_options({"offset": offset, "limit": limit})
     if action == "list":
-        return await _request(
-            "GET",
-            "/knowledge",
-            params={
-                "query": query,
-                "include_archived": include_archived,
-            },
+        payload = json.loads(
+            await _request(
+                "GET",
+                "/knowledge",
+                params={
+                    "query": query,
+                    "include_archived": include_archived,
+                    "offset": offset,
+                    "limit": limit,
+                },
+            )
         )
+        if "error" not in payload and "items" in payload:
+            payload.update(pagination(payload["total"], offset, len(payload["items"]), limit))
+            if view == "compact":
+                for item in payload["items"]:
+                    summary = item.pop("summary", "")
+                    item["summary_preview"] = summary[:180]
+                    item["summary_chars"] = len(summary)
+                    item["needs_expansion"] = True
+                    item["read"] = {
+                        "tool": "echome_scene_read",
+                        "arguments": {
+                            "action": "get",
+                            "selector": item["slug"],
+                            "include_archived": include_archived,
+                        },
+                    }
+        return json.dumps(payload, ensure_ascii=False)
     if selector is None:
         raise ValueError("selector is required")
     path = f"/knowledge/{_segment(selector)}"
     if action == "get":
-        return await _request("GET", path, params={"include_archived": include_archived})
+        raw = await _request("GET", path, params={"include_archived": include_archived})
+        payload = json.loads(raw)
+        if "error" in payload:
+            return raw
+        if entry_id is not None:
+            _segment(entry_id)
+            entry = next(
+                (item for item in payload.get("entries", []) if item.get("id") == entry_id), None
+            )
+            if entry is None:
+                return json.dumps(
+                    {
+                        "schema_version": "echome.error.v1",
+                        "error": {
+                            "code": "SCENARIO_REQUEST_FAILED",
+                            "status": 404,
+                            "message": "Scene entry not found in the selected archive scope",
+                        },
+                    }
+                )
+            return json.dumps(
+                {
+                    "scene": payload.get("scene"),
+                    "entry": entry,
+                    "safety_refs": scene_safety_refs(payload.get("entries", []), selector),
+                    "view": "full_entry",
+                    "needs_expansion": False,
+                    "notice": "One complete entry only; other scene cautions may also apply.",
+                },
+                ensure_ascii=False,
+            )
+        if view == "full":
+            return raw
+        result = scene_view(payload, selector, offset, limit)
+        if "read" in result:
+            result["read"]["arguments"]["include_archived"] = include_archived
+        return json.dumps(result, ensure_ascii=False)
     if action == "history":
         if entry_id is None:
             raise ValueError("entry_id is required")

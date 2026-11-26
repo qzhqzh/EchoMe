@@ -111,6 +111,50 @@ def test_jev_uses_separate_key_environment(
     assert "credential" not in result.stdout
 
 
+@pytest.mark.parametrize("override", [None, "CUSTOM_DECISION_KEY"])
+def test_chat_uses_its_own_explicit_model_and_key_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    override: str | None,
+) -> None:
+    captured: list[GateSettings] = []
+
+    async def inspect(request: GateRequest, settings: GateSettings) -> GateDecision:
+        captured.append(settings)
+        return GateDecision(
+            phase=request.phase,
+            action="retrieve",
+            provider=settings.provider,
+            reason_code="test",
+            latency_ms=0,
+        )
+
+    monkeypatch.setattr(gate, "decide", inspect)
+    monkeypatch.setenv("ECHOME_AUTH_TOKEN", "hub-key-must-not-be-used")
+    monkeypatch.setenv("ECHOME_GATE_API_KEY", "old-provider-key-must-not-be-used")
+    monkeypatch.setenv("ECHOME_GATE_JEV_API_KEY", "jev-key-must-not-be-used")
+    monkeypatch.setenv("ECHOME_GATE_CHAT_API_KEY", "synthetic-chat-key")
+    monkeypatch.setenv("CUSTOM_DECISION_KEY", "synthetic-custom-key")
+    args = [
+        "gate",
+        "decide",
+        "--provider",
+        "chat_completions",
+        "--base-url",
+        "http://127.0.0.1:8009/v1",
+        "--model",
+        "existing-local-model",
+    ]
+    if override:
+        args.extend(["--api-key-env", override])
+    result = runner.invoke(app, args, input='{"phase":"read","text":"分析这段实现"}')
+    assert result.exit_code == 0, result.output
+    assert len(captured) == 1
+    assert captured[0].api_key == ("synthetic-custom-key" if override else "synthetic-chat-key")
+    assert captured[0].model == "existing-local-model"
+    assert captured[0].timeout_seconds == 2.0
+    assert "key" not in result.stdout
+
+
 def test_audit_refuses_public_file_and_symlink(tmp_path: Path) -> None:
     target = tmp_path / "target"
     target.write_text("original")

@@ -85,6 +85,72 @@ def account_output(payload: dict[str, Any], limit: int | None = None) -> dict[st
         payload["output_usage"]["tokens_upper_bound"] = size
 
 
+def _compact_record_diagnostics(item: dict[str, Any]) -> None:
+    """Remove selection diagnostics, retaining the resulting policy intervention."""
+    item.pop("selection_reasons", None)
+    item.pop("reliability", None)
+    intervention = item.get("intervention")
+    if (
+        isinstance(intervention, dict)
+        and intervention.get("action") == "inject"
+        and intervention.get("reason") == "support_state:current_supported"
+    ):
+        intervention.pop("reason")
+
+
+def _compact_preflight(
+    preflight: dict[str, Any], constraints: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Reuse complete in-response rules; never substitute a reference for unique text."""
+    output = copy.deepcopy(
+        {
+            key: preflight[key]
+            for key in ("decision", "warnings", "requirements", "stale_warnings", "unknowns")
+            if key in preflight
+        }
+    )
+    has_references = False
+    requirements = output.get("requirements", [])
+    for index, requirement in enumerate(requirements):
+        if not isinstance(requirement, dict):
+            continue
+        _compact_record_diagnostics(requirement)
+        # Identical IDs alone are insufficient: a revision, policy warning, or
+        # additional qualification can differ between the two compilations.
+        if not requirement.get("id") or not any(
+            requirement.get(key) for key in ("statement", "content")
+        ):
+            continue
+        for constraint_index, constraint in enumerate(constraints):
+            if all(constraint.get(key) == value for key, value in requirement.items()):
+                requirements[index] = {
+                    "id": requirement["id"],
+                    **({"version": requirement["version"]} if "version" in requirement else {}),
+                    "context_ref": f"#/constraints/{constraint_index}",
+                    "needs_expansion": False,
+                }
+                has_references = True
+                break
+    if has_references:
+        output["requirements_notice"] = (
+            "context_ref points to the complete requirement already delivered in this response."
+        )
+    for warning in output.get("warnings", []):
+        if not isinstance(warning, dict) or not isinstance(warning.get("event"), dict):
+            continue
+        event = warning["event"]
+        # Content, source, evidence, dates of occurrence, link relations, and
+        # arbitrary metadata can qualify the warning and must remain intact.
+        # Only persistence bookkeeping and exactly repeated labels are omitted.
+        event.pop("idempotency_key", None)
+        event.pop("created_at", None)
+        if event.get("title") == warning.get("message"):
+            event.pop("title", None)
+        if warning.get("type") == f"historical_{event.get('event_type')}":
+            event.pop("event_type", None)
+    return output
+
+
 def context_output(
     context: dict[str, Any],
     *,
@@ -101,14 +167,6 @@ def context_output(
     for key in ("task", "retrieval_trace", "preflight", "resolution"):
         output.pop(key, None)
     preflight = context.get("preflight")
-    if isinstance(preflight, dict):
-        output["preflight"] = copy.deepcopy(
-            {
-                key: preflight[key]
-                for key in ("decision", "warnings", "requirements", "stale_warnings", "unknowns")
-                if key in preflight
-            }
-        )
     if output.get("project"):
         output["project"].pop("description", None)
     if isinstance(output.get("runtime"), dict):
@@ -120,17 +178,9 @@ def context_output(
         output.pop("project_resolution", None)
     for kind in ("memories", "constraints"):
         for item in output.get(kind, []):
-            item.pop("selection_reasons", None)
-            # The intervention and policy mode remain; repeated assessment
-            # evidence is available in the recorded run's diagnostics.
-            item.pop("reliability", None)
-            intervention = item.get("intervention")
-            if (
-                isinstance(intervention, dict)
-                and intervention.get("action") == "inject"
-                and intervention.get("reason") == "support_state:current_supported"
-            ):
-                intervention.pop("reason")
+            _compact_record_diagnostics(item)
+    if isinstance(preflight, dict):
+        output["preflight"] = _compact_preflight(preflight, output.get("constraints", []))
     policy = output.get("context_policy")
     if isinstance(policy, dict):
         # Full diagnostics retain the ID lists and repeated aggregate counts.

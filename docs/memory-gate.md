@@ -2,9 +2,40 @@
 
 ## 当前实现
 
-`echome gate decide` 是独立的 shadow 判断入口，支持本地规则、Kev、Laya、Jev。
-它只返回建议，不检索 Hub、不创建记忆、不执行建议，也没有安装任何客户端自动 Hook。
-因此，仅部署判断服务或运行此命令，并不会提高客户端的 EchoMe 调用覆盖率。
+`echome gate decide` 是独立的 shadow 判断入口，支持本地规则、Kev、Laya、Jev，以及 `chat_completions` 兼容服务。
+它只返回建议，不检索 Hub、不创建记忆、不执行建议。
+另有显式安装的 `echome hook` Codex 适配器，负责让新任务进入轻量判断；仅部署模型服务或运行 Gate 不会自动安装它。
+
+## Codex 自动入口（Linux / macOS 试点）
+
+```bash
+echome hook install
+echome hook status
+# 退出试点时，只移除 EchoMe 自有 handler
+echome hook remove
+```
+
+安装器合并 `~/.codex/hooks.json`，保留现有 Hook，修改前备份。默认优先使用独立的 `echome-hook` 启动程序，避免加载交互 CLI；旧环境可回退到 `echome`。它不修改 Codex 的信任记录；安装后须在同一主机、同一用户的 Codex CLI 中输入 `/hooks`，审核并信任新增的 EchoMe handler。配置存在不等于已经信任或实际执行。其他客户端尚未自动安装入口。
+
+原生加载验收需先确认 `/hooks` 没有配置解析错误，并能列出 EchoMe 的两个 handler；再检查信任状态及正常会话的实际触发。手工运行 `echome-hook`、安装器显示 `complete=true` 都不能替代这一步。生成的 `timeout` 必须为整数秒，浮点数 `5.0` 会被 Codex 拒绝。
+
+- `SessionStart` 只重置该会话的元数据状态，恢复、压缩和分叉后不假设先前注入仍在上下文。
+- `UserPromptSubmit` 先跑本地规则。取消、简单确认、独立翻译/计算和纯当前运行诊断跳过；明确历史诉求或有个人/项目任务信号才查询。
+- 检索前只清理已知客户端附带的 browser/open-page/environment 包装，问答回复保留问题与回答；用户 URL、实体、代码示例和未知标签不删除。原始输入先限 64 KiB，再对有效任务检查 4,000 字符上限，避免页面附带文本改变任务和缓存身份。
+- 完全相同的已交付请求和有先前交付的短“继续”复用；新任务不因为同属一个领域就被当成已有上下文。完全相同的空结果只缓存 60 秒，过期后重查；明确刷新、最新或习惯新增/更新提示绕过缓存。“查一下记忆”等明确召回保持读取。状态按账户、会话和工作目录区分，成功及空结果各最多保存 32 个任务哈希，一小时整体失效。
+- 习惯卡通过标签筛选读取，绕过全文语义碰运气。首版只自动加载 active、纯全局且无项目排除条件的习惯；支持 `trigger:web`、`trigger:always`，兼容既有“适用时机：Web 项目...”格式。最多三张、2,500 字符预算，长卡只给明确的展开引用，不截掉“不要做”或例外。
+- Web 预览/交付习惯需要页面、样式、控件改动、故障症状或明确预览/应用域名交付意图；前端 manifest 仅作辅助，不因身处 Web 仓库就把预览卡带给网络、建模或日志任务。其他通用记忆检索不因此跳过。目录检查不执行项目脚本，当前用户指令始终优先。
+- 只有完整习惯目录中的所有可自动使用版本都已交付，本会话才可在 60 秒内省去重复习惯请求；尚未适用、未投递、列表不完整或读取失败时不缓存覆盖状态。没有更新提示的新卡至多到该短 TTL 后再核对；明确刷新可立即重读。只注入尚未交付或版本变化的卡片。
+- 普通经验和知识通过一次 `POST /api/v1/context/discovery` 获取候选索引，附 cwd 和有界本地读取的安全 Git origin；不执行 Git、不读取 include 或发送 URL 凭据。只认已登记项目身份，未知/冲突线索退回个人库，不猜项目或创建别名。已解析项目纳入该项目及历史别名作用域的记忆，并给出完整项目上下文的展开入口；不执行完整 compiler/preflight。
+- 自动发现过滤无主题支撑的宽泛操作词及弱向量命中，同时保留强语义同义召回。明确查询记忆/历史配置保留宽召回，普通显式 MCP 检索不受自动过滤影响。空索引不能证明没有有用记忆；当前对话、完整习惯和主 AI 主动检索仍可使用。索引不代表已读全文或完整约束包，策略警示及知识争议状态随引用保留。
+- discovery 始终不记 run、不写记忆、不自动报 outcome。状态文件只保存哈希、版本、时间、决策/请求计数及本次处理耗时/输出字符数，不保存任务正文、卡片正文、Token 或完整聊天。`habit_failure` 和 `discovery_dropped` 分别记录可选习惯读取失败及输出未交付；计数可重叠。`last_execution.latency_ms` 不包含 Python 进程启动；缓存重置后的计数不能当作全天统计。
+- 适配器总预算 3.5 秒，Hook 上限 5 秒；无重试、不跟随重定向，失败放行并短暂退避。默认不调用任何模型。
+
+更新时先部署支持 discovery 的 Hub，再更新客户端。旧 Hub 返回 404 时客户端记 `discovery_not_supported` 并放行，不追加一次完整上下文请求；独立习惯读取仍可工作。源码修复及本地候选回放不等同于正在运行的 Hub/Hook 已更新。
+
+可选模型仅判断规则不明确的任务。显式设置 `ECHOME_HOOK_GATE_PROVIDER`、`ECHOME_HOOK_GATE_URL`、`ECHOME_HOOK_GATE_MODEL`；凭据使用对应 provider 的独立环境变量。模型建议仍按 shadow 处理，不让尚未验证的 skip 阻断需要的读取。安装器不写入或传递模型凭据。
+
+这是有限规则的客户端试点，不保证识别所有隐含历史需求；保留主 AI 主动查询的入口。
 
 这个 Gate 判断“当前任务是否需要交互”；Hub 的 Context Policy 判断“检索出的内容是否适合提供”。两者各自保留，不互相替代。
 
@@ -49,9 +80,17 @@ echome gate decide --input request.json \
 # Jev 需单独配置 ECHOME_GATE_JEV_API_KEY，再显式指定服务地址
 echome gate decide --input request.json \
   --provider jev --base-url https://api.typesafe.ai
+
+# 支持 JSON 输出的本地或远程 Chat Completions 服务
+# 密钥仅通过 ECHOME_GATE_CHAT_API_KEY 设置；本机无鉴权服务可不设
+echome gate decide --input request.json \
+  --provider chat_completions --base-url http://127.0.0.1:8000/v1 \
+  --model YOUR_SERVED_MODEL
 ```
 
-服务使用 `POST /v1/systemone`，也支持以 `/v1` 结尾的 base URL。`--model` 可覆盖默认模型 ID；这不是聊天补全接口。没有读取 Hub token 或自动发现其他服务凭据的逻辑，`--api-key-env` 可指定独立环境变量名。Jev 默认只读 `ECHOME_GATE_JEV_API_KEY`，其他模型仍用 `ECHOME_GATE_API_KEY`；Jev 缺少地址或密钥时直接本地回退。
+Kev/Laya/Jev 使用 `POST /v1/systemone`，也支持以 `/v1` 结尾的 base URL。`--model` 可覆盖默认模型 ID。没有读取 Hub token 或自动发现其他服务凭据的逻辑，`--api-key-env` 可指定独立环境变量名。Jev 默认只读 `ECHOME_GATE_JEV_API_KEY`，Kev/Laya 使用 `ECHOME_GATE_API_KEY`；Jev 缺少地址或密钥时直接本地回退。
+
+`chat_completions` 使用 `/v1/chat/completions`，要求显式模型 ID 和服务地址，并支持 `response_format: json_object`。只接受完整的 `{"action":"retrieve"}` 等合法分类 JSON，不接受工具调用、解释段落或自报 confidence；因此 `model_probability` 为 null。读取阶段的 skip 仅作观察，不自动阻止检索。其专用密钥为 `ECHOME_GATE_CHAT_API_KEY`，无 SDK 新依赖；本机无鉴权服务可留空。协议测试不代表任何具体模型的真实任务准确率。
 
 默认阈值 0.8、总超时 2 秒；概率低、429/503、超时、非法标签或分布等均回退为读取 `retrieve` / 写入 `review`。不重试，不跟随重定向，不使用 HTTP 代理环境变量。HTTP 仅接受 localhost、loopback 或私网 IP，其他显式配置的服务需 HTTPS。
 
@@ -99,19 +138,21 @@ uv run python scripts/eval_memory_gate.py \
 |---|---|---|
 | P0 | 修复 context 交付预算 | 长记忆不会挤掉所有短记忆；完整硬约束保留；正文和索引分开计量 |
 | P0 | 统一 Gate 与合成评测 | 同一协议比较规则/Kev/Laya；无记忆读写副作用；错误可追踪 |
-| P1 | 一个客户端任务入口的 shadow adapter | 每个顶层任务有事件 ID，统计任务总量→Gate建议→context尝试→有效正文→实际使用；子任务去重 |
+| P1 | Codex 客户端入口试点已实现，待实际使用评估 | 可安装、撤销，记录不含正文的决策计数；后续评估有效正文与实际使用，避免把索引交付当成功使用 |
 | P1 | 真实任务人工标注与校准 | 取得调用覆盖率、漏读/误提案、额外延迟，比较规则基线与模型；用新的留出集复核 |
 | P2 | 小范围自动读取 | 保留显式读取与故障兜底；按项目/任务身份复用缓存；可一键退回规则 |
 | P2 | 独立记忆提案箱 | 去重、关联来源、旧事实更正、反馈分流、敏感检查；审核后才入库 |
 | P3 | 有条件的受控写入 | 按验收结果逐类开放，保留可撤销记录与审计 |
 
-客户端入口必须通过其实际支持的 Hook 或外层启动器接入；只在 Hub 或 MCP 内增加模型，无法发现客户端从未发起的任务。后续 adapter 还需与调用方权限、项目身份解析和缓存契约结合，当前没有声称这些工作已完成。
+客户端入口必须通过其实际支持的 Hook 或外层启动器接入；只在 Hub 或 MCP 内增加模型，无法发现客户端从未发起的任务。当前仅实现本地 Codex 适配，其他客户端需分别接入并验收，不因 MCP 更新而自动生效。
 
 当前 `ai_review` 记忆已经可以参与检索，不能拿它当隔离的提案箱；shadow 输出不得自动转换为 `echome_remember`。现有来源、审核、Sleep 保护规则继续适用。
 
 ## Context 预算交付变化
 
 compact 输出先压缩重复的策略诊断，再按原相关性顺序尝试放入完整记录；放不下的大记录不会阻挡后面的短记录。constraints、guardrail、L0、must_include、冲突与完成契约仍完整保留，保护内容本身超限会返回 `OUTPUT_BUDGET_TOO_SMALL`。
+
+`preflight.requirements` 中与顶层完整约束的 ID、版本、正文和限定一致的条目使用 `context_ref: "#/constraints/N"` 引用同响应内正文，不要求另一次请求。不同版本、独有预检规则、警示正文及证据仍完整保留；full 响应不变。约束本身大于总预算时仍显式报错，不能靠丢规则消除错误。
 
 当没有可交付的可选记忆正文时，尽量提供 `memory_index`，仅包含 ID、标题和 `needs_expansion: true`（必要时含策略干预标记）；按 `GET /api/v1/memories/{id}` 展开后才能使用。索引不是摘要，更不代表已获取完整规则，只有索引不能声称 `supported`。
 

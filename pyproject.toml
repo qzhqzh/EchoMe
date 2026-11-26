@@ -37,6 +37,7 @@ Issues = "https://github.com/qzhqzh/EchoMe/issues"
 [project.scripts]
 echome = "echome.main:app"
 eme = "echome.main:app"
+echome-hook = "echome.hook_entry:main"
 
 [project.optional-dependencies]
 cli = []  # Marker for CLI-only (lightweight) variant

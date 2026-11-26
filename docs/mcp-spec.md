@@ -138,15 +138,23 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 
 ### 场景工具（core 与 full）
 
-`echome_scene_read` 的 `list/get/history` 可按名称或别名读取逐条资料、组合 Markdown 和修订历史。
-用户可以明确说“去 EchoMe 读取家庭网络场景资料”；AI 先用 `get` 读取该名称或别名，
-如名称不确定再用 `list` 查询，不需要猜测或执行场景流程。
+`echome_scene_read` 的 `list/get/history` 可按名称或别名读取资料与修订历史。默认 `view=compact`：`get` 先返回场景目录（`offset/limit`，默认 10 条），不重复返回组合 Markdown。每条预览带 ID、revision、来源、证据时间与精确展开参数；`get` 加 `entry_id` 返回该条完整内容。`view=full` 保留原完整场景格式，适用于确实需要整体资料的任务；`history` 保留完整历史。`list` 同样支持分页。
+
+用户可以明确说“去 EchoMe 读取家庭网络场景资料”；AI 按名称 `get`，需要哪条就展开哪条，名称不确定时先 `list`。目录预览不是已读全文；跟随 `next_offset` 能枚举全部条目。全部 caution/needs_review 的引用与数量独立于普通分页展示，操作前应展开适用警示。已在当前上下文读过且没有更新迹象的条目可以复用。
 `echome_scene_write` 的 `create/add/add_batch/correct/publish_sop` 用于创建资料、单条或批量补充来源明确的知识、
 按 `expected_revision` 校正现有条目、录入经过至少 3 次独立有效实测且跨 2 次会话的正式 SOP。
 事实和观测必须带证据时间；临时步骤放在进行中。其他 AI 应先读资料和当前 revision，发现冲突时
 标为待核实或提交有来源的校正，不覆盖无关条目。SOP 证据由提交方提供，EchoMe 不替代现场验证。
 
 需要执行已发布流程时，用 `echome_scenario_resolve` 检查发布状态、结构化输入和环境约束；返回 `ready_for_manual_checks` 后仍需核对文本适用条件与本次任务授权。知识资料无需有已发布流程，也能独立读取。`echome_scenario_catalog` 管理流程草稿、发布证据、旧版本激活和停用。`echome_scenario_item` 可先建立带 `working_plan` 的独立事项；新聊天先用 `list` 的 `data.query` 或 `data.scenario_slug` 定位事项，再用 `get` 恢复状态，也可用 `bind` 显式绑定已发布场景。绑定或切换版本需 revision 与原因。`echome_scenario_run` 提供领取租约、完成和历史；领取本身不执行任务。持续事项由外部执行器轮询到期列表；MCP 不提供内置定时调度。完整字段见 [场景说明](scenarios.md)。
+
+### 知识读取视图
+
+`echome_knowledge_read` 默认 `view=compact`，`list/query` 默认每页 10 条，支持原有 `data.offset/limit`。长叙述字段可投影为明确标注的预览和 `omitted_fields`，关系限定条件、来源/证据索引、revision、状态及告警保留。短记录如果投影反而更大则保持完整，不增加一次展开。`get` 加 `view=full`（必要时 `data.revision`）读取原始完整记录；`schema/history` 不做摘要。
+
+`context/backlinks` 的目录可用 `data.offset/limit` 翻页；原 Hub 的截断、覆盖范围与续读信息仍适用，目录页结束不代表正文或知识领域完整。Hook/MCP context 的已知知识引用优先给出直接全文/单条展开参数；若补充参数会超过显式 compact 字节预算，则保留原输出，避免为了导航挤掉正文。不要因拿到索引就当作已经核验知识。
+
+这些视图在 MCP 客户端投影，兼容现有 Hub，REST/Web 返回不变，也不减少 Hub 内部读取的原始内容；本轮主要压缩送入模型的内容。`echome_context` 的既有 full 默认与显式 compact 预算保持不变。
 
 ### 完整输出预算
 
