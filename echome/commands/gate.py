@@ -73,7 +73,7 @@ def decide_command(
         Path | None, typer.Option("--input", help="JSON request file; omit to read standard input.")
     ] = None,
     provider: Annotated[
-        str, typer.Option(help="rules, kev, laya, jev, or chat_completions")
+        str, typer.Option(help="rules, piccolo, kev, laya, jev, or chat_completions")
     ] = "rules",
     base_url: Annotated[str | None, typer.Option(help="Explicit decision service URL")] = None,
     model: Annotated[
@@ -82,8 +82,8 @@ def decide_command(
     api_key_env: Annotated[
         str | None,
         typer.Option(
-            help="Key environment variable; defaults to ECHOME_GATE_JEV_API_KEY for Jev, "
-            "ECHOME_GATE_CHAT_API_KEY for chat_completions, ECHOME_GATE_API_KEY otherwise"
+            help="Key environment variable; provider-specific for Piccolo, Jev and chat; "
+            "ECHOME_GATE_API_KEY for Kev/Laya"
         ),
     ] = None,
     timeout: Annotated[float, typer.Option(min=0.1, max=30.0)] = 2.0,

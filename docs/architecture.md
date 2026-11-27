@@ -90,6 +90,8 @@ Alembic 是唯一 schema 迁移入口。容器启动时执行 `alembic upgrade h
 
 CLI 负责配置、Hub 操作、规则渲染、MCP 注册、Sleep、场景与诊断。`echome sync` 从 Hub 获取 L0/L1 内容并只更新受 marker 管理的区域。
 
+可选的 Codex 自动读取 Hook 在客户端独立运行，先由规则和缓存判断，再按配置使用 Piccolo、在线 Jev 等模型补充读取；它直接向 Hub 获取候选，不经过 MCP。架构、模式与评测基线见 [Memory Gate](memory-gate.md#自动读取-gate-架构基线)；源码存在不代表运行实例已安装或启用。
+
 文件式 local-vault `push/pull` 尚未实现。这两个命令会明确返回非零退出，不会再把空操作报告为成功。
 
 ### 3.5 Web Console

@@ -16,8 +16,10 @@ from echome.core.memory_gate import (
     GateRequest,
     GateSettings,
     build_chat_payload,
+    build_hook_read_payload,
     build_systemone_payload,
     decide,
+    suggest_hook_read,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -303,6 +305,41 @@ async def test_choice_probability_and_payload(
     assert payload["questions"]["action"]["type"] == "choice"
     assert set(payload["questions"]["action"]["criteria"]) == {"retrieve", "skip"}
     assert result.model != "untrusted response model"
+
+
+@pytest.mark.parametrize("kind", ["piccolo", "jev"])
+async def test_hook_supplement_uses_the_evaluated_choice_contract_even_after_a_soft_rule_skip(
+    provider: Callable[..., list[httpx.Request]], kind: str
+) -> None:
+    calls = provider(answer("retrieve", {"retrieve": 0.9, "skip": 0.1}))
+    request = GateRequest(phase="read", text="翻译：the current solution", project_hint="EchoMe")
+    settings = GateSettings(
+        provider=kind, base_url="http://localhost:18643", api_key="synthetic-invalid-key"
+    )
+    assert (await decide(request, GateSettings())).action == "skip"
+    result = await suggest_hook_read(request, settings)
+    assert result.model_action == "retrieve" and not result.degraded
+    assert len(calls) == 1
+    payload = json.loads(calls[0].content)
+    assert payload == build_hook_read_payload(request, settings)
+    assert payload["state"] == {
+        "user_message": "翻译：the current solution",
+        "project_hint": "EchoMe",
+    }
+    assert payload["questions"]["action"]["type"] == "choice"
+    assert payload["model"] == ("piccolo-4b" if kind == "piccolo" else "jev-1.13.0")
+
+
+async def test_hook_supplement_never_bypasses_sensitive_input(
+    provider: Callable[..., list[httpx.Request]],
+) -> None:
+    calls = provider(error=AssertionError("Sensitive input must not reach a model"))
+    result = await suggest_hook_read(
+        GateRequest(phase="read", text="password: synthetic-invalid-value"),
+        GateSettings(provider="piccolo", base_url="http://localhost:18643"),
+    )
+    assert result.reason_code == "sensitive_input" and result.action == "skip"
+    assert calls == []
 
 
 @pytest.mark.parametrize(("phase", "action"), [("read", "retrieve"), ("write", "review")])

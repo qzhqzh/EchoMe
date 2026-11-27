@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 MAX_INPUT_BYTES = 65536
 
@@ -24,21 +24,34 @@ def handle(raw: bytes, managed_by: str = "echome-v1") -> dict[str, Any]:
         from echome.core.task_hook import run_hook
 
         provider = os.getenv("ECHOME_HOOK_GATE_PROVIDER", "rules")
-        gate = GateSettings.model_validate(
-            {
-                "provider": provider,
-                "base_url": os.getenv("ECHOME_HOOK_GATE_URL"),
-                "model": os.getenv("ECHOME_HOOK_GATE_MODEL"),
-                "api_key": os.getenv(default_api_key_env(provider), ""),
-                "timeout_seconds": 1.0,
-            }
+        mode = os.getenv("ECHOME_HOOK_GATE_MODE", "legacy").strip().lower()
+        model_mode = (
+            cast(Literal["off", "legacy", "shadow", "assist"], mode)
+            if mode in {"off", "legacy", "shadow", "assist"}
+            else "off"
         )
+        try:
+            gate = GateSettings.model_validate(
+                {
+                    "provider": provider,
+                    "base_url": os.getenv("ECHOME_HOOK_GATE_URL"),
+                    "model": os.getenv("ECHOME_HOOK_GATE_MODEL"),
+                    "api_key": os.getenv(default_api_key_env(provider), ""),
+                    "timeout_seconds": 1.8,
+                    "threshold": 0.5,
+                }
+            )
+        except ValueError:
+            # Bad optional model configuration must not disable the local hook.
+            gate = GateSettings()
+            model_mode = "off"
         return asyncio.run(
             run_hook(
                 event,
                 config=Config.load(),
                 state_dir=Path.home() / ".echome" / "hook-state",
                 gate=gate,
+                model_mode=model_mode,
             )
         )
     except Exception:

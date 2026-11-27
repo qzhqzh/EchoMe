@@ -12,6 +12,7 @@ import pytest
 
 from echome.core import task_hook
 from echome.core.config import Config
+from echome.core.memory_gate import GateDecision, GateRequest, GateSettings
 from echome.core.task_hook import EMPTY_RESULT_TTL, HABIT_CHECK_TTL, MAX_OUTPUT_CHARS, run_hook
 
 NOW = 1_800_000_000.0
@@ -177,6 +178,231 @@ async def test_explicit_freshness_request_is_not_suppressed_by_exact_prompt_cach
     assert await run_hook(request, config=CONFIG, state_dir=state_dir, now=NOW)
     assert await run_hook(request, config=CONFIG, state_dir=state_dir, now=NOW + 1)
     assert len(requests) == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("prompt", "expected_second"),
+    [
+        ("请重新检查项目的 Git 状态", 0),
+        ("重新计算文件校验值，按记忆中的部署约定执行", 0),
+        ("请刷新记忆", 2),
+        ("先重新检查 Git，然后重新查询记忆中的部署约定", 2),
+    ],
+)
+async def test_refresh_bypasses_cache_only_for_memory_intent(
+    tmp_path: Path,
+    transport: Callable[..., list[httpx.Request]],
+    prompt: str,
+    expected_second: int,
+) -> None:
+    requests = transport()
+    state_dir = tmp_path / "state"
+    first = await run_hook(event(tmp_path, prompt), config=CONFIG, state_dir=state_dir, now=NOW)
+    assert first and len(requests) == 2
+    await run_hook(event(tmp_path, prompt), config=CONFIG, state_dir=state_dir, now=NOW + 1)
+    assert len(requests) == 2 + expected_second
+
+
+@pytest.mark.asyncio
+async def test_explicit_no_memory_precedes_project_and_refresh(
+    tmp_path: Path, transport: Callable[..., list[httpx.Request]]
+) -> None:
+    requests = transport()
+    output = await run_hook(
+        event(tmp_path, "不要读取任何记忆，只重新检查项目的 Git 状态"),
+        config=CONFIG,
+        state_dir=tmp_path / "state",
+        now=NOW,
+    )
+    assert output == {} and requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "model_action", "degraded", "expected_requests", "expected_model_calls"),
+    [
+        ("off", "retrieve", False, 0, 0),
+        ("legacy", "skip", False, 2, 1),
+        ("shadow", "retrieve", False, 0, 1),
+        ("assist", "retrieve", False, 2, 1),
+        ("assist", "skip", False, 0, 1),
+        ("assist", None, True, 2, 1),
+    ],
+)
+async def test_model_can_only_supplement_a_soft_skip_and_can_be_disabled(
+    tmp_path: Path,
+    transport: Callable[..., list[httpx.Request]],
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    model_action: str | None,
+    degraded: bool,
+    expected_requests: int,
+    expected_model_calls: int,
+) -> None:
+    requests = transport()
+    model_calls: list[GateRequest] = []
+
+    async def suggestion(request: GateRequest, settings: GateSettings) -> GateDecision:
+        model_calls.append(request)
+        return GateDecision(
+            phase="read",
+            action="retrieve" if degraded else model_action,
+            provider="piccolo",
+            reason_code="provider_timeout" if degraded else "model_choice",
+            model_action=model_action,
+            latency_ms=5,
+            degraded=degraded,
+        )
+
+    monkeypatch.setattr(task_hook, "suggest_hook_read", suggestion)
+    state_dir = tmp_path / "state"
+    await run_hook(
+        event(tmp_path, "这次也按我惯用的方式提交。"),
+        config=CONFIG,
+        state_dir=state_dir,
+        gate=GateSettings(provider="piccolo", base_url="http://127.0.0.1:18643"),
+        model_mode=mode,
+        now=NOW,
+    )
+    assert len(requests) == expected_requests
+    assert len(model_calls) == expected_model_calls
+    stored = next(state_dir.glob("*.json")).read_text()
+    assert "这次也按我惯用的方式提交" not in stored
+
+
+@pytest.mark.asyncio
+async def test_model_never_overrides_an_existing_rule_read_or_explicit_refresh(
+    tmp_path: Path,
+    transport: Callable[..., list[httpx.Request]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests = transport()
+
+    async def forbidden(*args: Any, **kwargs: Any) -> GateDecision:
+        pytest.fail("Rule reads and explicit refreshes must not call the model")
+
+    monkeypatch.setattr(task_hook, "suggest_hook_read", forbidden)
+    gate = GateSettings(provider="piccolo", base_url="http://127.0.0.1:18643")
+    for index, text in enumerate(["修复登录页面", "请刷新记忆"]):
+        await run_hook(
+            event(tmp_path, text),
+            config=CONFIG,
+            state_dir=tmp_path / "state",
+            gate=gate,
+            model_mode="assist",
+            now=NOW + index,
+        )
+    assert len(requests) == 4
+
+
+@pytest.mark.asyncio
+async def test_model_observation_is_per_turn_but_attempt_count_is_cumulative(
+    tmp_path: Path,
+    transport: Callable[..., list[httpx.Request]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport()
+
+    async def suggestion(request: GateRequest, settings: GateSettings) -> GateDecision:
+        return GateDecision(
+            phase="read",
+            action="skip",
+            provider="piccolo",
+            reason_code="model_choice",
+            model_action="skip",
+            latency_ms=5,
+        )
+
+    monkeypatch.setattr(task_hook, "suggest_hook_read", suggestion)
+    gate = GateSettings(provider="piccolo", base_url="http://127.0.0.1:18643")
+    state_dir = tmp_path / "state"
+    await run_hook(
+        event(tmp_path, "这次也按我惯用的方式提交。"),
+        config=CONFIG,
+        state_dir=state_dir,
+        gate=gate,
+        model_mode="assist",
+        now=NOW,
+    )
+    state = json.loads(next(state_dir.glob("*.json")).read_text())
+    assert state["model_observation"]["action"] == "skip"
+    assert state["counts"]["model_attempts"] == 1
+    await run_hook(
+        event(tmp_path, "修复登录页面"),
+        config=CONFIG,
+        state_dir=state_dir,
+        gate=gate,
+        model_mode="assist",
+        now=NOW + 1,
+    )
+    state = json.loads(next(state_dir.glob("*.json")).read_text())
+    assert "model_observation" not in state
+    assert state["counts"]["model_attempts"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_choice", "model_status", "expected_hub_requests"),
+    [("retrieve", 200, 2), ("skip", 200, 0), ("skip", 503, 2)],
+)
+async def test_online_jev_supplements_only_the_existing_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    model_choice: str,
+    model_status: int,
+    expected_hub_requests: int,
+) -> None:
+    actual_client = httpx.AsyncClient
+    calls: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.host == "model.example.test":
+            assert request.headers["authorization"] == "Bearer synthetic-jev-token"
+            assert (
+                json.loads(request.content)["state"]["user_message"] == "这次也按我惯用的方式提交。"
+            )
+            probabilities = (
+                {"retrieve": 0.9, "skip": 0.1}
+                if model_choice == "retrieve"
+                else {"retrieve": 0.1, "skip": 0.9}
+            )
+            return httpx.Response(
+                model_status,
+                json={
+                    "answers": {
+                        "action": {
+                            "type": "choice",
+                            "choice": model_choice,
+                            "probabilities": probabilities,
+                        }
+                    }
+                },
+            )
+        if request.url.path == "/api/v1/memories":
+            return httpx.Response(200, json={"items": [habit()], "total": 1})
+        return httpx.Response(200, json=context())
+
+    def client(**kwargs: Any) -> httpx.AsyncClient:
+        return actual_client(**kwargs, transport=httpx.MockTransport(respond))
+
+    monkeypatch.setattr(task_hook.httpx, "AsyncClient", client)
+    state_dir = tmp_path / "state"
+    await run_hook(
+        event(tmp_path, "这次也按我惯用的方式提交。"),
+        config=CONFIG,
+        state_dir=state_dir,
+        gate=GateSettings(
+            provider="jev", base_url="https://model.example.test", api_key="synthetic-jev-token"
+        ),
+        model_mode="assist",
+        now=NOW,
+    )
+    assert sum(call.url.host == "model.example.test" for call in calls) == 1
+    assert sum(call.url.host == "hub.example.test" for call in calls) == expected_hub_requests
+    stored = next(state_dir.glob("*.json")).read_text()
+    assert "synthetic-jev-token" not in stored and "我惯用的方式" not in stored
 
 
 @pytest.mark.asyncio

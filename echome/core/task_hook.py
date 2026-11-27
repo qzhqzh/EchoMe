@@ -11,7 +11,7 @@ import stat
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import httpx
@@ -19,9 +19,16 @@ import httpx
 from echome.core.config import Config
 from echome.core.gate_safety import contains_sensitive_input, validate_provider_url
 from echome.core.habit_context import eligible_habit_revisions, select_habit_context
+from echome.core.hook_freshness import classify_freshness
 from echome.core.hook_project import local_project_hints
 from echome.core.hook_prompt import normalize_hook_prompt
-from echome.core.memory_gate import GateRequest, GateSettings, decide
+from echome.core.memory_gate import (
+    GateRequest,
+    GateSettings,
+    decide,
+    is_unconditional_hook_skip,
+    suggest_hook_read,
+)
 
 MAX_INPUT_BYTES = 65536
 MAX_OUTPUT_CHARS = 6000
@@ -31,13 +38,6 @@ EMPTY_RESULT_TTL = 60
 HABIT_CHECK_TTL = 60
 _CONTINUATION = re.compile(
     r"^\s*(?:继续|请继续|接着做|继续处理|继续吧|continue|go ahead)[。.!！\s]*$", re.I
-)
-_REFRESH = re.compile(
-    r"重新|刷新|再次|最新|刚(?:刚|才).{0,16}(?:新增|添加|更新|保存|写入)|"
-    r"(?:新保存|新写入)的?记忆|(?:习惯|偏好).{0,12}(?:更新|修改|新增|添加|变更)|"
-    r"(?:更新|修改|新增|添加|变更).{0,12}(?:习惯|偏好)|"
-    r"\b(?:refresh|again|latest|newly (?:saved|added)|(?:update|change|add).{0,20}habits?)\b",
-    re.I,
 )
 _TASK = re.compile(
     r"我的|我们的|项目|家庭网络|鲸鱼娘|blender|wireguard|\bwg[01]?\b|规则分流|习惯|偏好|"
@@ -235,13 +235,19 @@ async def _process(
     config: Config,
     gate: GateSettings,
     now: float,
+    model_mode: Literal["off", "legacy", "shadow", "assist"] = "legacy",
 ) -> dict[str, Any]:
     prompt, cwd = event["prompt"], event["cwd"]
+    state.pop("model_observation", None)
     if contains_sensitive_input(prompt) or contains_sensitive_input(cwd):
         _record(state, "skip", "sensitive_input")
         return {}
+    freshness = classify_freshness(prompt)
+    if freshness == "skip":
+        _record(state, "skip", "explicit_no_memory")
+        return {}
     task_key = _digest(cwd + "\0" + prompt.strip())
-    refresh = bool(_REFRESH.search(prompt))
+    refresh = freshness == "force"
     previous = state.get("delivered", {})
     delivered_at = float(previous.get(task_key, 0))
     same_task = delivered_at > 0 and 0 <= now - delivered_at < SESSION_TTL and not refresh
@@ -249,33 +255,63 @@ async def _process(
     continuing = bool(
         previous and state.get("last_cwd") == cwd_key and _CONTINUATION.fullmatch(prompt)
     )
-    # First run only local rules, so obvious work never needs a model invocation.
+    # A fresh-memory request is a read even without a generic task keyword.
     request = GateRequest(
         phase="read",
         text=prompt,
         project_hint=Path(cwd).name,
         context_available=same_task or continuing,
     )
-    decision = await decide(request, GateSettings())
-    if decision.action in {"skip", "reuse"}:
-        _record(state, decision.action, decision.reason_code)
-        return {}
-    if same_task:  # Explicit recall is fulfilled by the exact already delivered request.
-        _record(state, "reuse", "same_task_delivered")
-        return {}
-    reason = decision.reason_code
-    if reason == "conservative_read" and not _TASK.search(prompt):
-        if gate.provider == "rules":
-            _record(state, "skip", "no_task_signal")
+    if refresh:
+        reason = "memory_refresh"
+    else:
+        # Rules that retrieve or reuse never depend on a model's opinion.
+        decision = await decide(request, GateSettings())
+        if decision.action == "reuse":
+            _record(state, "reuse", decision.reason_code)
             return {}
-        decision = await decide(request, gate)
-        # Model suggestions are observed; skip is never used as a hard denial.
-        state["model_observation"] = {
-            "provider": decision.provider,
-            "action": decision.model_action,
-            "reason": decision.reason_code,
-        }
+        if same_task and decision.action != "skip":
+            _record(state, "reuse", "same_task_delivered")
+            return {}
+
         reason = decision.reason_code
+        soft_skip = decision.action == "skip" or (
+            reason == "conservative_read" and not _TASK.search(prompt)
+        )
+        if soft_skip:
+            skip_reason = reason if decision.action == "skip" else "no_task_signal"
+            if (
+                is_unconditional_hook_skip(request, skip_reason)
+                or gate.provider == "rules"
+                or model_mode == "off"
+                or (model_mode == "legacy" and skip_reason != "no_task_signal")
+                or not config.token
+            ):
+                _record(state, "skip", skip_reason)
+                return {}
+            suggestion = await suggest_hook_read(request, gate)
+            counts = state.setdefault("counts", {})
+            counts["model_attempts"] = int(counts.get("model_attempts", 0)) + 1
+            if suggestion.degraded:
+                counts["model_fallbacks"] = int(counts.get("model_fallbacks", 0)) + 1
+            state["model_observation"] = {
+                "provider": suggestion.provider,
+                "action": suggestion.model_action,
+                "reason": suggestion.reason_code,
+                "latency_ms": suggestion.latency_ms,
+                "degraded": suggestion.degraded,
+            }
+            if model_mode == "shadow" or (
+                model_mode == "assist"
+                and not suggestion.degraded
+                and suggestion.model_action == "skip"
+            ):
+                _record(state, "skip", skip_reason)
+                return {}
+            if model_mode == "legacy":
+                reason = suggestion.reason_code
+            else:
+                reason = "model_supplement" if not suggestion.degraded else "model_read_fallback"
     if not config.token:
         _record(state, "skip", "hub_not_configured")
         return {}
@@ -392,11 +428,14 @@ async def run_hook(
     config: Config,
     state_dir: Path,
     gate: GateSettings | None = None,
+    model_mode: Literal["off", "legacy", "shadow", "assist"] = "legacy",
     now: float | None = None,
 ) -> dict[str, Any]:
     """Private metadata only; no transcripts, memory bodies, task text or credentials saved."""
     if os.name != "posix":
         return {}  # First adapter targets local Linux/macOS Codex.
+    if model_mode not in {"off", "legacy", "shadow", "assist"}:
+        model_mode = "off"
     import fcntl
 
     kind = event.get("hook_event_name")
@@ -462,7 +501,9 @@ async def run_hook(
             requests_before = sum(state.get("request_counts", {}).values())
             try:
                 async with asyncio.timeout(3.5):
-                    output = await _process(event, state, config, gate or GateSettings(), moment)
+                    output = await _process(
+                        event, state, config, gate or GateSettings(), moment, model_mode
+                    )
             except (TimeoutError, httpx.HTTPError, OSError, ValueError, TypeError, KeyError):
                 state["retry_after"] = moment + FAILURE_BACKOFF
                 _record(state, "failure", "bounded_failure")
