@@ -147,6 +147,7 @@ async def test_auto_scene_diversity_keeps_relevant_architecture_page_without_cha
         for item in result:
             if item["source"] == "scene":
                 assert item["read"]["arguments"]["entry_id"] == item["id"]
+                assert item["read"]["arguments"]["view"] == "compact"
                 assert item["needs_expansion"] is True
                 assert item["source_ref"] == "network-access/office-243"
     else:

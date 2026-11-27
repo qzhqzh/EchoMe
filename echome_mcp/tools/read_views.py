@@ -214,7 +214,9 @@ def scene_entry_index(entry: dict[str, Any], selector: str) -> dict[str, Any]:
     result["needs_expansion"] = True
     result["read"] = {
         "tool": "echome_scene_read",
-        "arguments": {"action": "get", "selector": selector, "entry_id": entry.get("id")},
+        "arguments": {
+            "action": "get", "selector": selector, "entry_id": entry.get("id"), "view": "compact",
+        },
     }
     if entry.get("status") == "archived":
         result["read"]["arguments"]["include_archived"] = True

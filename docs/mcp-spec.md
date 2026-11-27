@@ -138,9 +138,9 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 
 ### 场景工具（core 与 full）
 
-`echome_scene_read` 的 `list/get/history` 可按名称或别名读取资料与修订历史。默认 `view=compact`：`get` 先返回场景目录（`offset/limit`，默认 10 条），不重复返回组合 Markdown。每条预览带 ID、revision、来源、证据时间与精确展开参数；`get` 加 `entry_id` 返回该条完整内容。`view=full` 保留原完整场景格式，适用于确实需要整体资料的任务；`history` 保留完整历史。`list` 同样支持分页。
+`echome_scene_read` 的 `list/get/history` 可按名称或别名读取资料与修订历史。默认 `view=full`，保留原完整场景格式和列表默认分页。显式指定 `view=compact` 时，`get` 返回场景目录（`offset/limit`，默认 10 条），不重复返回组合 Markdown；每条预览带 ID、revision、来源、证据时间与精确展开参数，`get` 同时指定 `view=compact` 和 `entry_id` 返回该条完整内容。`history` 保留完整历史；`list` 支持显式分页。
 
-用户可以明确说“去 EchoMe 读取家庭网络场景资料”；AI 按名称 `get`，需要哪条就展开哪条，名称不确定时先 `list`。目录预览不是已读全文；跟随 `next_offset` 能枚举全部条目。全部 caution/needs_review 的引用与数量独立于普通分页展示，操作前应展开适用警示。已在当前上下文读过且没有更新迹象的条目可以复用。
+用户可以明确说“去 EchoMe 读取家庭网络场景资料”；AI 可以按名称 `get` 获取完整资料，也可以选择 compact 目录并按需展开；名称不确定时先 `list`。目录预览不是已读全文；跟随 `next_offset` 能枚举全部条目。全部 caution/needs_review 的引用与数量独立于普通分页展示，操作前应展开适用警示。已在当前上下文读过且没有更新迹象的条目可以复用。
 `echome_scene_write` 的 `create/add/add_batch/correct/publish_sop` 用于创建资料、单条或批量补充来源明确的知识、
 按 `expected_revision` 校正现有条目、录入经过至少 3 次独立有效实测且跨 2 次会话的正式 SOP。
 事实和观测必须带证据时间；临时步骤放在进行中。其他 AI 应先读资料和当前 revision，发现冲突时
@@ -150,11 +150,11 @@ readiness 的 `eligible_for_canary` 只表示样本门槛满足。客户端不�
 
 ### 知识读取视图
 
-`echome_knowledge_read` 默认 `view=compact`，`list/query` 默认每页 10 条，支持原有 `data.offset/limit`。长叙述字段可投影为明确标注的预览和 `omitted_fields`，关系限定条件、来源/证据索引、revision、状态及告警保留。短记录如果投影反而更大则保持完整，不增加一次展开。`get` 加 `view=full`（必要时 `data.revision`）读取原始完整记录；`schema/history` 不做摘要。
+`echome_knowledge_read` 默认 `view=full`，保留原 Hub 返回格式。显式指定 `view=compact` 时，`list/query` 默认每页 10 条，支持原有 `data.offset/limit`。长叙述字段可投影为明确标注的预览和 `omitted_fields`，关系限定条件、来源/证据索引、revision、状态及告警保留。短记录如果投影反而更大则保持完整，不增加一次展开。`get` 加 `view=full`（必要时 `data.revision`）读取原始完整记录；`schema/history` 不做摘要。
 
 `context/backlinks` 的目录可用 `data.offset/limit` 翻页；原 Hub 的截断、覆盖范围与续读信息仍适用，目录页结束不代表正文或知识领域完整。Hook/MCP context 的已知知识引用优先给出直接全文/单条展开参数；若补充参数会超过显式 compact 字节预算，则保留原输出，避免为了导航挤掉正文。不要因拿到索引就当作已经核验知识。
 
-这些视图在 MCP 客户端投影，兼容现有 Hub，REST/Web 返回不变，也不减少 Hub 内部读取的原始内容；本轮主要压缩送入模型的内容。`echome_context` 的既有 full 默认与显式 compact 预算保持不变。
+轻量视图在 MCP 客户端按需投影，兼容现有 Hub，REST/Web 和默认完整读取不变，也不减少 Hub 内部读取的原始内容。`echome_context` 的既有 full 默认与显式 compact 预算保持不变。
 
 ### 完整输出预算
 

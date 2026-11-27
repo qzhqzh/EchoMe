@@ -289,6 +289,7 @@ def _reference(row: RowMapping, source: str, *, discovery: bool = False) -> dict
             arguments["view"] = "full"
         else:
             arguments["entry_id"] = item["id"]
+            arguments["view"] = "compact"
     return item
 
 

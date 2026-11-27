@@ -38,16 +38,16 @@ async def echome_knowledge_read(
     action: str,
     record_id: str | None = None,
     data: dict[str, Any] | None = None,
-    view: str = "compact",
+    view: str = "full",
 ) -> str:
-    """Read explicit indexes by default; expand a selected record with view=full."""
+    """Preserve full reads by default; compact indexes are an explicit option."""
     check_view(view)
     data = dict(data or {})
     if action == "schema":
         return await _request("GET", "/schema")
-    if action in {"list", "query", "backlinks", "context"}:
+    if view == "compact" and action in {"list", "query", "backlinks", "context"}:
         offset, limit = page_options(data)
-        if view == "compact" and action in {"list", "query"}:
+        if action in {"list", "query"}:
             data.setdefault("limit", limit)
     if action == "list":
         raw = await _request("GET", "/records", params=data)
@@ -64,7 +64,9 @@ async def echome_knowledge_read(
         params = {
             key: value
             for key, value in data.items()
-            if action not in {"context", "backlinks"} or key not in {"offset", "limit"}
+            if view != "compact"
+            or action not in {"context", "backlinks"}
+            or key not in {"offset", "limit"}
         }
         raw = await _request("GET", path, params=params)
     if view == "full" or action == "history":

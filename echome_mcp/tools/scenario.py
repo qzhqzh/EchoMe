@@ -144,42 +144,46 @@ async def echome_scene_read(
     entry_id: str | None = None,
     query: str | None = None,
     include_archived: bool = False,
-    view: str = "compact",
-    offset: int = 0,
-    limit: int = 10,
+    view: str = "full",
+    offset: int | None = None,
+    limit: int | None = None,
 ) -> str:
-    """Read a paged scene index, one complete entry, or an explicit full document."""
+    """Preserve full scene reads by default; compact indexes are an explicit option."""
     check_view(view)
-    page_options({"offset": offset, "limit": limit})
+    page_offset, page_limit = page_options(
+        {"offset": 0 if offset is None else offset, "limit": 10 if limit is None else limit}
+    )
     if action == "list":
-        payload = json.loads(
-            await _request(
-                "GET",
-                "/knowledge",
-                params={
-                    "query": query,
-                    "include_archived": include_archived,
-                    "offset": offset,
-                    "limit": limit,
-                },
-            )
-        )
+        params: dict[str, Any] = {"query": query, "include_archived": include_archived}
+        if view == "compact":
+            params.update(offset=page_offset, limit=page_limit)
+        else:
+            if offset is not None:
+                params["offset"] = offset
+            if limit is not None:
+                params["limit"] = limit
+        raw = await _request("GET", "/knowledge", params=params)
+        if view == "full":
+            return raw
+        payload = json.loads(raw)
         if "error" not in payload and "items" in payload:
-            payload.update(pagination(payload["total"], offset, len(payload["items"]), limit))
-            if view == "compact":
-                for item in payload["items"]:
-                    summary = item.pop("summary", "")
-                    item["summary_preview"] = summary[:180]
-                    item["summary_chars"] = len(summary)
-                    item["needs_expansion"] = True
-                    item["read"] = {
-                        "tool": "echome_scene_read",
-                        "arguments": {
-                            "action": "get",
-                            "selector": item["slug"],
-                            "include_archived": include_archived,
-                        },
-                    }
+            payload.update(
+                pagination(payload["total"], page_offset, len(payload["items"]), page_limit)
+            )
+            for item in payload["items"]:
+                summary = item.pop("summary", "")
+                item["summary_preview"] = summary[:180]
+                item["summary_chars"] = len(summary)
+                item["needs_expansion"] = True
+                item["read"] = {
+                    "tool": "echome_scene_read",
+                    "arguments": {
+                        "action": "get",
+                        "selector": item["slug"],
+                        "include_archived": include_archived,
+                        "view": "compact",
+                    },
+                }
         return json.dumps(payload, ensure_ascii=False)
     if selector is None:
         raise ValueError("selector is required")
@@ -189,7 +193,7 @@ async def echome_scene_read(
         payload = json.loads(raw)
         if "error" in payload:
             return raw
-        if entry_id is not None:
+        if view == "compact" and entry_id is not None:
             _segment(entry_id)
             entry = next(
                 (item for item in payload.get("entries", []) if item.get("id") == entry_id), None
@@ -218,7 +222,7 @@ async def echome_scene_read(
             )
         if view == "full":
             return raw
-        result = scene_view(payload, selector, offset, limit)
+        result = scene_view(payload, selector, page_offset, page_limit)
         if "read" in result:
             result["read"]["arguments"]["include_archived"] = include_archived
         return json.dumps(result, ensure_ascii=False)

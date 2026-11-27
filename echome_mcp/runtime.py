@@ -279,6 +279,7 @@ def _precise_knowledge_reads(context: dict[str, Any]) -> None:
             and ref.get("id")
         ):
             arguments["entry_id"] = ref["id"]
+            arguments["view"] = "compact"
 
 
 async def echome_context(
