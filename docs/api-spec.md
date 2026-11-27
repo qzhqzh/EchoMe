@@ -221,7 +221,7 @@ callback / refresh 返回 `access_token`、`token_type`、`expires_in`（秒）�
 
 ### POST /memories/search
 
-语义 + 词法混合搜索，默认检索 active + ai_review；embedding 不可用时可降级为词法召回。`top_k` 默认 5、最大 20，`min_score` 默认 0.3。
+语义 + 词法混合搜索，默认检索 active + ai_review；embedding 不可用时可降级为词法召回。`top_k` 默认 5、最大 20，`min_score` 默认 0.3，作用于源分数。默认缺少足够词法证据的纯向量结果至少需 0.5；显式 `min_score < 0.3` 保留宽召回。返回的融合 `score` 用于排序，并非概率，可能低于 `min_score`。详见 [检索策略](memory-retrieval.md#记忆候选去噪)。
 
 **Request Body**:
 ```json
@@ -558,7 +558,10 @@ view 只使用旧的 artifact-ID freshness 契约；新客户端应使用 Reflec
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/context` | 单入口获取 personal 或 canonical project context；返回 evidence、conflicts、unknowns、answerability 与 runtime metadata |
+| `POST` | `/api/v1/context/discovery` | 自动客户端的只读候选索引；轻量项目定位，不运行 compiler/preflight、不记 ContextRun |
 | `GET` | `/api/v1/context/runtime/health` | 检查认证、Hub、数据库、Alembic revision、embedding 与 feature flags |
+
+`POST /context/discovery` 接受 `task`（1–4,000 字符）、可选 `project_hint` / `project_hints`（最多 4 个）、`limit`（默认 3，最多 5）和 `max_output_tokens`（默认 10,000，UTF-8 字节上界）。返回 `echome.context.v1`、`view=discovery`、`memory_index`、`knowledge_refs`、`project_resolution`；已解析项目还返回 `project_reference`。条目均需展开，不能作为完整规则包。未知或歧义项目退回全局个人记忆，不创建项目或别名。此接口始终只读、不写 run/feedback/outcome，低相关结果允许为空，不影响显式检索。
 
 `POST /context` 支持 `task`、`project_hint`、`project_hints`、`changed_paths`、`mode`、`token_budget`、
 `limit`、`as_of`、`valid_at`、`request_id`、`client`、`client_version` 和 `policy_mode`。`mode=auto`
@@ -650,6 +653,8 @@ helpful/harmful 与 coverage 只统计实际 intervention runs；截断证据窗
 `output_usage` 使用 `utf8_bytes_upper_bound`，覆盖整个紧凑 JSON，包括统计字段本身。必要规则或 completion 放不下时返回 `echome.error.v1` / `OUTPUT_BUDGET_TOO_SMALL`；该 run 记为 failed，不允许报告成功 outcome。保留字段、裁剪规则与 MCP 双表示口径详见 [MCP 规范](mcp-spec.md)。
 
 `GET /api/v1/context/runs/{run_id}` 返回同一用户的已记录 run、selected IDs 与完整检索 trace；不属于当前用户或不存在的 run 返回 404。未记录的请求没有诊断 URL，可重新请求 full 模式。
+
+compact 中重复的 `preflight.requirements` 可使用 `context_ref: "#/constraints/N"` 指向同响应已完整交付的约束；只有 ID、版本、正文和限定相同才去重。独有规则、冲突或警示正文与证据不能为预算截短；full 格式保持不变。
 
 ## 15. 高频场景与持续事项
 

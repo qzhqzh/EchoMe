@@ -12,6 +12,7 @@ from rich.panel import Panel
 from echome.commands.clean import clean
 from echome.commands.doctor import doctor
 from echome.commands.gate import gate_app
+from echome.commands.hook import hook_app
 from echome.commands.init import init
 from echome.commands.login import login, logout, whoami
 from echome.commands.market import market_app
@@ -254,6 +255,7 @@ app.add_typer(sleep_app, name="sleep")
 
 # Shadow-only memory interaction decisions
 app.add_typer(gate_app, name="gate")
+app.add_typer(hook_app, name="hook")
 
 # Explicitly selected, versioned repeatable work
 app.add_typer(scenario_app, name="scenario")

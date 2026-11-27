@@ -23,18 +23,21 @@ from app.core.auth import verify_token
 from app.core.config import settings
 from app.core.database import async_session_factory, get_session
 from app.models.project_knowledge import ContextRun
-from app.schemas.context_runtime import UnifiedContextRequest
+from app.schemas.context_runtime import ContextDiscoveryRequest, UnifiedContextRequest
 from app.schemas.project_knowledge import ProjectContextRequest, ProjectPreflightRequest
 from app.services.content_safety import find_sensitive_content
 from app.services.context_compiler import compile_project_context
 from app.services.context_completion import completion_contract
+from app.services.context_discovery import build_discovery
 from app.services.context_output import (
     MEMORY_INDEX_NOTICE,
+    account_output,
     content_tokens,
     context_output,
     memory_reference,
 )
 from app.services.context_policy import apply_context_policy, record_policy_diagnostic_overhead
+from app.services.discovery_query import explicit_recall_requested
 from app.services.knowledge_context import discover_knowledge_refs
 from app.services.memory_retrieval import retrieve_memories
 from app.services.project_identity import ProjectDiscovery, discover_projects
@@ -540,6 +543,8 @@ async def _append_knowledge_refs(
     body: UnifiedContextRequest,
     session: AsyncSession,
     user_id: str,
+    *,
+    discovery: bool = False,
 ) -> None:
     """Add bounded discovery references without changing the authoritative pack."""
     if context.get("scope") not in {"personal", "project"}:
@@ -577,6 +582,7 @@ async def _append_knowledge_refs(
                 query=body.task,
                 project_id=(context.get("project") or {}).get("id"),
                 limit=4,
+                **({"discovery": True} if discovery else {}),
             )
             if changed_timeout:
                 # ROLLBACK TO SAVEPOINT restores SET LOCAL on failure. On the
@@ -608,6 +614,47 @@ async def _append_knowledge_refs(
         context["answerability"] = _answerability(context)
     trace["latency_ms"] = round((perf_counter() - started) * 1000, 2)
     context.setdefault("retrieval_trace", {})["knowledge_lookup"] = trace
+
+
+@router.post("/discovery", response_model=None)
+async def get_context_discovery(
+    body: ContextDiscoveryRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(verify_token),
+) -> dict[str, Any]:
+    """Read an index without preflight, full rules, context runs or outcome writes."""
+    if find_sensitive_content(body.task):
+        return {
+            "schema_version": "echome.error.v1",
+            "error": {"code": "SENSITIVE_DISCOVERY_INPUT", "retryable": False},
+        }
+    context = await build_discovery(session, body, user_id)
+    await _append_knowledge_refs(
+        context, UnifiedContextRequest(task=body.task, mode="personal", record_run=False),
+        session, user_id, discovery=not explicit_recall_requested(body.task),
+    )
+    trace = context.pop("retrieval_trace", {})
+    context["runtime"] = {
+        "read_only": True, "record_run": False,
+        "recall_mode": "explicit" if explicit_recall_requested(body.task) else "automatic",
+        "vector_available": trace.get("vector_available", False),
+        "knowledge_lookup": trace.get("knowledge_lookup", {}).get("status"),
+    }
+    # Drop only entire optional references, never source text or hard rules.
+    output = account_output(context, body.max_output_tokens)
+    for key in ("knowledge_refs", "memory_index"):
+        while output["output_usage"]["tokens_upper_bound"] > body.max_output_tokens and output[key]:
+            output[key].pop()
+            output.setdefault("omitted_counts", {})[key] = (
+                output.get("omitted_counts", {}).get(key, 0) + 1
+            )
+            account_output(output, body.max_output_tokens)
+    if output["output_usage"]["tokens_upper_bound"] > body.max_output_tokens:
+        return {
+            "schema_version": "echome.error.v1",
+            "error": {"code": "OUTPUT_BUDGET_TOO_SMALL", "retryable": False},
+        }
+    return output
 
 
 @router.post("", response_model=None)

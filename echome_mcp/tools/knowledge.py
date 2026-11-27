@@ -7,6 +7,7 @@ from uuid import UUID
 import httpx
 
 from echome_mcp.hub_client import MCPHubClient
+from echome_mcp.tools.read_views import check_view, knowledge_view, page_options
 
 
 async def _request(
@@ -34,24 +35,43 @@ async def _request(
 
 
 async def echome_knowledge_read(
-    action: str, record_id: str | None = None, data: dict[str, Any] | None = None
+    action: str,
+    record_id: str | None = None,
+    data: dict[str, Any] | None = None,
+    view: str = "full",
 ) -> str:
-    """Read contracts, exact structured queries, discovery, history or a context bundle."""
-    data = data or {}
+    """Preserve full reads by default; compact indexes are an explicit option."""
+    check_view(view)
+    data = dict(data or {})
     if action == "schema":
         return await _request("GET", "/schema")
+    if view == "compact" and action in {"list", "query", "backlinks", "context"}:
+        offset, limit = page_options(data)
+        if action in {"list", "query"}:
+            data.setdefault("limit", limit)
     if action == "list":
-        return await _request("GET", "/records", params=data)
-    if action == "query":
-        return await _request("POST", "/query", data=data)
-    if action not in ("get", "history", "backlinks", "context"):
-        raise ValueError("Unknown knowledge read action")
-    if not record_id:
-        raise ValueError("record_id is required")
-    path = "/records/" + str(UUID(record_id))
-    if action != "get":
-        path += "/" + action
-    return await _request("GET", path, params=data)
+        raw = await _request("GET", "/records", params=data)
+    elif action == "query":
+        raw = await _request("POST", "/query", data=data)
+    else:
+        if action not in ("get", "history", "backlinks", "context"):
+            raise ValueError("Unknown knowledge read action")
+        if not record_id:
+            raise ValueError("record_id is required")
+        path = "/records/" + str(UUID(record_id))
+        if action != "get":
+            path += "/" + action
+        params = {
+            key: value
+            for key, value in data.items()
+            if view != "compact"
+            or action not in {"context", "backlinks"}
+            or key not in {"offset", "limit"}
+        }
+        raw = await _request("GET", path, params=params)
+    if view == "full" or action == "history":
+        return raw
+    return json.dumps(knowledge_view(json.loads(raw), action, data), ensure_ascii=False)
 
 
 async def echome_knowledge_write(

@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
@@ -15,11 +15,36 @@ from echome.core.memory_gate import (
     GateDecision,
     GateRequest,
     GateSettings,
+    build_chat_payload,
+    build_hook_read_payload,
     build_systemone_payload,
     decide,
+    suggest_hook_read,
 )
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "查一下记忆中的规则分流经验",
+        "查一查记忆里的 Blender 建模经验",
+        "查看记忆中量子纠缠的贝尔不等式实验原理",
+    ],
+)
+async def test_colloquial_explicit_recall_is_not_conservative(text: str) -> None:
+    result = await decide(GateRequest(phase="read", text=text), GateSettings())
+    assert result.action == "retrieve"
+    assert result.reason_code == "historical_context"
+
+
+async def test_inspecting_memory_service_logs_is_still_current_diagnostics() -> None:
+    result = await decide(
+        GateRequest(phase="read", text="查看记忆服务日志和当前运行状态"), GateSettings()
+    )
+    assert result.action == "skip"
+    assert result.reason_code == "current_diagnostics"
 
 
 @pytest.fixture
@@ -107,6 +132,81 @@ async def test_rules(phase: str, text: str, action: str, extra: dict[str, Any]) 
     assert result.shadow is True
     assert result.degraded is False
     assert result.model_probability is None
+
+
+@pytest.mark.parametrize(
+    ("text", "action", "reason"),
+    [
+        ("发错了，忽略", "skip", "conversation_control"),
+        ("取消当前任务。", "skip", "conversation_control"),
+        ("先暂停一下", "skip", "conversation_control"),
+        ("好的，继续", "skip", "conversation_control"),
+        ("可以", "skip", "conversation_control"),
+        ("收到，谢谢！", "skip", "conversation_control"),
+        ("OK, proceed.", "skip", "conversation_control"),
+        ("Never mind", "skip", "conversation_control"),
+        ("不用再查记忆了", "skip", "conversation_control"),
+        (
+            "看一下我们这个记忆项目最近被访问频繁吗？这个服务是否还在发挥它的作用，它是成为了一个限制还是一个辅助？",
+            "skip",
+            "current_diagnostics",
+        ),
+        ("检查当前记忆服务的日志和调用量", "skip", "current_diagnostics"),
+        ("查询记忆库的访问量", "skip", "current_diagnostics"),
+        ("Look at the current memory service access logs", "skip", "current_diagnostics"),
+        ("之前我们决定用什么日志方案？", "retrieve", "historical_context"),
+        ("看看上次怎么处理这个日志报错", "retrieve", "historical_context"),
+        ("好的，查一下我之前的偏好", "retrieve", "historical_context"),
+    ],
+)
+async def test_real_requests_do_not_turn_memory_service_diagnostics_into_recall(
+    provider: Callable[..., list[httpx.Request]], text: str, action: str, reason: str
+) -> None:
+    calls = provider(error=AssertionError("Clear local decisions must not invoke a model"))
+    result = await decide(
+        GateRequest(phase="read", text=text),
+        GateSettings(
+            provider="chat_completions", base_url="http://localhost:8009", model="local-model"
+        ),
+    )
+    assert (result.action, result.reason_code) == (action, reason)
+    assert result.provider == "rules"
+    assert calls == []
+
+
+@pytest.mark.parametrize("text", ["修改日志配置兼容现有项目", "设计新的访问量模块"])
+async def test_diagnostic_vocabulary_does_not_skip_project_changes(text: str) -> None:
+    result = await decide(GateRequest(phase="read", text=text), GateSettings())
+    assert result.action == "retrieve"
+    assert result.reason_code == "conservative_read"
+
+
+async def test_available_context_reused_for_current_diagnostics() -> None:
+    result = await decide(
+        GateRequest(phase="read", text="检查当前记忆服务日志", context_available=True),
+        GateSettings(),
+    )
+    assert (result.action, result.reason_code) == ("reuse", "context_available")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "检索记忆里的家庭网络配置",
+        "Search my memories for the Blender workflow",
+    ],
+)
+async def test_explicit_recollection_precedes_available_context(text: str) -> None:
+    result = await decide(
+        GateRequest(phase="read", text=text, context_available=True), GateSettings()
+    )
+    assert (result.action, result.reason_code) == ("retrieve", "historical_context")
+
+
+@pytest.mark.parametrize("text", ["取消任务", "好的，继续"])
+async def test_conversation_control_is_not_a_write_proposal(text: str) -> None:
+    result = await decide(GateRequest(phase="write", text=text), GateSettings())
+    assert (result.action, result.reason_code) == ("skip", "conversation_control")
 
 
 @pytest.mark.parametrize(
@@ -205,6 +305,41 @@ async def test_choice_probability_and_payload(
     assert payload["questions"]["action"]["type"] == "choice"
     assert set(payload["questions"]["action"]["criteria"]) == {"retrieve", "skip"}
     assert result.model != "untrusted response model"
+
+
+@pytest.mark.parametrize("kind", ["piccolo", "jev"])
+async def test_hook_supplement_uses_the_evaluated_choice_contract_even_after_a_soft_rule_skip(
+    provider: Callable[..., list[httpx.Request]], kind: str
+) -> None:
+    calls = provider(answer("retrieve", {"retrieve": 0.9, "skip": 0.1}))
+    request = GateRequest(phase="read", text="翻译：the current solution", project_hint="EchoMe")
+    settings = GateSettings(
+        provider=kind, base_url="http://localhost:18643", api_key="synthetic-invalid-key"
+    )
+    assert (await decide(request, GateSettings())).action == "skip"
+    result = await suggest_hook_read(request, settings)
+    assert result.model_action == "retrieve" and not result.degraded
+    assert len(calls) == 1
+    payload = json.loads(calls[0].content)
+    assert payload == build_hook_read_payload(request, settings)
+    assert payload["state"] == {
+        "user_message": "翻译：the current solution",
+        "project_hint": "EchoMe",
+    }
+    assert payload["questions"]["action"]["type"] == "choice"
+    assert payload["model"] == ("piccolo-4b" if kind == "piccolo" else "jev-1.13.0")
+
+
+async def test_hook_supplement_never_bypasses_sensitive_input(
+    provider: Callable[..., list[httpx.Request]],
+) -> None:
+    calls = provider(error=AssertionError("Sensitive input must not reach a model"))
+    result = await suggest_hook_read(
+        GateRequest(phase="read", text="password: synthetic-invalid-value"),
+        GateSettings(provider="piccolo", base_url="http://localhost:18643"),
+    )
+    assert result.reason_code == "sensitive_input" and result.action == "skip"
+    assert calls == []
 
 
 @pytest.mark.parametrize(("phase", "action"), [("read", "retrieve"), ("write", "review")])
@@ -343,6 +478,207 @@ async def test_jev_write_stays_shadow_and_supports_explicit_model(
     assert result.shadow is True
 
 
+def chat_answer(action: str, *, finish_reason: str = "stop", **extra: Any) -> dict[str, Any]:
+    return {
+        "model": "untrusted-returned-model",
+        "choices": [
+            {
+                "finish_reason": finish_reason,
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({"action": action, **extra}),
+                },
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("phase", "choice", "action", "reason"),
+    [
+        ("read", "retrieve", "retrieve", "model_choice_unscored"),
+        ("read", "skip", "retrieve", "model_skip_shadow_only"),
+        ("write", "propose", "propose", "model_choice_unscored"),
+        ("write", "review", "review", "model_choice_unscored"),
+        ("write", "skip", "skip", "model_choice_unscored"),
+    ],
+)
+async def test_chat_completions_protocol_has_no_probability_or_execution(
+    provider: Callable[..., list[httpx.Request]],
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    choice: str,
+    action: str,
+    reason: str,
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("A chat classification must not call Hub")
+
+    monkeypatch.setattr(HubClient, "__init__", forbidden)
+    calls = provider(chat_answer(choice))
+    request = GateRequest(phase=phase, text="分析这段实现", project_hint="EchoMe")
+    settings = GateSettings(
+        provider="chat_completions",
+        base_url="http://localhost:8009/v1",
+        model="existing-local-model",
+        api_key="synthetic-chat-key",
+        threshold=1.0,
+    )
+    result = await decide(request, settings)
+    assert len(calls) == 1
+    assert str(calls[0].url) == "http://localhost:8009/v1/chat/completions"
+    assert calls[0].headers["authorization"] == "Bearer synthetic-chat-key"
+    payload = json.loads(calls[0].content)
+    assert payload == build_chat_payload(request, settings)
+    assert payload["max_tokens"] == 64
+    assert payload["response_format"] == {"type": "json_object"}
+    assert payload["n"] == 1 and payload["stream"] is False
+    assert json.loads(payload["messages"][1]["content"]) == {
+        "text": "分析这段实现",
+        "project_hint": "EchoMe",
+    }
+    assert (result.action, result.reason_code) == (action, reason)
+    assert result.model_action == choice
+    assert result.model_probability is None
+    assert result.model == "existing-local-model"
+    assert result.shadow is True and result.degraded is False
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"base_url": "http://localhost:8009"},
+        {"model": "local-model"},
+        {},
+    ],
+)
+async def test_chat_requires_explicit_endpoint_and_model(
+    provider: Callable[..., list[httpx.Request]], settings: dict[str, Any]
+) -> None:
+    calls = provider(error=AssertionError("Do not auto-discover a model or endpoint"))
+    result = await decide(
+        GateRequest(phase="read", text="分析这段实现"),
+        GateSettings(provider="chat_completions", **settings),
+    )
+    assert (result.action, result.reason_code) == ("retrieve", "provider_not_configured")
+    assert result.degraded is True
+    assert calls == []
+
+
+async def test_local_chat_service_can_be_explicitly_configured_without_auth(
+    provider: Callable[..., list[httpx.Request]],
+) -> None:
+    calls = provider(chat_answer("retrieve"))
+    result = await decide(
+        GateRequest(phase="read", text="分析这段实现"),
+        GateSettings(
+            provider="chat_completions", base_url="http://127.0.0.1:8009", model="local-model"
+        ),
+    )
+    assert len(calls) == 1
+    assert str(calls[0].url) == "http://127.0.0.1:8009/v1/chat/completions"
+    assert "authorization" not in calls[0].headers
+    assert result.reason_code == "model_choice_unscored"
+
+
+@pytest.mark.parametrize("phase", ["read", "write"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "timeout",
+        "connect",
+        "429",
+        "redirect",
+        "malformed",
+        "unknown",
+        "wrong_phase",
+        "confidence",
+        "duplicate",
+        "fenced",
+        "length",
+        "tool_call",
+        "refusal",
+        "multi_choice",
+        "missing_role",
+        "oversized_message",
+        "oversized_body",
+    ],
+)
+async def test_chat_protocol_and_transport_failures_fall_back_once(
+    provider: Callable[..., list[httpx.Request]],
+    phase: str,
+    failure: str,
+) -> None:
+    body = chat_answer("retrieve" if phase == "read" else "propose")
+    choice = body["choices"][0]
+    message = choice["message"]
+    kwargs: dict[str, Any] = {}
+    if failure == "timeout":
+        kwargs["error"] = httpx.ReadTimeout("synthetic-private-error")
+    elif failure == "connect":
+        kwargs["error"] = httpx.ConnectError("synthetic-private-error")
+    elif failure == "429":
+        kwargs.update(status=429, content=b"synthetic-private-error")
+    elif failure == "redirect":
+        kwargs.update(status=307, headers={"Location": "https://untrusted.invalid"})
+    elif failure == "malformed":
+        kwargs["content"] = b"synthetic-private-error"
+    elif failure == "unknown":
+        message["content"] = '{"action":"run_command"}'
+    elif failure == "wrong_phase":
+        message["content"] = json.dumps({"action": "propose" if phase == "read" else "retrieve"})
+    elif failure == "confidence":
+        message["content"] = json.dumps({"action": "skip", "confidence": 0.999})
+    elif failure == "duplicate":
+        message["content"] = '{"action":"skip","action":"skip"}'
+    elif failure == "fenced":
+        message["content"] = '```json\n{"action":"skip"}\n```'
+    elif failure == "length":
+        choice["finish_reason"] = "length"
+    elif failure == "tool_call":
+        message["tool_calls"] = [{"function": {"name": "write_memory"}}]
+    elif failure == "refusal":
+        message["refusal"] = "Not a decision"
+    elif failure == "multi_choice":
+        body["choices"].append(choice.copy())
+    elif failure == "missing_role":
+        del message["role"]
+    elif failure == "oversized_message":
+        message["content"] += " " * 1025
+    elif failure == "oversized_body":
+        body["extra"] = "x" * 65536
+    calls = provider(body, **kwargs)
+    result = await decide(
+        GateRequest(phase=phase, text="分析这段实现"),
+        GateSettings(
+            provider="chat_completions", base_url="http://localhost:8009", model="local-model"
+        ),
+    )
+    assert len(calls) == 1
+    assert result.action == ("retrieve" if phase == "read" else "review")
+    assert result.model_probability is None and result.model_action is None
+    assert result.degraded is True and result.shadow is True
+    assert "synthetic-private-error" not in result.model_dump_json()
+
+
+@pytest.mark.parametrize("field", ["text", "project_hint"])
+async def test_chat_sensitive_input_never_leaves_process(
+    provider: Callable[..., list[httpx.Request]],
+    field: str,
+) -> None:
+    calls = provider(error=AssertionError("Sensitive classification must not be sent"))
+    request = {"phase": "read", "text": "分析这段实现", field: "password=synthetic-invalid-secret"}
+    result = await decide(
+        GateRequest.model_validate(request),
+        GateSettings(
+            provider="chat_completions", base_url="http://localhost:8009", model="local-model"
+        ),
+    )
+    assert result.reason_code == "sensitive_input"
+    assert result.provider == "rules" and calls == []
+    assert "synthetic-invalid-secret" not in result.model_dump_json()
+
+
 async def test_redirect_is_not_followed(provider: Callable[..., list[httpx.Request]]) -> None:
     calls = provider(status=307, headers={"Location": "https://untrusted.invalid"})
     result = await decide(
@@ -417,7 +753,8 @@ async def test_rounded_distribution_and_no_write_side_effects(
     }
 
 
-async def test_overall_timeout_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("kind", ["kev", "chat_completions"])
+async def test_overall_timeout_is_bounded(monkeypatch: pytest.MonkeyPatch, kind: str) -> None:
     real_client = httpx.AsyncClient
 
     async def slow(request: httpx.Request) -> httpx.Response:
@@ -431,11 +768,48 @@ async def test_overall_timeout_is_bounded(monkeypatch: pytest.MonkeyPatch) -> No
     )
     result = await decide(
         GateRequest(phase="read", text="检查这段内容是否有帮助"),
-        GateSettings(provider="kev", base_url="http://localhost:8009", timeout_seconds=0.1),
+        GateSettings(
+            provider=kind,
+            base_url="http://localhost:8009",
+            model="local-model",
+            timeout_seconds=0.1,
+        ),
     )
     assert result.action == "retrieve"
     assert result.reason_code == "provider_timeout"
     assert result.latency_ms < 900
+
+
+async def test_chat_stops_reading_oversized_response_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_client = httpx.AsyncClient
+    chunks_read = 0
+
+    class OversizedStream(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            nonlocal chunks_read
+            for _ in range(1000):
+                chunks_read += 1
+                yield b"x" * 4096
+
+    def response(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=OversizedStream())
+
+    monkeypatch.setattr(
+        memory_gate.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(response), **kwargs),
+    )
+    result = await decide(
+        GateRequest(phase="read", text="分析这段实现"),
+        GateSettings(
+            provider="chat_completions", base_url="http://localhost:8009", model="local-model"
+        ),
+    )
+    assert chunks_read == 17
+    assert result.reason_code == "invalid_provider_response"
+    assert result.action == "retrieve" and result.degraded is True
 
 
 @pytest.mark.parametrize(

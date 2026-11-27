@@ -17,6 +17,80 @@ from app.services.embedding import get_embedding
 from app.services.memory_scope import exclude_projects
 
 ACTIVE_MEMORY_STATUSES = ("active", "ai_review")
+DEFAULT_MIN_SOURCE_SCORE = 0.3
+DEFAULT_MIN_VECTOR_ONLY_SCORE = 0.5
+# Conversational scaffolding is not evidence that a memory concerns the task.
+_GENERIC_QUERY_TOKENS = {
+    "我们",
+    "我们的",
+    "我的",
+    "你的",
+    "一个",
+    "当前",
+    "相关",
+    "以及",
+    "或者",
+    "包括",
+    "进行",
+    "怎么",
+    "如何",
+    "怎样",
+    "什么",
+    "哪些",
+    "有哪些",
+    "有哪",
+    "查询",
+    "搜索",
+    "请问",
+    "帮我",
+    "一下",
+    "是否",
+    "可以",
+    "需要",
+    "the",
+    "and",
+    "for",
+    "this",
+    "that",
+    "with",
+    "from",
+    "please",
+    "about",
+    "what",
+    "how",
+    "my",
+    "our",
+    "your",
+}
+_GENERIC_QUERY_TOKENS |= {
+    phrase[start : start + width]
+    for phrase in _GENERIC_QUERY_TOKENS
+    if not phrase.isascii()
+    for width in range(2, len(phrase))
+    for start in range(len(phrase) - width + 1)
+}
+# Keep these when they are the topic, but not as sole support for a specific task.
+_BROAD_QUERY_TOKENS = {
+    "ai",
+    "llm",
+    "model",
+    "models",
+    "system",
+    "project",
+    "data",
+    "feature",
+    "workflow",
+    "模型",
+    "系统",
+    "项目",
+    "数据",
+    "功能",
+    "工作",
+    "流程",
+    "知识",
+    "领域",
+    "用户",
+}
 QUERY_ALIASES = {
     "git": ("commit", "pull request", "pr", "workflow"),
     "提交": ("git", "commit", "pull request", "pr", "workflow"),
@@ -25,6 +99,34 @@ QUERY_ALIASES = {
     "家庭网络": ("home", "network", "router", "edgeone", "wireguard", "nginx"),
     "网络架构": ("home", "network", "router", "edgeone", "wireguard", "nginx"),
 }
+
+
+def _term_pattern(token: str) -> str:
+    """Literal ASCII terms have the same boundaries in Python and PostgreSQL."""
+    escaped = re.escape(token)
+    # ASCII boundaries also allow technical terms next to Chinese text and preserve
+    # punctuation in C++, C#, host names and identifiers. `ai` must not match `detail`.
+    return rf"(^|[^a-z0-9_]){escaped}($|[^a-z0-9_])"
+
+
+def _term_matches(token: str, text: str) -> bool:
+    return bool(re.search(_term_pattern(token), text)) if token.isascii() else token in text
+
+
+def _relevance_tokens(tokens: set[str]) -> set[str]:
+    return {token.lower() for token in tokens} - _GENERIC_QUERY_TOKENS
+
+
+def _topic_tokens(tokens: set[str]) -> set[str]:
+    specific = tokens - _BROAD_QUERY_TOKENS
+    return specific if specific else tokens
+
+
+def _sql_term_match(field: Any, token: str) -> Any:
+    if token.isascii():
+        return field.op("~")(_term_pattern(token))
+    escaped = token.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+    return field.like(f"%{escaped}%", escape="\\")
 
 
 @dataclass(frozen=True)
@@ -54,7 +156,7 @@ def memory_query_tokens(query: str) -> list[str]:
             tokens.update(chunk[index : index + width] for index in range(len(chunk) - width + 1))
     alias_tokens: set[str] = set()
     for marker, aliases in QUERY_ALIASES.items():
-        if marker in lowered:
+        if _term_matches(marker, lowered):
             alias_tokens.update(aliases)
     tokens.update(alias_tokens)
     stop_tokens = {"我的", "怎样", "怎么", "什么", "如何", "规则", "the", "and", "for"}
@@ -69,12 +171,25 @@ def memory_query_tokens(query: str) -> list[str]:
 def _independent_matches(tokens: set[str], text: str) -> list[str]:
     """Keep the longest non-overlapping lexical signals to avoid n-gram inflation."""
     matches: list[str] = []
+    occupied: list[tuple[int, int]] = []
     for token in sorted(tokens, key=lambda item: (len(item), item), reverse=True):
-        if token not in text:
-            continue
         if any(token in selected or selected in token for selected in matches):
             continue
+        pattern = re.escape(token)
+        if token.isascii():
+            # Lookarounds keep the returned span on the term itself; neighboring
+            # delimiters are not evidence and must not consume another term's span.
+            pattern = rf"(?<![a-z0-9_]){pattern}(?![a-z0-9_])"
+        spans = [match.span() for match in re.finditer(pattern, text)]
+        if not any(
+            all(end <= used_start or start >= used_end for used_start, used_end in occupied)
+            for start, end in spans
+        ):
+            continue
         matches.append(token)
+        # Reserve every occurrence so repeating one phrase cannot provide a new
+        # independent signal through an overlapping fragment such as 与基/基础设施.
+        occupied.extend(spans)
     return matches
 
 
@@ -86,6 +201,7 @@ def lexical_memory_similarity(
     content: str,
 ) -> float:
     """Score memory-shaped text using the same lexical signals as live retrieval."""
+    query_tokens = _relevance_tokens(query_tokens)
     if not query_tokens:
         return 0.0
     lowered_title = title.lower()
@@ -96,6 +212,8 @@ def lexical_memory_similarity(
     content_matches = _independent_matches(
         query_tokens - set(title_matches) - set(tag_matches), lowered_content
     )
+    if not _topic_tokens(query_tokens).intersection(title_matches + tag_matches + content_matches):
+        return 0.0
     return min(
         1.0,
         0.45 * len(title_matches) + 0.35 * len(tag_matches) + 0.18 * len(content_matches),
@@ -108,7 +226,7 @@ async def retrieve_memories(
     user_id: str,
     query: str,
     limit: int,
-    min_source_score: float = 0.3,
+    min_source_score: float = DEFAULT_MIN_SOURCE_SCORE,
     statuses: tuple[str, ...] = ACTIVE_MEMORY_STATUSES,
     memory_type: str | None = None,
     layer: str | None = None,
@@ -116,8 +234,14 @@ async def retrieve_memories(
     global_only: bool = False,
     project_scope_ids: list[str] | None = None,
     embedding_timeout_seconds: float = 3.0,
+    discovery: bool = False,
 ) -> MemoryRetrievalResult:
-    """Combine vector and lexical evidence while preserving graceful degradation."""
+    """Combine bounded recall with conservative admission of unsupported vector hits.
+
+    Scores below the default source threshold explicitly request broad retrieval;
+    otherwise vector-only results need stronger support than the candidate floor.
+    The final 70/30 score remains a ranking score, not a calibrated probability.
+    """
     filters = [Memory.user_id == user_id, Memory.status.in_(statuses)]
     if memory_type:
         filters.append(Memory.type == memory_type)
@@ -140,8 +264,24 @@ async def retrieve_memories(
 
     total_result = await session.execute(select(func.count()).select_from(Memory).where(*filters))
     total_candidates = total_result.scalar_one()
-    query_token_list = memory_query_tokens(query)
-    query_tokens = set(query_token_list)
+    if discovery:
+        from app.services.discovery_query import discovery_query_tokens
+
+        query_token_list = discovery_query_tokens(query)
+    else:
+        query_token_list = memory_query_tokens(query)
+    query_tokens = _relevance_tokens(set(query_token_list))
+    query_token_list = [token for token in query_token_list if token in _topic_tokens(query_tokens)]
+    min_vector_only_score = (
+        max(min_source_score, DEFAULT_MIN_VECTOR_ONLY_SCORE)
+        if min_source_score >= DEFAULT_MIN_SOURCE_SCORE
+        else min_source_score
+    )
+    if discovery:
+        # Automatic delivery needs stronger semantic evidence than optional
+        # broad/manual recall. Keep the semantic channel for paraphrases, and
+        # never apply this threshold to explicit search/context requests.
+        min_vector_only_score = max(min_vector_only_score, 0.6)
 
     vector_scores: dict[uuid.UUID, tuple[Memory, float]] = {}
     sensitive_query = bool(find_sensitive_content(query))
@@ -176,12 +316,12 @@ async def retrieve_memories(
         title_field = func.lower(Memory.title)
         content_field = func.lower(Memory.content)
         tags_field = func.lower(Memory.tags.cast(String))
-        patterns = [f"%{token}%" for token in query_token_list[:24]]
+        terms = query_token_list[:24]
         relevance: Any = sum(
-            case((title_field.like(pattern), 5), else_=0)
-            + case((tags_field.like(pattern), 4), else_=0)
-            + case((content_field.like(pattern), 1), else_=0)
-            for pattern in patterns
+            case((_sql_term_match(title_field, token), 5), else_=0)
+            + case((_sql_term_match(tags_field, token), 4), else_=0)
+            + case((_sql_term_match(content_field, token), 1), else_=0)
+            for token in terms
         )
         lexical_query = (
             select(Memory)
@@ -189,8 +329,8 @@ async def retrieve_memories(
                 *filters,
                 or_(
                     *[
-                        field.like(pattern)
-                        for pattern in patterns
+                        _sql_term_match(field, token)
+                        for token in terms
                         for field in (title_field, content_field, tags_field)
                     ]
                 ),
@@ -200,9 +340,13 @@ async def retrieve_memories(
         )
         candidate_result = await session.execute(lexical_query)
         candidates = list(candidate_result.scalars().all())
+    # A vector hit can have genuine lexical evidence outside the bounded SQL
+    # shortlist. Score the union so those memories are not misclassified as vector-only.
+    candidates_by_id = {memory.id: memory for memory, _ in vector_scores.values()}
+    candidates_by_id.update((memory.id, memory) for memory in candidates)
     lexical_scores = {
         memory.id: score
-        for memory in candidates
+        for memory in candidates_by_id.values()
         if (
             score := lexical_memory_similarity(
                 query_tokens,
@@ -212,14 +356,25 @@ async def retrieve_memories(
             )
         )
         >= min_source_score
+        and score > 0.0
     }
 
     ranked: list[RankedMemory] = []
-    candidates_by_id = {memory.id: memory for memory in candidates}
+    weak_vector_only_count = 0
     for memory_id in set(vector_scores) | set(lexical_scores):
         vector_score = vector_scores.get(memory_id, (None, 0.0))[1]
         lexical_score = lexical_scores.get(memory_id, 0.0)
-        memory = candidates_by_id.get(memory_id) or vector_scores[memory_id][0]
+        lexical_supported = bool(lexical_score)
+        if discovery:
+            # Two incidental body words are weak support. A title/tag match,
+            # multiple independent facts or corroborating semantics are enough.
+            lexical_supported = lexical_score >= 0.45 or (
+                lexical_score >= min_source_score and vector_score >= 0.55
+            )
+        if not lexical_supported and vector_score < min_vector_only_score:
+            weak_vector_only_count += 1
+            continue
+        memory = candidates_by_id[memory_id]
         reasons = []
         if vector_score:
             reasons.append("vector")
@@ -247,6 +402,10 @@ async def retrieve_memories(
             "vector_count": len(vector_scores),
             "lexical_candidate_count": len(candidates),
             "lexical_count": len(lexical_scores),
+            "min_source_score": min_source_score,
+            "min_vector_only_score": min_vector_only_score,
+            "weak_vector_only_filtered": weak_vector_only_count,
+            "query_token_count": len(query_token_list),
             "selected_count": len(selected),
         },
     )

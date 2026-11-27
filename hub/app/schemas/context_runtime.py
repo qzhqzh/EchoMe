@@ -6,6 +6,18 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
+class ContextDiscoveryRequest(BaseModel):
+    """Small, always read-only index for automatic clients; never a constraint pack."""
+
+    task: str = Field(..., min_length=1, max_length=4000)
+    project_hint: str | None = Field(None, max_length=2048)
+    project_hints: list[Annotated[str, Field(min_length=1, max_length=2048)]] = Field(
+        default_factory=list, max_length=4,
+    )
+    limit: int = Field(3, ge=1, le=5)
+    max_output_tokens: int = Field(10000, ge=1000, le=20000)
+
+
 class UnifiedContextRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=20_000)
     project_hint: str | None = Field(None, max_length=2048)
